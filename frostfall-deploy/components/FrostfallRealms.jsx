@@ -695,15 +695,20 @@ export default function FrostfallRealms({ user, onLogout }) {
     setAiParsing(true); setAiParseError(null); setAiSourceName(filename);
     const categoryList = Object.entries(CATEGORIES).map(([k, v]) => `${k}: ${v.label} (fields: ${(TEMPLATE_FIELDS[k] || []).join(", ")})`).join("\n");
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const response = await fetch("/api/ai-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 4000,
-          messages: [{ role: "user", content: `You are a worldbuilding data extractor. Analyze this lore document and extract structured entries for a fantasy worldbuilding codex.\n\nAvailable categories:\n${categoryList}\n\nFor each distinct entity, concept, language, creature, law, location, character, event, item, or piece of lore you can identify, create a JSON entry.\n\nRespond ONLY with a JSON array (no markdown, no backticks, no preamble). Each entry:\n{\n  "title": "Name of entry",\n  "category": "category_key from list above",\n  "summary": "1-2 sentence summary",\n  "fields": { matching the category template fields },\n  "body": "Detailed description with @mentions using snake_case_ids for cross-references",\n  "tags": ["tag1", "tag2"],\n  "temporal": { "type": "mortal|immortal|event|race|concept|location|organization", "active_start": year_number_or_null, "active_end": year_number_or_null, "birth_year": if_applicable, "death_year": if_applicable }\n}\n\nDocument to parse:\n\n${text.slice(0, 12000)}` }],
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          categoryList,
+          text: text.slice(0, 12000),
         }),
       });
+
+      });
       const data = await response.json();
-      const raw = data.content?.map((b) => b.text || "").join("") || "";
+      const raw = data.raw || "";
       const cleaned = raw.replace(/```json|```/g, "").trim();
       const entries = JSON.parse(cleaned);
       const staged = entries.map((e, i) => ({
