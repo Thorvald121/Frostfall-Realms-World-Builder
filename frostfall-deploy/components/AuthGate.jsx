@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
 export default function AuthGate({ children }) {
@@ -14,7 +14,7 @@ export default function AuthGate({ children }) {
   const [submitting, setSubmitting] = useState(false);
 
   // Check session on mount
-  useState(() => {
+  useEffect(() => {
     if (!supabase) { setLoading(false); return; }
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user || null);
@@ -24,7 +24,7 @@ export default function AuthGate({ children }) {
       setUser(session?.user || null);
     });
     return () => listener?.subscription?.unsubscribe();
-  });
+  }, []);
 
   const handleLogin = async () => {
     setError(""); setSubmitting(true);
