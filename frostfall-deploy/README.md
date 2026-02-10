@@ -76,7 +76,7 @@ A dark fantasy worldbuilding engine built with Next.js, Supabase, and deployed o
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-   NEXT_PUBLIC_ANTHROPIC_API_KEY=your-anthropic-key-here
+   ANTHROPIC_API_KEY=your-anthropic-key-here
    ```
 
 ---
