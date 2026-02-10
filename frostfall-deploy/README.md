@@ -117,7 +117,7 @@ git push origin main
    |----------|-------|
    | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key |
-   | `NEXT_PUBLIC_ANTHROPIC_API_KEY` | Your Anthropic API key |
+   | `ANTHROPIC_API_KEY` | Your Anthropic API key |
    | `NEXT_PUBLIC_BMAC_URL` | Your Buy Me a Coffee link |
    | `NEXT_PUBLIC_KOFI_URL` | Your Ko-fi link |
    | `NEXT_PUBLIC_STRIPE_URL` | Your Stripe donation link |
