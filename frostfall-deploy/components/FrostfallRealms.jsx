@@ -518,7 +518,7 @@ export default function FrostfallRealms({ user, onLogout }) {
       });
       const data = await response.json();
       if (!response.ok || data.error) {
-        throw new Error(data.error || "API request failed");
+        throw new Error(data.error + (data.debug ? "\n\nDebug: " + data.debug.slice(0, 200) : "") || "API request failed");
       }
       const entries = data.entries;
       const staged = entries.map((e, i) => ({
