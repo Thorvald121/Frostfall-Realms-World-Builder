@@ -549,27 +549,86 @@ export default function FrostfallRealms({ user, onLogout }) {
   const aiFileRef = useRef(null);
   const portraitFileRef = useRef(null);
 
-  // Split text into chunks at paragraph boundaries (~4000 chars each)
-  const chunkText = (text, maxChunkSize = 4000) => {
+  // === MAP BUILDER ===
+  const [mapData, setMapData] = useState({ image: null, imageW: 0, imageH: 0, pins: [], territories: [] });
+  const [mapTool, setMapTool] = useState("select"); // select, pin, territory, erase
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const [mapDragging, setMapDragging] = useState(false);
+  const [mapDragStart, setMapDragStart] = useState({ x: 0, y: 0 });
+  const [mapSelected, setMapSelected] = useState(null); // { type: 'pin'|'territory', id }
+  const [mapDrawing, setMapDrawing] = useState(null); // territory points being drawn
+  const [mapEditPanel, setMapEditPanel] = useState(null); // pin/territory being edited
+  const mapContainerRef = useRef(null);
+  const mapFileRef = useRef(null);
+
+  // Split text into sections at heading boundaries, respecting document structure
+  const chunkText = (text, maxChunkSize = 6000) => {
     if (text.length <= maxChunkSize) return [text];
-    const chunks = [];
-    const paragraphs = text.split(/\n\s*\n/);
+    // Split by top-level headings (# )
+    const lines = text.split("\n");
+    const sections = [];
     let current = "";
-    for (const para of paragraphs) {
-      if (current.length + para.length + 2 > maxChunkSize && current.length > 0) {
-        chunks.push(current.trim());
-        current = para;
+    let currentHeading = "";
+    for (const line of lines) {
+      const isHeading = /^#{1,2}\s/.test(line.trim()) || /^#{1,2}\s*\\?#/.test(line.trim());
+      if (isHeading && current.length > 200) {
+        sections.push(current.trim());
+        current = line + "\n";
+        currentHeading = line;
       } else {
-        current += (current ? "\n\n" : "") + para;
+        current += line + "\n";
       }
     }
-    if (current.trim()) chunks.push(current.trim());
-    // Merge any tiny trailing chunks
-    if (chunks.length > 1 && chunks[chunks.length - 1].length < 200) {
-      const last = chunks.pop();
-      chunks[chunks.length - 1] += "\n\n" + last;
+    if (current.trim()) sections.push(current.trim());
+
+    // Merge tiny sections together, split huge ones
+    const chunks = [];
+    let merged = "";
+    for (const section of sections) {
+      if (merged.length + section.length < maxChunkSize) {
+        merged += (merged ? "\n\n" : "") + section;
+      } else {
+        if (merged) chunks.push(merged);
+        if (section.length > maxChunkSize) {
+          // Split huge section by paragraphs
+          const paras = section.split(/\n\s*\n/);
+          let sub = "";
+          for (const p of paras) {
+            if (sub.length + p.length > maxChunkSize && sub) {
+              chunks.push(sub.trim());
+              sub = p;
+            } else {
+              sub += (sub ? "\n\n" : "") + p;
+            }
+          }
+          if (sub.trim()) merged = sub.trim();
+          else merged = "";
+        } else {
+          merged = section;
+        }
+      }
     }
-    return chunks;
+    if (merged.trim()) chunks.push(merged.trim());
+
+    // Deduplicate chunks that are >80% similar (catches the duplicate Physical Characteristics)
+    const dedupedChunks = [];
+    for (const chunk of chunks) {
+      const isDup = dedupedChunks.some((existing) => {
+        const shorter = Math.min(chunk.length, existing.length);
+        const longer = Math.max(chunk.length, existing.length);
+        if (shorter / longer < 0.7) return false;
+        // Quick check: compare first 500 chars
+        const a = chunk.slice(0, 500).toLowerCase().replace(/\s+/g, " ");
+        const b = existing.slice(0, 500).toLowerCase().replace(/\s+/g, " ");
+        let matches = 0;
+        const words = a.split(" ");
+        for (const w of words) { if (b.includes(w)) matches++; }
+        return matches / words.length > 0.8;
+      });
+      if (!isDup) dedupedChunks.push(chunk);
+    }
+    return dedupedChunks;
   };
 
   const parseDocumentWithAI = async (text, filename) => {
@@ -580,6 +639,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     setAiProgress({ current: 0, total: chunks.length, entries: 0 });
     let allEntries = [];
     let errors = [];
+    let existingTitles = articles.map((a) => a.title); // Start with current codex titles
 
     for (let i = 0; i < chunks.length; i++) {
       setAiProgress((p) => ({ ...p, current: i + 1 }));
@@ -587,15 +647,26 @@ export default function FrostfallRealms({ user, onLogout }) {
         const response = await fetch("/api/ai-import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: chunks[i], filename, chunkIndex: i, totalChunks: chunks.length }),
+          body: JSON.stringify({
+            text: chunks[i],
+            filename,
+            chunkIndex: i,
+            totalChunks: chunks.length,
+            existingTitles: existingTitles.slice(-50), // Last 50 to stay within token limits
+          }),
         });
         const data = await response.json();
         if (data.error && !data.entries?.length) {
-          errors.push("Chunk " + (i + 1) + ": " + data.error);
+          errors.push("Section " + (i + 1) + ": " + data.error);
           continue;
         }
         if (data.entries && data.entries.length > 0) {
-          const staged = data.entries.map((e, j) => ({
+          // Client-side dedup: skip entries with titles that already exist
+          const newEntries = data.entries.filter((e) => {
+            const normalTitle = e.title.toLowerCase().trim();
+            return !existingTitles.some((t) => t.toLowerCase().trim() === normalTitle);
+          });
+          const staged = newEntries.map((e, j) => ({
             ...e,
             _stagingId: Date.now() + "-" + i + "-" + j,
             _status: "pending",
@@ -607,13 +678,13 @@ export default function FrostfallRealms({ user, onLogout }) {
             updatedAt: new Date().toISOString(),
           }));
           allEntries = [...allEntries, ...staged];
-          // Stream entries in — show them as they arrive
+          existingTitles = [...existingTitles, ...newEntries.map((e) => e.title)];
           setAiStaging((prev) => [...prev, ...staged]);
           setAiProgress((p) => ({ ...p, entries: allEntries.length }));
         }
-        if (data.warning) errors.push("Chunk " + (i + 1) + ": " + data.warning);
+        if (data.warning) errors.push("Section " + (i + 1) + ": " + data.warning);
       } catch (err) {
-        errors.push("Chunk " + (i + 1) + ": " + (err.message || "Network error"));
+        errors.push("Section " + (i + 1) + ": " + (err.message || "Network error"));
       }
     }
 
@@ -685,6 +756,113 @@ export default function FrostfallRealms({ user, onLogout }) {
     setView("dashboard");
     setShowConfirm({ title: "Import Complete", message: `${count} entr${count === 1 ? "y" : "ies"} added to the codex from "${aiSourceName}".`, confirmLabel: "OK", confirmColor: "#8ec8a0", onConfirm: () => setShowConfirm(null) });
   };
+
+  // === MAP BUILDER FUNCTIONS ===
+  const handleMapImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5000000) { alert("Image must be under 5MB"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        setMapData((prev) => ({ ...prev, image: ev.target.result, imageW: img.naturalWidth, imageH: img.naturalHeight }));
+        setMapZoom(1); setMapPan({ x: 0, y: 0 });
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const mapClickHandler = (e) => {
+    if (!mapData.image || mapDragging) return;
+    const rect = mapContainerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = (e.clientX - rect.left - mapPan.x) / mapZoom;
+    const y = (e.clientY - rect.top - mapPan.y) / mapZoom;
+    const nx = x / mapData.imageW;
+    const ny = y / mapData.imageH;
+    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+
+    if (mapTool === "pin") {
+      const pin = { id: "pin_" + Date.now(), x: nx, y: ny, label: "New Pin", color: "#f0c040", linkedArticleId: null };
+      setMapData((prev) => ({ ...prev, pins: [...prev.pins, pin] }));
+      setMapEditPanel(pin); setMapSelected({ type: "pin", id: pin.id });
+    } else if (mapTool === "territory") {
+      setMapDrawing((prev) => prev ? [...prev, { x: nx, y: ny }] : [{ x: nx, y: ny }]);
+    } else if (mapTool === "select") {
+      const clickedPin = mapData.pins.find((p) => Math.abs(p.x - nx) < 0.02 && Math.abs(p.y - ny) < 0.02);
+      if (clickedPin) { setMapSelected({ type: "pin", id: clickedPin.id }); setMapEditPanel(clickedPin); }
+      else {
+        const clickedTerr = mapData.territories.find((t) => pointInPoly(nx, ny, t.points));
+        if (clickedTerr) { setMapSelected({ type: "territory", id: clickedTerr.id }); setMapEditPanel(clickedTerr); }
+        else { setMapSelected(null); setMapEditPanel(null); }
+      }
+    } else if (mapTool === "erase") {
+      const clickedPin = mapData.pins.find((p) => Math.abs(p.x - nx) < 0.02 && Math.abs(p.y - ny) < 0.02);
+      if (clickedPin) { setMapData((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== clickedPin.id) })); if (mapSelected?.id === clickedPin.id) { setMapSelected(null); setMapEditPanel(null); } }
+      else {
+        const clickedTerr = mapData.territories.find((t) => pointInPoly(nx, ny, t.points));
+        if (clickedTerr) { setMapData((prev) => ({ ...prev, territories: prev.territories.filter((t) => t.id !== clickedTerr.id) })); if (mapSelected?.id === clickedTerr.id) { setMapSelected(null); setMapEditPanel(null); } }
+      }
+    }
+  };
+
+  const finishTerritory = () => {
+    if (!mapDrawing || mapDrawing.length < 3) { setMapDrawing(null); return; }
+    const terr = { id: "terr_" + Date.now(), points: mapDrawing, label: "New Territory", color: "#f0c040", fill: "rgba(240,192,64,0.15)", linkedArticleId: null };
+    setMapData((prev) => ({ ...prev, territories: [...prev.territories, terr] }));
+    setMapDrawing(null); setMapEditPanel(terr); setMapSelected({ type: "territory", id: terr.id });
+  };
+
+  const updateMapItem = (id, updates) => {
+    setMapData((prev) => ({
+      ...prev,
+      pins: prev.pins.map((p) => p.id === id ? { ...p, ...updates } : p),
+      territories: prev.territories.map((t) => t.id === id ? { ...t, ...updates } : t),
+    }));
+    setMapEditPanel((prev) => prev?.id === id ? { ...prev, ...updates } : prev);
+  };
+
+  const pointInPoly = (px, py, pts) => {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+      if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  };
+
+  const mapMouseDown = (e) => { if (mapTool === "select" && !mapEditPanel) { setMapDragging(true); setMapDragStart({ x: e.clientX - mapPan.x, y: e.clientY - mapPan.y }); } };
+  const mapMouseMove = (e) => { if (mapDragging) setMapPan({ x: e.clientX - mapDragStart.x, y: e.clientY - mapDragStart.y }); };
+  const mapMouseUp = () => setMapDragging(false);
+  const mapWheel = useCallback((e) => { e.preventDefault(); setMapZoom((z) => Math.max(0.2, Math.min(5, z + (e.deltaY > 0 ? -0.1 : 0.1)))); }, []);
+
+  useEffect(() => {
+    if (!dataLoaded || !activeWorld) return;
+    const t = setTimeout(async () => {
+      try {
+        if (typeof window !== "undefined" && window.storage) {
+          await window.storage.set("frostfall-map-" + (activeWorld?.id || "default"), JSON.stringify(mapData));
+        }
+      } catch (_) {}
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [mapData, dataLoaded, activeWorld]);
+
+  useEffect(() => {
+    if (!activeWorld) return;
+    (async () => {
+      try {
+        if (typeof window !== "undefined" && window.storage) {
+          const r = await window.storage.get("frostfall-map-" + (activeWorld?.id || "default"));
+          if (r?.value) setMapData(JSON.parse(r.value));
+          else setMapData({ image: null, imageW: 0, imageH: 0, pins: [], territories: [] });
+        }
+      } catch (_) { setMapData({ image: null, imageW: 0, imageH: 0, pins: [], territories: [] }); }
+    })();
+  }, [activeWorld]);
 
   useEffect(() => { setFadeIn(false); const t = setTimeout(() => setFadeIn(true), 30); return () => clearTimeout(t); }, [view, activeArticle]);
 
@@ -882,6 +1060,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     })),
     { divider: true },
     { id: "timeline", icon: "⏳", label: "Timeline", action: () => { setTlSelected(null); setTlPanelOpen(false); setView("timeline"); } },
+    { id: "map", icon: "🗺", label: "Map Builder", action: () => setView("map") },
     { id: "integrity", icon: "🛡", label: "Lore Integrity", action: () => setView("integrity"), count: stats.conflicts > 0 ? stats.conflicts : undefined, alert: stats.conflicts > 0 },
     { id: "archives", icon: "📦", label: "Archives", action: () => setView("archives"), count: archived.length > 0 ? archived.length : undefined },
     { divider: true },
@@ -896,6 +1075,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     if (item.id === "codex" && view === "codex" && codexFilter === "all") return true;
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "timeline" && view === "timeline") return true;
+    if (item.id === "map" && view === "map") return true;
     if (item.id === "archives" && view === "archives") return true;
     if (item.id === "ai_import" && view === "ai_import") return true;
     if (item.id === "staging" && view === "staging") return true;
@@ -1445,6 +1625,171 @@ export default function FrostfallRealms({ user, onLogout }) {
                   </div>
                 )}
               </div>
+            </div>
+          </div>)}
+
+          {/* === MAP BUILDER === */}
+          {view === "map" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Map Header */}
+            <div style={{ padding: "16px 28px 12px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+              <div>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>🗺 Map of {activeWorld?.name || "Your World"}</h2>
+                <p style={{ fontSize: 12, color: "#6b7b8d", marginTop: 4 }}>{mapData.pins.length} pin{mapData.pins.length !== 1 ? "s" : ""} · {mapData.territories.length} territor{mapData.territories.length !== 1 ? "ies" : "y"}</p>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {/* Tool palette */}
+                {[
+                  { id: "select", icon: "☝", tip: "Select / Pan" },
+                  { id: "pin", icon: "📍", tip: "Place Pin" },
+                  { id: "territory", icon: "⬡", tip: "Draw Territory" },
+                  { id: "erase", icon: "✕", tip: "Erase" },
+                ].map((t) => (
+                  <button key={t.id} title={t.tip} onClick={() => { setMapTool(t.id); if (mapDrawing && t.id !== "territory") { setMapDrawing(null); } }}
+                    style={{ padding: "6px 12px", fontSize: 14, background: mapTool === t.id ? "rgba(240,192,64,0.2)" : "transparent", border: mapTool === t.id ? "1px solid rgba(240,192,64,0.5)" : "1px solid #1e2a3a", borderRadius: 6, color: mapTool === t.id ? "#f0c040" : "#8899aa", cursor: "pointer", transition: "all 0.2s" }}>
+                    {t.icon}
+                  </button>
+                ))}
+                <div style={{ width: 1, height: 24, background: "#1e2a3a", margin: "0 4px" }} />
+                <button onClick={() => mapFileRef.current?.click()} style={{ ...S.btnS, fontSize: 11, padding: "6px 12px" }}>📷 Upload Map</button>
+                <input ref={mapFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleMapImageUpload} />
+                <span style={{ fontSize: 11, color: "#556677" }}>{Math.round(mapZoom * 100)}%</span>
+                <button onClick={() => setMapZoom((z) => Math.min(5, z + 0.2))} style={{ ...S.btnS, padding: "4px 8px", fontSize: 14 }}>+</button>
+                <button onClick={() => setMapZoom((z) => Math.max(0.2, z - 0.2))} style={{ ...S.btnS, padding: "4px 8px", fontSize: 14 }}>−</button>
+                <button onClick={() => { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }} style={{ ...S.btnS, padding: "4px 8px", fontSize: 10 }}>FIT</button>
+              </div>
+            </div>
+
+            {mapDrawing && (
+              <div style={{ padding: "8px 28px", background: "rgba(240,192,64,0.06)", borderBottom: "1px solid rgba(240,192,64,0.2)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                <span style={{ fontSize: 12, color: "#f0c040" }}>Drawing territory — {mapDrawing.length} point{mapDrawing.length !== 1 ? "s" : ""} placed</span>
+                <button onClick={finishTerritory} disabled={mapDrawing.length < 3} style={{ ...S.btnP, fontSize: 10, padding: "4px 14px", opacity: mapDrawing.length < 3 ? 0.4 : 1 }}>Finish ({"\u2265"}3 pts)</button>
+                <button onClick={() => setMapDrawing(null)} style={{ ...S.btnS, fontSize: 10, padding: "4px 14px" }}>Cancel</button>
+              </div>
+            )}
+
+            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+              {/* Map canvas */}
+              <div ref={mapContainerRef} style={{ flex: 1, overflow: "hidden", position: "relative", background: "#080c14", cursor: mapTool === "pin" ? "crosshair" : mapTool === "territory" ? "crosshair" : mapTool === "erase" ? "not-allowed" : mapDragging ? "grabbing" : "grab" }}
+                onClick={mapClickHandler} onMouseDown={mapMouseDown} onMouseMove={mapMouseMove} onMouseUp={mapMouseUp} onMouseLeave={mapMouseUp}
+                onWheel={(e) => { e.preventDefault(); setMapZoom((z) => Math.max(0.2, Math.min(5, z + (e.deltaY > 0 ? -0.1 : 0.1)))); }}>
+
+                {!mapData.image ? (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+                    <div style={{ fontSize: 56, opacity: 0.3 }}>🗺</div>
+                    <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#445566" }}>Upload a Map Image</p>
+                    <p style={{ fontSize: 12, color: "#334455", maxWidth: 340, textAlign: "center", lineHeight: 1.6 }}>Upload a PNG, JPG, or WebP image of your world map. You can then place pins at locations and draw territory borders.</p>
+                    <button onClick={() => mapFileRef.current?.click()} style={{ ...S.btnP, fontSize: 13 }}>Choose Image</button>
+                  </div>
+                ) : (
+                  <div style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "0 0", position: "relative", width: mapData.imageW, height: mapData.imageH }}>
+                    <img src={mapData.image} style={{ width: mapData.imageW, height: mapData.imageH, display: "block", userSelect: "none", pointerEvents: "none" }} draggable={false} alt="World map" />
+
+                    {/* Territory polygons */}
+                    <svg style={{ position: "absolute", top: 0, left: 0, width: mapData.imageW, height: mapData.imageH, pointerEvents: "none" }}>
+                      {mapData.territories.map((t) => (
+                        <g key={t.id}>
+                          <polygon points={t.points.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
+                            fill={mapSelected?.id === t.id ? "rgba(240,192,64,0.25)" : (t.fill || "rgba(240,192,64,0.12)")}
+                            stroke={mapSelected?.id === t.id ? "#f0c040" : (t.color || "#f0c040")}
+                            strokeWidth={mapSelected?.id === t.id ? 3 : 2} strokeDasharray={mapSelected?.id === t.id ? "none" : "6,3"} />
+                          {t.label && t.points.length > 0 && (
+                            <text x={t.points.reduce((s, p) => s + p.x, 0) / t.points.length * mapData.imageW}
+                              y={t.points.reduce((s, p) => s + p.y, 0) / t.points.length * mapData.imageH}
+                              textAnchor="middle" fill={t.color || "#f0c040"} fontSize={14 / mapZoom} fontFamily="'Cinzel', serif" fontWeight="700"
+                              stroke="#0a0e1a" strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
+                          )}
+                        </g>
+                      ))}
+                      {/* Drawing preview */}
+                      {mapDrawing && mapDrawing.length > 1 && (
+                        <polyline points={mapDrawing.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
+                          fill="none" stroke="#f0c040" strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
+                      )}
+                      {mapDrawing && mapDrawing.map((p, i) => (
+                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill="#f0c040" />
+                      ))}
+                    </svg>
+
+                    {/* Pins */}
+                    {mapData.pins.map((pin) => {
+                      const linked = pin.linkedArticleId ? articles.find((a) => a.id === pin.linkedArticleId) : null;
+                      return (
+                        <div key={pin.id} style={{ position: "absolute", left: pin.x * mapData.imageW - 12, top: pin.y * mapData.imageH - 28, pointerEvents: "auto", cursor: "pointer", zIndex: mapSelected?.id === pin.id ? 10 : 1 }}>
+                          <div style={{ fontSize: 24, filter: mapSelected?.id === pin.id ? "drop-shadow(0 0 6px rgba(240,192,64,0.8))" : "drop-shadow(0 2px 3px rgba(0,0,0,0.5))", transition: "filter 0.2s", transform: mapSelected?.id === pin.id ? "scale(1.2)" : "scale(1)" }}>📍</div>
+                          <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 10 / Math.max(mapZoom, 0.5), fontWeight: 700, color: pin.color || "#f0c040", textShadow: "0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7)", fontFamily: "'Cinzel', serif", letterSpacing: 0.5 }}>
+                            {pin.label}{linked ? " ↗" : ""}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Edit panel */}
+              {mapEditPanel && (
+                <div style={{ width: 280, borderLeft: "1px solid #1a2435", padding: "16px 14px", overflowY: "auto", flexShrink: 0, background: "#0d1117" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e8dcc8", margin: 0 }}>
+                      {mapEditPanel.points ? "Territory" : "Pin"} Properties
+                    </h3>
+                    <span onClick={() => { setMapEditPanel(null); setMapSelected(null); }} style={{ cursor: "pointer", color: "#556677", fontSize: 14 }}>✕</span>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Label</label>
+                    <input style={S.input} value={mapEditPanel.label || ""} onChange={(e) => updateMapItem(mapEditPanel.id, { label: e.target.value })} />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Color</label>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {["#f0c040", "#e07050", "#7ec8e3", "#8ec8a0", "#c084fc", "#d4a060", "#e0c878", "#a088d0"].map((c) => (
+                        <div key={c} onClick={() => updateMapItem(mapEditPanel.id, { color: c, ...(mapEditPanel.points ? { fill: c + "25" } : {}) })}
+                          style={{ width: 22, height: 22, borderRadius: 4, background: c, cursor: "pointer", border: mapEditPanel.color === c ? "2px solid #fff" : "2px solid transparent", transition: "border 0.2s" }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Link to Codex Article</label>
+                    <select style={{ ...S.input, padding: "8px 10px" }} value={mapEditPanel.linkedArticleId || ""}
+                      onChange={(e) => {
+                        const val = e.target.value || null;
+                        updateMapItem(mapEditPanel.id, { linkedArticleId: val });
+                        if (val) {
+                          const art = articles.find((a) => a.id === val);
+                          if (art && mapEditPanel.label === "New Pin") updateMapItem(mapEditPanel.id, { label: art.title, linkedArticleId: val });
+                        }
+                      }}>
+                      <option value="">— None —</option>
+                      {articles.filter((a) => a.category === "location" || a.category === "organization" || a.category === "race").sort((a, b) => a.title.localeCompare(b.title)).map((a) => (
+                        <option key={a.id} value={a.id}>{CATEGORIES[a.category]?.icon} {a.title}</option>
+                      ))}
+                      <optgroup label="All Articles">
+                        {articles.filter((a) => a.category !== "location" && a.category !== "organization" && a.category !== "race").sort((a, b) => a.title.localeCompare(b.title)).map((a) => (
+                          <option key={a.id} value={a.id}>{CATEGORIES[a.category]?.icon} {a.title}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+                  {mapEditPanel.linkedArticleId && (() => {
+                    const linked = articles.find((a) => a.id === mapEditPanel.linkedArticleId);
+                    return linked ? (
+                      <div onClick={() => { setActiveArticle(linked); setView("article"); }} style={{ padding: "10px 12px", background: "rgba(240,192,64,0.06)", border: "1px solid rgba(240,192,64,0.15)", borderRadius: 6, cursor: "pointer", marginBottom: 12, transition: "all 0.2s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.06)"; }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#d4c9a8" }}>{CATEGORIES[linked.category]?.icon} {linked.title}</div>
+                        <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 3 }}>{linked.summary?.slice(0, 80)}{linked.summary?.length > 80 ? "…" : ""}</div>
+                        <div style={{ fontSize: 9, color: "#f0c040", marginTop: 4 }}>Click to view article →</div>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div style={{ borderTop: "1px solid #1a2435", paddingTop: 12 }}>
+                    <button onClick={() => {
+                      if (mapEditPanel.points) setMapData((prev) => ({ ...prev, territories: prev.territories.filter((t) => t.id !== mapEditPanel.id) }));
+                      else setMapData((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== mapEditPanel.id) }));
+                      setMapEditPanel(null); setMapSelected(null);
+                    }} style={{ ...S.btnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", width: "100%" }}>Delete {mapEditPanel.points ? "Territory" : "Pin"}</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>)}
 
