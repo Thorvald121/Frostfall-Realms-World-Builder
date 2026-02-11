@@ -55,7 +55,10 @@ function detectConflicts(articles) {
   articles.forEach((source) => {
     const st = source.temporal;
     if (!st || st.active_start == null) return;
-    const mentions = (source.body?.match(/@([\w]+)/g) || []).map((m) => m.slice(1));
+    const mentions = [
+      ...(source.body?.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean),
+      ...(source.body?.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1)),
+    ];
     mentions.forEach((refId) => {
       const target = entityMap[refId];
       if (!target?.temporal) return;
@@ -114,6 +117,162 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
     else if (matched.length === 1 && matched[0].length >= 6) suggestions.push({ article: a, confidence: "low", match: matched[0] });
   });
   return suggestions.sort((a, b) => ({ high: 3, medium: 2, low: 1 }[b.confidence] || 0) - ({ high: 3, medium: 2, low: 1 }[a.confidence] || 0));
+}
+
+// Check a single article or form data against all existing articles for integrity violations
+function checkArticleIntegrity(data, articles, excludeId = null) {
+  const warnings = [];
+  const entityMap = {};
+  articles.forEach((a) => { entityMap[a.id] = a; });
+
+  const temporal = data.temporal;
+  const body = data.body || "";
+  const fields = data.fields || {};
+  const allText = body + " " + Object.values(fields).join(" ");
+
+  // 1. Broken @mentions — references to non-existent articles
+  const mentionRefs = (body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => {
+    const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/);
+    return match ? { title: match[1], id: match[2] } : null;
+  }).filter(Boolean);
+  const legacyRefs = (body.match(/@([\w]+)/g) || []).filter((m) => !m.match(/@\[/)).map((m) => m.slice(1));
+  const allRefs = [...mentionRefs.map((r) => r.id), ...legacyRefs];
+
+  allRefs.forEach((refId) => {
+    if (refId === excludeId) return;
+    if (!entityMap[refId]) {
+      warnings.push({ type: "broken_ref", severity: "error", message: "References \"@" + refId + "\" which doesn't exist in the codex.", suggestion: "Create the referenced article or fix the @mention." });
+    }
+  });
+
+  // 2. Temporal conflicts — referencing entities that weren't alive/active at this time
+  if (temporal && temporal.active_start != null) {
+    allRefs.forEach((refId) => {
+      const target = entityMap[refId];
+      if (!target?.temporal || target.temporal.type === "concept") return;
+      const tt = target.temporal;
+      if (tt.type === "immortal" && !tt.active_end) return;
+      if (tt.active_end != null && temporal.active_start > tt.active_end) {
+        warnings.push({
+          type: "temporal", severity: "error",
+          message: "References \"" + target.title + "\" (ended Year " + tt.active_end + ") but this entry starts in Year " + temporal.active_start + ".",
+          suggestion: "This is a " + (temporal.active_start - tt.active_end) + "-year discrepancy. Was this intentional (legacy/historical reference)?",
+        });
+      }
+      if (tt.death_year && temporal.active_start > tt.death_year) {
+        warnings.push({
+          type: "temporal", severity: "warning",
+          message: "\"" + target.title + "\" died in Year " + tt.death_year + ", which is before this entry's time period (Year " + temporal.active_start + ").",
+          suggestion: "Verify this is intentional — perhaps a posthumous mention or historical record.",
+        });
+      }
+    });
+  }
+
+  // 3. Orphan detection — article references nothing and nothing references it
+  if (body.length > 100 && allRefs.length === 0) {
+    const referencedByOthers = articles.some((a) => a.id !== excludeId && a.body?.includes("@" + (data.id || "")));
+    if (!referencedByOthers && articles.length > 3) {
+      warnings.push({ type: "orphan", severity: "info", message: "This entry has no cross-references and isn't referenced by other entries.", suggestion: "Consider adding @mentions to connect it with related entries." });
+    }
+  }
+
+  // 4. Missing key fields for category
+  const cat = data.category;
+  const requiredFields = {
+    deity: ["domain"], race: ["lifespan", "homeland"], character: ["char_race"],
+    event: ["date_range"], location: ["region"], organization: ["type", "purpose"],
+    language: ["speakers"], magic: ["type"], item: ["type"],
+  };
+  if (requiredFields[cat]) {
+    requiredFields[cat].forEach((f) => {
+      if (!fields[f] || !String(fields[f]).trim()) {
+        warnings.push({ type: "missing_field", severity: "info", message: "\"" + f.replace(/_/g, " ") + "\" is empty — this field helps with cross-referencing and integrity checks.", suggestion: "Fill in this field for better codex integration." });
+      }
+    });
+  }
+
+  // 5. Contradicting facts — check if two articles claim same unique role
+  if (fields.titles || fields.role) {
+    const roleText = (fields.titles || "") + " " + (fields.role || "");
+    const uniqueRoles = ["king", "queen", "emperor", "empress", "high priest", "archmage", "chieftain", "ruler"];
+    uniqueRoles.forEach((role) => {
+      if (!roleText.toLowerCase().includes(role)) return;
+      const region = fields.region || fields.affiliations || fields.homeland || "";
+      articles.forEach((other) => {
+        if (other.id === excludeId || other.category !== data.category) return;
+        const otherRoles = ((other.fields?.titles || "") + " " + (other.fields?.role || "")).toLowerCase();
+        const otherRegion = other.fields?.region || other.fields?.affiliations || other.fields?.homeland || "";
+        if (otherRoles.includes(role) && region && otherRegion && region.toLowerCase() === otherRegion.toLowerCase()) {
+          // Check temporal overlap
+          const ot = other.temporal;
+          if (temporal && ot && temporal.active_start != null && ot.active_start != null) {
+            const overlap = !(temporal.active_end != null && temporal.active_end < ot.active_start) && !(ot.active_end != null && ot.active_end < temporal.active_start);
+            if (overlap) {
+              warnings.push({
+                type: "contradiction", severity: "warning",
+                message: "Both this entry and \"" + other.title + "\" claim the role of " + role + " in " + region + " during overlapping time periods.",
+                suggestion: "Verify that these roles don't conflict, or adjust time periods.",
+              });
+            }
+          }
+        }
+      });
+    });
+  }
+
+  return warnings;
+}
+
+// Check novel scene for integrity issues (broken mentions, temporal conflicts, and name mismatches)
+function checkSceneIntegrity(sceneBody, articles) {
+  const warnings = [];
+  if (!sceneBody) return warnings;
+  // Check rich mentions @[Title](id)
+  const richRefs = (sceneBody.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => {
+    const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/);
+    return match ? { title: match[1], id: match[2] } : null;
+  }).filter(Boolean);
+  // Check legacy @id mentions
+  const legacyRefs = (sceneBody.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
+  const entityMap = {};
+  articles.forEach((a) => { entityMap[a.id] = a; });
+
+  richRefs.forEach((ref) => {
+    if (!entityMap[ref.id]) {
+      warnings.push({ severity: "error", message: "\"" + ref.title + "\" not found in codex.", ref: ref.id });
+    } else {
+      // Check if title changed (stale mention)
+      const art = entityMap[ref.id];
+      if (art.title !== ref.title) {
+        warnings.push({ severity: "warning", message: "\"" + ref.title + "\" was renamed to \"" + art.title + "\" — mention is stale.", ref: ref.id });
+      }
+    }
+  });
+  legacyRefs.forEach((refId) => {
+    if (!entityMap[refId]) {
+      warnings.push({ severity: "warning", message: "\"@" + refId + "\" is a raw mention — not linked to a codex entry.", ref: refId });
+    }
+  });
+
+  // Check if scene references characters from incompatible time periods
+  const mentionedArticles = [...richRefs.map((r) => entityMap[r.id]), ...legacyRefs.map((r) => entityMap[r])].filter(Boolean);
+  const mortals = mentionedArticles.filter((a) => a.temporal && a.temporal.death_year);
+  const events = mentionedArticles.filter((a) => a.category === "event" && a.temporal?.active_start);
+  // If scene mentions both a dead character and an event that happened after their death
+  mortals.forEach((mortal) => {
+    events.forEach((event) => {
+      if (event.temporal.active_start > mortal.temporal.death_year) {
+        warnings.push({
+          severity: "warning",
+          message: "\"" + mortal.title + "\" (died Year " + mortal.temporal.death_year + ") referenced alongside \"" + event.title + "\" (Year " + event.temporal.active_start + ").",
+          ref: mortal.id,
+        });
+      }
+    });
+  });
+
+  return warnings;
 }
 
 // === HELPERS ===
@@ -175,13 +334,39 @@ const Ornament = ({ width = 200 }) => (
 
 const RenderBody = ({ text, articles, onNavigate }) => {
   if (!text) return null;
-  return (<span>{text.split(/(@[\w]+)/g).map((part, i) => {
-    if (part.startsWith("@")) {
-      const id = part.slice(1), target = articles.find((a) => a.id === id);
-      if (target) return <span key={i} onClick={(e) => { e.stopPropagation(); onNavigate(id); }} style={{ color: CATEGORIES[target.category]?.color || "#f0c040", cursor: "pointer", borderBottom: "1px dotted currentColor", fontWeight: 500 }}>{target.title}</span>;
-      return <span key={i} style={{ color: "#888", fontStyle: "italic" }}>{id}</span>;
+  // Split on both @[Title](id) rich mentions and @id legacy mentions
+  const regex = /(@\[[^\]]+\]\([^)]+\)|@[\w]+)/g;
+  const parts = [];
+  let last = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push({ type: "text", content: text.slice(last, match.index) });
+    const raw = match[0];
+    const richMatch = raw.match(/@\[([^\]]+)\]\(([^)]+)\)/);
+    if (richMatch) {
+      parts.push({ type: "mention", title: richMatch[1], id: richMatch[2] });
+    } else {
+      parts.push({ type: "mention", title: null, id: raw.slice(1) });
     }
-    return <span key={i}>{part}</span>;
+    last = match.index + raw.length;
+  }
+  if (last < text.length) parts.push({ type: "text", content: text.slice(last) });
+
+  return (<span>{parts.map((part, i) => {
+    if (part.type === "text") return <span key={i}>{part.content}</span>;
+    const target = articles.find((a) => a.id === part.id);
+    const displayName = part.title || (target ? target.title : part.id);
+    const catColor = target ? (CATEGORIES[target.category]?.color || "#f0c040") : "#888";
+    const catIcon = target ? (CATEGORIES[target.category]?.icon || "") : "";
+    if (target) return (
+      <span key={i} onClick={(e) => { e.stopPropagation(); onNavigate(part.id); }}
+        style={{ background: catColor + "15", border: "1px solid " + catColor + "35", borderRadius: 4, padding: "1px 6px", margin: "0 1px", color: catColor, cursor: "pointer", fontWeight: 600, fontSize: "0.92em", fontFamily: "'Cinzel', sans-serif", letterSpacing: 0.3, transition: "all 0.15s", display: "inline" }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = catColor + "30"; e.currentTarget.style.borderColor = catColor + "60"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = catColor + "15"; e.currentTarget.style.borderColor = catColor + "35"; }}>
+        {catIcon} {displayName}
+      </span>
+    );
+    return <span key={i} style={{ color: "#e07050", fontStyle: "italic", fontSize: "0.92em" }} title="Not found in codex">⚠ {displayName}</span>;
   })}</span>);
 };
 
@@ -1089,36 +1274,203 @@ export default function FrostfallRealms({ user, onLogout }) {
     if (next) setNovelActiveScene(next);
   };
 
-  // @mention detection in editor
-  const handleNovelInput = (e, actId, chId, scId) => {
-    const text = e.target.value;
-    updateScene(actId, chId, scId, { body: text });
-    // Check for @mention trigger
-    const cursor = e.target.selectionStart;
-    const before = text.slice(0, cursor);
-    const atMatch = before.match(/@(\w*)$/);
+  // @mention detection in editor — uses @[Title](article_id) format for rich display
+  // Convert raw text with @[Title](id) to HTML with styled mention spans
+  const textToMentionHTML = useCallback((text) => {
+    if (!text) return "";
+    // Escape HTML entities first
+    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Replace @[Title](id) with styled spans
+    html = html.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, (_, title, id) => {
+      const art = articles.find((a) => a.id === id);
+      const cat = art?.category;
+      const icon = CATEGORIES[cat]?.icon || "?";
+      const color = CATEGORIES[cat]?.color || "#f0c040";
+      const brokenStyle = !art ? "background:rgba(224,112,80,0.12);border:1px solid rgba(224,112,80,0.4);color:#e07050" : `background:${color}18;border:1px solid ${color}40;color:${color}`;
+      return `<span contenteditable="false" data-mention-id="${id}" data-mention-title="${title.replace(/"/g, "&quot;")}" style="${brokenStyle};border-radius:4px;padding:1px 6px;margin:0 1px;font-family:'Cinzel',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.3px;cursor:pointer;user-select:all;display:inline;white-space:nowrap">${!art ? "⚠" : icon} ${title}</span>`;
+    });
+    // Convert newlines to <br>
+    html = html.replace(/\n/g, "<br>");
+    return html;
+  }, [articles]);
+
+  // Serialize contentEditable DOM back to raw text with @[Title](id) format
+  const serializeEditor = useCallback((node) => {
+    let result = "";
+    if (!node) return result;
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        result += child.textContent;
+      } else if (child.nodeName === "BR") {
+        result += "\n";
+      } else if (child.dataset?.mentionId) {
+        const title = child.dataset.mentionTitle || child.textContent.replace(/^[^\s]*\s/, "");
+        result += "@[" + title + "](" + child.dataset.mentionId + ")";
+      } else if (child.nodeName === "DIV" || child.nodeName === "P") {
+        // ContentEditable sometimes wraps lines in divs
+        if (result.length > 0 && !result.endsWith("\n")) result += "\n";
+        result += serializeEditor(child);
+      } else {
+        result += serializeEditor(child);
+      }
+    }
+    return result;
+  }, []);
+
+  // Track which scene is rendered to avoid unnecessary innerHTML updates
+  const lastRenderedSceneRef = useRef(null);
+  const isComposingRef = useRef(false);
+
+  // Set innerHTML when scene changes
+  useEffect(() => {
+    if (!novelEditorRef.current || !novelActiveScene) return;
+    const scene = getActiveScene();
+    const sceneKey = novelActiveScene.scId;
+    if (lastRenderedSceneRef.current !== sceneKey) {
+      lastRenderedSceneRef.current = sceneKey;
+      novelEditorRef.current.innerHTML = textToMentionHTML(scene?.body || "");
+    }
+  }, [novelActiveScene?.scId, textToMentionHTML]);
+
+  // Handle input in contentEditable editor
+  const handleNovelInput = useCallback(() => {
+    if (!novelEditorRef.current || !novelActiveScene || isComposingRef.current) return;
+    const raw = serializeEditor(novelEditorRef.current);
+    updateScene(novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId, { body: raw });
+
+    // Check for @mention trigger at cursor
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) { setNovelMention(null); return; }
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) { setNovelMention(null); return; }
+    const textBefore = node.textContent.slice(0, range.startOffset);
+    const atMatch = textBefore.match(/@(\w*)$/);
     if (atMatch) {
-      const rect = e.target.getBoundingClientRect();
-      setNovelMention({ query: atMatch[1], actId, chId, scId, x: rect.left + 20, y: rect.top + 40 });
+      // Position the dropdown near the cursor
+      const rects = range.getClientRects();
+      const rect = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
+      setNovelMention({
+        query: atMatch[1],
+        actId: novelActiveScene.actId, chId: novelActiveScene.chId, scId: novelActiveScene.scId,
+        x: rect.left, y: rect.bottom + 6,
+        textNode: node, atOffset: range.startOffset - atMatch[0].length,
+        cursorOffset: range.startOffset,
+      });
     } else {
       setNovelMention(null);
     }
-  };
+  }, [novelActiveScene, serializeEditor, updateScene]);
 
-  const insertMention = (articleId) => {
-    if (!novelMention) return;
-    const { actId, chId, scId } = novelMention;
-    const act = activeMs?.acts.find((a) => a.id === actId);
-    const ch = act?.chapters.find((c) => c.id === chId);
-    const sc = ch?.scenes.find((s) => s.id === scId);
-    if (!sc) return;
-    const text = sc.body || "";
-    const atPos = text.lastIndexOf("@");
-    if (atPos === -1) return;
-    const newText = text.slice(0, atPos) + "@" + articleId + " " + text.slice(novelEditorRef.current?.selectionStart || text.length);
-    updateScene(actId, chId, scId, { body: newText });
+  const insertMention = useCallback((article) => {
+    if (!novelMention || !novelEditorRef.current) return;
+    const { textNode, atOffset, cursorOffset } = novelMention;
+
+    // Create mention span
+    const span = document.createElement("span");
+    span.contentEditable = "false";
+    span.dataset.mentionId = article.id;
+    span.dataset.mentionTitle = article.title;
+    const cat = article.category;
+    const color = CATEGORIES[cat]?.color || "#f0c040";
+    const icon = CATEGORIES[cat]?.icon || "?";
+    span.style.cssText = `background:${color}18;border:1px solid ${color}40;color:${color};border-radius:4px;padding:1px 6px;margin:0 1px;font-family:'Cinzel',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.3px;cursor:pointer;user-select:all;display:inline;white-space:nowrap`;
+    span.textContent = icon + " " + article.title;
+
+    // Replace @query text with the mention span
+    if (textNode && textNode.parentNode) {
+      const fullText = textNode.textContent;
+      const beforeAt = fullText.slice(0, atOffset);
+      const afterCursor = fullText.slice(cursorOffset);
+
+      const beforeNode = document.createTextNode(beforeAt);
+      const afterNode = document.createTextNode(" " + afterCursor);
+      const parent = textNode.parentNode;
+
+      parent.insertBefore(beforeNode, textNode);
+      parent.insertBefore(span, textNode);
+      parent.insertBefore(afterNode, textNode);
+      parent.removeChild(textNode);
+
+      // Move cursor after the mention
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.setStart(afterNode, 1);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+    // Serialize and update state
+    const raw = serializeEditor(novelEditorRef.current);
+    updateScene(novelMention.actId, novelMention.chId, novelMention.scId, { body: raw });
     setNovelMention(null);
-  };
+  }, [novelMention, serializeEditor, updateScene]);
+
+  // Handle mention click in editor (event delegation)
+  const handleEditorClick = useCallback((e) => {
+    const mentionEl = e.target.closest("[data-mention-id]");
+    if (mentionEl) {
+      e.preventDefault();
+      const artId = mentionEl.dataset.mentionId;
+      const art = articles.find((a) => a.id === artId);
+      if (art) {
+        setActiveArticle(art);
+        setView("article");
+      }
+    }
+  }, [articles]);
+
+  // Handle mention hover for tooltip
+  const handleEditorMouseOver = useCallback((e) => {
+    const mentionEl = e.target.closest("[data-mention-id]");
+    if (mentionEl) {
+      const artId = mentionEl.dataset.mentionId;
+      const art = articles.find((a) => a.id === artId);
+      if (art) {
+        const r = mentionEl.getBoundingClientRect();
+        setMentionTooltip({ article: art, x: r.left, y: r.bottom + 4 });
+      }
+    } else {
+      setMentionTooltip(null);
+    }
+  }, [articles]);
+
+  // Insert @mention from codex sidebar
+  const insertMentionFromSidebar = useCallback((article) => {
+    if (!novelEditorRef.current || !novelActiveScene) return;
+    novelEditorRef.current.focus();
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const span = document.createElement("span");
+      span.contentEditable = "false";
+      span.dataset.mentionId = article.id;
+      span.dataset.mentionTitle = article.title;
+      const cat = article.category;
+      const color = CATEGORIES[cat]?.color || "#f0c040";
+      const icon = CATEGORIES[cat]?.icon || "?";
+      span.style.cssText = `background:${color}18;border:1px solid ${color}40;color:${color};border-radius:4px;padding:1px 6px;margin:0 1px;font-family:'Cinzel',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.3px;cursor:pointer;user-select:all;display:inline;white-space:nowrap`;
+      span.textContent = icon + " " + article.title;
+      range.deleteContents();
+      range.insertNode(span);
+      // Move cursor after
+      range.setStartAfter(span);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      // Add a space after
+      const space = document.createTextNode(" ");
+      span.parentNode.insertBefore(space, span.nextSibling);
+      range.setStartAfter(space);
+      range.collapse(true);
+    }
+    const raw = serializeEditor(novelEditorRef.current);
+    updateScene(novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId, { body: raw });
+  }, [novelActiveScene, serializeEditor, updateScene]);
+
+  // Hover tooltip state for mentions
+  const [mentionTooltip, setMentionTooltip] = useState(null);
 
   // Codex articles filtered for sidebar
   const novelCodexArticles = useMemo(() => {
@@ -1176,21 +1528,34 @@ export default function FrostfallRealms({ user, onLogout }) {
     return existingTemporal || null;
   };
 
+  const [integrityGate, setIntegrityGate] = useState(null); // { warnings, onProceed }
+
   const attemptSave = () => {
     const dupes = findDuplicates(formData.title, articles, editingId);
     if (dupes.length > 0) { setPendingDupes(dupes); setShowDupeModal(true); return; }
+    // Check integrity — gate on errors/warnings
+    const data = { ...formData, id: editingId || formData.title?.toLowerCase().replace(/[^a-z0-9]+/g, "_"), category: createCat };
+    const warnings = checkArticleIntegrity(data, articles, editingId);
+    const serious = warnings.filter((w) => w.severity === "error" || w.severity === "warning");
+    if (serious.length > 0) {
+      setIntegrityGate({ warnings: serious, onProceed: doSave });
+      return;
+    }
     doSave();
   };
   const doSave = () => {
     const id = editingId || formData.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
-    const mentions = (formData.body.match(/@([\w]+)/g) || []).map((m) => m.slice(1));
+    // Extract both @[Title](id) rich mentions and legacy @id mentions
+    const richMentions = (formData.body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean);
+    const legacyMentions = (formData.body.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
+    const allMentions = [...new Set([...richMentions, ...legacyMentions])];
     const temporal = buildTemporal(createCat, formData.fields, formData.temporal);
     const now = new Date().toISOString();
     const a = {
       id, title: formData.title, category: createCat, summary: formData.summary,
       fields: formData.fields, body: formData.body,
       tags: formData.tags.split(",").map((t) => t.trim()).filter(Boolean),
-      linkedIds: [...new Set(mentions)], temporal,
+      linkedIds: allMentions, temporal,
       portrait: formData.portrait || (editingId ? (articles.find((x) => x.id === editingId)?.portrait || null) : null),
       createdAt: editingId ? (articles.find((x) => x.id === editingId)?.createdAt || now) : now,
       updatedAt: now,
@@ -1200,7 +1565,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     } else {
       setArticles((prev) => [a, ...prev]);
     }
-    setActiveArticle(a); setShowDupeModal(false); setPendingDupes([]); setEditingId(null); setView("article");
+    setActiveArticle(a); setShowDupeModal(false); setPendingDupes([]); setEditingId(null); setIntegrityGate(null); setView("article");
   };
 
   // === DELETE / ARCHIVE ===
@@ -1239,8 +1604,26 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   const allConflicts = useMemo(() => detectConflicts(articles), [articles]);
   const conflictsFor = useCallback((id) => allConflicts.filter((c) => c.sourceId === id && !dismissedConflicts.has(c.id)), [allConflicts, dismissedConflicts]);
+
+  // Global integrity scan — counts all articles with issues (broken refs, temporal, orphans, missing fields, contradictions)
+  const globalIntegrity = useMemo(() => {
+    const articlesWithIssues = [];
+    articles.forEach((a) => {
+      const issues = checkArticleIntegrity(a, articles, a.id);
+      const serious = issues.filter((w) => w.severity === "error" || w.severity === "warning");
+      if (serious.length > 0) articlesWithIssues.push({ article: a, issues: serious });
+    });
+    return articlesWithIssues;
+  }, [articles]);
+
+  const totalIntegrityIssues = allConflicts.length + globalIntegrity.reduce((t, a) => t + a.issues.length, 0);
   const linkSugs = useMemo(() => view === "create" ? findUnlinkedMentions(formData.body + " " + formData.summary + " " + formData.title, formData.fields, articles, editingId ? (articles.find((a) => a.id === editingId)?.linkedIds || []) : []) : [], [view, formData, articles, editingId]);
   const liveDupes = useMemo(() => view === "create" ? findDuplicates(formData.title, articles, editingId) : [], [view, formData.title, articles, editingId]);
+  const liveIntegrity = useMemo(() => {
+    if (view !== "create") return [];
+    const data = { ...formData, id: editingId || formData.title?.toLowerCase().replace(/[^a-z0-9]+/g, "_"), category: createCat };
+    return checkArticleIntegrity(data, articles, editingId);
+  }, [view, formData, articles, editingId, createCat]);
 
   const filtered = useMemo(() => {
     let l = articles;
@@ -1331,7 +1714,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     { id: "timeline", icon: "⏳", label: "Timeline", action: () => { setTlSelected(null); setTlPanelOpen(false); setView("timeline"); } },
     { id: "map", icon: "🗺", label: "Map Builder", action: () => setView("map") },
     { id: "novel", icon: "✒", label: "Novel Writing", action: () => setView("novel") },
-    { id: "integrity", icon: "🛡", label: "Lore Integrity", action: () => setView("integrity"), count: stats.conflicts > 0 ? stats.conflicts : undefined, alert: stats.conflicts > 0 },
+    { id: "integrity", icon: "🛡", label: "Lore Integrity", action: () => setView("integrity"), count: totalIntegrityIssues > 0 ? totalIntegrityIssues : undefined, alert: totalIntegrityIssues > 0 },
     { id: "archives", icon: "📦", label: "Archives", action: () => setView("archives"), count: archived.length > 0 ? archived.length : undefined },
     { divider: true },
     { id: "ai_import", icon: "🧠", label: "AI Document Import", action: () => setView("ai_import") },
@@ -1366,6 +1749,35 @@ export default function FrostfallRealms({ user, onLogout }) {
       {showDupeModal && <DuplicateModal duplicates={pendingDupes} onOverride={doSave} onCancel={() => { setShowDupeModal(false); setPendingDupes([]); }} onNavigate={navigate} />}
       {showDeleteModal && <DeleteModal article={showDeleteModal} onArchive={() => doArchive(showDeleteModal)} onPermanent={() => doPermanentDelete(showDeleteModal)} onCancel={() => setShowDeleteModal(null)} />}
       {showConfirm && <ConfirmModal {...showConfirm} onCancel={() => setShowConfirm(null)} />}
+      {/* Integrity gate modal — shown when saving an article with lore conflicts */}
+      {integrityGate && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{ background: "#111827", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", maxWidth: 480, width: "90%" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <span style={{ fontSize: 24 }}>🛡</span>
+              <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Lore Integrity Warning</h3>
+            </div>
+            <p style={{ fontSize: 13, color: "#8899aa", marginBottom: 16, lineHeight: 1.5 }}>
+              This entry has {integrityGate.warnings.length} integrity issue{integrityGate.warnings.length !== 1 ? "s" : ""} that may conflict with existing canon:
+            </p>
+            <div style={{ maxHeight: 200, overflowY: "auto", marginBottom: 20 }}>
+              {integrityGate.warnings.map((w, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, padding: "8px 10px", marginBottom: 4, borderRadius: 6, background: w.severity === "error" ? "rgba(224,112,80,0.08)" : "rgba(240,192,64,0.06)", border: "1px solid " + (w.severity === "error" ? "rgba(224,112,80,0.2)" : "rgba(240,192,64,0.15)") }}>
+                  <span style={{ fontSize: 12, flexShrink: 0 }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
+                  <div>
+                    <div style={{ fontSize: 12, color: w.severity === "error" ? "#e07050" : "#f0c040", lineHeight: 1.4 }}>{w.message}</div>
+                    {w.suggestion && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 3 }}>{w.suggestion}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setIntegrityGate(null)} style={{ ...S.btnS, fontSize: 12 }}>Go Back & Fix</button>
+              <button onClick={() => { integrityGate.onProceed(); setIntegrityGate(null); }} style={{ ...S.btnP, fontSize: 12, background: "rgba(224,112,80,0.15)", borderColor: "rgba(224,112,80,0.4)", color: "#e07050" }}>Save Anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
       {importConflicts && <ImportConflictModal conflicts={importConflicts} onResolve={resolveImportConflicts} onCancel={() => { setImportConflicts(null); setImportPending(null); }} />}
       <input ref={importFileRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleImportFile} />
       <input ref={aiFileRef} type="file" accept=".txt,.md,.doc,.docx,.pdf" style={{ display: "none" }} onChange={handleAiFileUpload} />
@@ -1568,17 +1980,24 @@ export default function FrostfallRealms({ user, onLogout }) {
               ))}
             </div>
 
-            {allConflicts.length > 0 && (<>
-              <p style={S.sTitle}><span style={{ color: "#e07050" }}>🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{allConflicts.length} conflict{allConflicts.length !== 1 ? "s" : ""}</span></p>
+            {totalIntegrityIssues > 0 && (<>
+              <p style={S.sTitle}><span style={{ color: "#e07050" }}>🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{totalIntegrityIssues} issue{totalIntegrityIssues !== 1 ? "s" : ""}</span></p>
               <div style={{ background: "rgba(224,112,80,0.04)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: 4 }}>
-                {allConflicts.slice(0, 4).map((c) => (
+                {allConflicts.slice(0, 3).map((c) => (
                   <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
                     <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : "#f0c040", marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
                     <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: "#d4c9a8", fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: "#6b7b8d", fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
                     <span style={S.catBadge(c.severity === "error" ? "#e07050" : "#f0c040")}>{c.severity}</span>
                   </div>
                 ))}
-                {allConflicts.length > 4 && <div style={{ padding: "10px 14px", textAlign: "center", fontSize: 12, color: "#e07050", cursor: "pointer" }} onClick={() => setView("integrity")}>View all {allConflicts.length} conflicts →</div>}
+                {globalIntegrity.slice(0, Math.max(0, 4 - allConflicts.length)).map(({ article: a, issues }) => (
+                  <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(a.id)}>
+                    <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: "#d4c9a8", fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: "#6b7b8d" }}>{issues[0].message}</div></div>
+                    <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : "#f0c040")}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
+                  </div>
+                ))}
+                <div style={{ padding: "10px 14px", textAlign: "center", fontSize: 12, color: "#e07050", cursor: "pointer" }} onClick={() => setView("integrity")}>View full integrity report →</div>
               </div>
             </>)}
 
@@ -1610,34 +2029,67 @@ export default function FrostfallRealms({ user, onLogout }) {
           {view === "integrity" && (<div>
             <div style={{ marginTop: 24, marginBottom: 20 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e07050", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>🛡 Lore Integrity Report</h2>
-              <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6 }}>Canon conflicts detected across the codex. These occur when articles reference entities outside their known active period.</p>
+              <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6 }}>Full integrity scan across the codex — temporal conflicts, broken references, contradictions, and missing data.</p>
             </div>
             <Ornament width={300} />
-            {allConflicts.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 60, color: "#8ec8a0" }}><div style={{ fontSize: 40, marginBottom: 12 }}>✓</div><p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Canon Conflicts Detected</p></div>
+            {totalIntegrityIssues === 0 ? (
+              <div style={{ textAlign: "center", padding: 60, color: "#8ec8a0" }}><div style={{ fontSize: 40, marginBottom: 12 }}>✓</div><p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Canon Conflicts Detected</p><p style={{ fontSize: 12, color: "#556677" }}>All articles passed integrity checks.</p></div>
             ) : (<div style={{ marginTop: 20 }}>
-              <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
-                {[{ n: allConflicts.filter((c) => c.severity === "error").length, l: "Errors", c: "#e07050" }, { n: allConflicts.filter((c) => c.severity === "warning").length, l: "Warnings", c: "#f0c040" }, { n: new Set(allConflicts.map((c) => c.sourceId)).size, l: "Articles Affected", c: "#7ec8e3" }].map((s, i) => (
+              <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+                {[
+                  { n: allConflicts.filter((c) => c.severity === "error").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "error").length, 0), l: "Errors", c: "#e07050" },
+                  { n: allConflicts.filter((c) => c.severity === "warning").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "warning").length, 0), l: "Warnings", c: "#f0c040" },
+                  { n: new Set([...allConflicts.map((c) => c.sourceId), ...globalIntegrity.map((a) => a.article.id)]).size, l: "Articles Affected", c: "#7ec8e3" },
+                ].map((s, i) => (
                   <div key={i} style={{ ...S.statCard, flex: "0 0 auto", padding: "14px 24px" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: s.c, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
                 ))}
               </div>
-              {allConflicts.map((c) => (
-                <div key={c.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid " + (c.severity === "error" ? "rgba(224,112,80,0.25)" : "rgba(240,192,64,0.2)"), borderLeft: "3px solid " + (c.severity === "error" ? "#e07050" : "#f0c040"), borderRadius: 6, padding: "16px 20px", marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                    <span style={{ fontSize: 18, color: c.severity === "error" ? "#e07050" : "#f0c040" }}>{c.severity === "error" ? "✕" : "⚠"}</span>
-                    <div style={{ flex: 1 }}>
-                      <span style={S.catBadge(c.severity === "error" ? "#e07050" : "#f0c040")}>{c.severity} · Temporal Conflict</span>
-                      <p style={{ fontSize: 13, color: "#d4c9a8", margin: "8px 0", lineHeight: 1.6 }}>{c.message}</p>
-                      <p style={{ fontSize: 12, color: "#8899aa", margin: 0, fontStyle: "italic" }}>💡 {c.suggestion}</p>
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                        <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "4px 12px", background: "rgba(126,200,227,0.1)", borderRadius: 12 }} onClick={() => navigate(c.sourceId)}>View "{c.sourceTitle}" →</span>
-                        <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", padding: "4px 12px", background: "rgba(240,192,64,0.1)", borderRadius: 12 }} onClick={() => navigate(c.targetId)}>View "{c.targetTitle}" →</span>
-                        <span style={{ fontSize: 11, color: "#556677", cursor: "pointer", padding: "4px 12px", background: "rgba(85,102,119,0.1)", borderRadius: 12 }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
+
+              {/* Cross-article temporal conflicts */}
+              {allConflicts.length > 0 && (<>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e8dcc8", margin: "24px 0 12px", letterSpacing: 1 }}>⏱ Temporal Conflicts</h3>
+                {allConflicts.map((c) => (
+                  <div key={c.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid " + (c.severity === "error" ? "rgba(224,112,80,0.25)" : "rgba(240,192,64,0.2)"), borderLeft: "3px solid " + (c.severity === "error" ? "#e07050" : "#f0c040"), borderRadius: 6, padding: "16px 20px", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <span style={{ fontSize: 18, color: c.severity === "error" ? "#e07050" : "#f0c040" }}>{c.severity === "error" ? "✕" : "⚠"}</span>
+                      <div style={{ flex: 1 }}>
+                        <span style={S.catBadge(c.severity === "error" ? "#e07050" : "#f0c040")}>{c.severity} · Temporal Conflict</span>
+                        <p style={{ fontSize: 13, color: "#d4c9a8", margin: "8px 0", lineHeight: 1.6 }}>{c.message}</p>
+                        <p style={{ fontSize: 12, color: "#8899aa", margin: 0, fontStyle: "italic" }}>💡 {c.suggestion}</p>
+                        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                          <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "4px 12px", background: "rgba(126,200,227,0.1)", borderRadius: 12 }} onClick={() => navigate(c.sourceId)}>View "{c.sourceTitle}" →</span>
+                          <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", padding: "4px 12px", background: "rgba(240,192,64,0.1)", borderRadius: 12 }} onClick={() => navigate(c.targetId)}>View "{c.targetTitle}" →</span>
+                          <span style={{ fontSize: 11, color: "#556677", cursor: "pointer", padding: "4px 12px", background: "rgba(85,102,119,0.1)", borderRadius: 12 }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </>)}
+
+              {/* Per-article integrity issues */}
+              {globalIntegrity.length > 0 && (<>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e8dcc8", margin: "24px 0 12px", letterSpacing: 1 }}>📋 Article Integrity Issues</h3>
+                {globalIntegrity.map(({ article: a, issues }) => (
+                  <div key={a.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: "14px 18px", marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <span style={{ color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#d4c9a8", cursor: "pointer" }} onClick={() => navigate(a.id)}>{a.title}</span>
+                      <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
+                      <span style={{ ...S.catBadge("#e07050"), marginLeft: "auto" }}>{issues.length} issue{issues.length !== 1 ? "s" : ""}</span>
+                    </div>
+                    {issues.map((w, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0 5px 28px", fontSize: 12 }}>
+                        <span style={{ color: w.severity === "error" ? "#e07050" : "#f0c040" }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
+                        <span style={{ color: "#8899aa" }}>{w.message}</span>
+                      </div>
+                    ))}
+                    <div style={{ textAlign: "right", marginTop: 6 }}>
+                      <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer" }} onClick={() => { goEdit(a); }}>Edit article →</span>
+                    </div>
+                  </div>
+                ))}
+              </>)}
             </div>)}
           </div>)}
 
@@ -2205,7 +2657,11 @@ export default function FrostfallRealms({ user, onLogout }) {
               if (!scene || !act || !ch) return <div style={{ padding: 40, color: "#556677" }}>No scene selected.</div>;
               const scWords = scene.body ? scene.body.trim().split(/\s+/).filter(Boolean).length : 0;
               // @mention matches for inline highlighting info
-              const mentionMatches = articles.filter((a) => novelMention?.query && a.title.toLowerCase().startsWith(novelMention.query.toLowerCase())).slice(0, 8);
+              const mentionMatches = novelMention ? articles.filter((a) => {
+                if (!novelMention.query) return true; // show all when just @ typed
+                const q = novelMention.query.toLowerCase();
+                return a.title.toLowerCase().includes(q) || a.id.toLowerCase().startsWith(q);
+              }).slice(0, 8) : [];
               return (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   {/* Writing toolbar */}
@@ -2250,27 +2706,94 @@ export default function FrostfallRealms({ user, onLogout }) {
                       ))}
                     </div>
 
-                    {/* Editor */}
+                    {/* ContentEditable editor with inline mention chips */}
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                      <textarea ref={novelEditorRef} value={scene.body || ""} onChange={(e) => handleNovelInput(e, novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId)}
-                        onKeyDown={(e) => { if (e.key === "Escape") setNovelMention(null); if (e.key === "Tab" && novelMention && mentionMatches.length > 0) { e.preventDefault(); insertMention(mentionMatches[0].id); } }}
-                        placeholder={"Begin writing " + scene.title + "...\n\nUse @name to reference codex entries."}
-                        style={{ flex: 1, width: "100%", background: "#0d1117", border: "none", color: "#d4c9a8", fontSize: 15, fontFamily: "'Georgia', 'Times New Roman', serif", lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none", boxSizing: "border-box", letterSpacing: 0.3 }} />
+                      <div
+                        ref={novelEditorRef}
+                        contentEditable
+                        suppressContentEditableWarning
+                        onInput={handleNovelInput}
+                        onClick={handleEditorClick}
+                        onMouseOver={handleEditorMouseOver}
+                        onMouseLeave={() => setMentionTooltip(null)}
+                        onCompositionStart={() => { isComposingRef.current = true; }}
+                        onCompositionEnd={() => { isComposingRef.current = false; handleNovelInput(); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") setNovelMention(null);
+                          if (novelMention && mentionMatches.length > 0) {
+                            if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); insertMention(mentionMatches[0]); }
+                          }
+                        }}
+                        onBlur={() => setTimeout(() => setNovelMention(null), 200)}
+                        data-placeholder={"Begin writing " + scene.title + "...\nType @ to reference codex entries — they'll appear as clickable links."}
+                        style={{
+                          flex: 1, width: "100%", background: "#0d1117", border: "none",
+                          color: "#d4c9a8", caretColor: "#f0c040",
+                          fontSize: 15, fontFamily: "'Georgia', 'Times New Roman', serif",
+                          lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none",
+                          boxSizing: "border-box", letterSpacing: 0.3, overflowY: "auto",
+                          whiteSpace: "pre-wrap", wordWrap: "break-word", minHeight: 200,
+                        }}
+                      />
 
-                      {/* @mention dropdown */}
+                      {/* @mention autocomplete dropdown */}
                       {novelMention && mentionMatches.length > 0 && (
-                        <div style={{ position: "fixed", left: novelMention.x, top: novelMention.y, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 8, padding: 4, minWidth: 200, maxHeight: 240, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
-                          {mentionMatches.map((a) => (
-                            <div key={a.id} onClick={() => insertMention(a.id)} style={{ padding: "8px 12px", fontSize: 12, color: "#d4c9a8", cursor: "pointer", borderRadius: 4, display: "flex", alignItems: "center", gap: 8 }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                              <span style={{ color: CATEGORIES[a.category]?.color || "#888" }}>{CATEGORIES[a.category]?.icon || "?"}</span>
-                              <span>{a.title}</span>
-                              <span style={{ fontSize: 9, color: "#556677", marginLeft: "auto" }}>{CATEGORIES[a.category]?.label}</span>
+                        <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: "#111827", border: "1px solid rgba(240,192,64,0.3)", borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(240,192,64,0.1)" }}>
+                          <div style={{ padding: "4px 10px 6px", fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
+                          {mentionMatches.map((a, idx) => (
+                            <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
+                              style={{ padding: "8px 12px", fontSize: 12, color: "#d4c9a8", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent", transition: "background 0.1s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? "rgba(240,192,64,0.08)" : "transparent"; }}>
+                              <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color || "#888" }}>{CATEGORIES[a.category]?.icon || "?"}</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
+                                {a.summary && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.summary.slice(0, 60)}</div>}
+                              </div>
+                              <span style={{ fontSize: 9, color: "#445566", flexShrink: 0 }}>{CATEGORIES[a.category]?.label}</span>
                             </div>
                           ))}
-                          <div style={{ padding: "4px 12px", fontSize: 9, color: "#445566" }}>Tab to insert first · Esc to close</div>
+                          <div style={{ padding: "6px 10px 4px", fontSize: 9, color: "#445566", borderTop: "1px solid #1a2435", marginTop: 4 }}>Tab/Enter to insert · Esc to close</div>
                         </div>
                       )}
+
+                      {/* Mention hover tooltip */}
+                      {mentionTooltip && mentionTooltip.article && (
+                        <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            {mentionTooltip.article.portrait && <img src={mentionTooltip.article.portrait} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", border: "1px solid #1e2a3a" }} />}
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color || "#e8dcc8", fontFamily: "'Cinzel', serif" }}>
+                                {CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}
+                              </div>
+                              <div style={{ fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 0.5 }}>{CATEGORIES[mentionTooltip.article.category]?.label}</div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#8899aa", lineHeight: 1.5 }}>{mentionTooltip.article.summary?.slice(0, 150) || "No summary."}{mentionTooltip.article.summary?.length > 150 ? "…" : ""}</div>
+                          {Object.entries(mentionTooltip.article.fields || {}).filter(([_, v]) => v).slice(0, 3).map(([k, v]) => (
+                            <div key={k} style={{ fontSize: 10, color: "#556677", marginTop: 3 }}><strong style={{ color: "#6b7b8d" }}>{k.replace(/_/g, " ")}:</strong> {String(v).slice(0, 50)}</div>
+                          ))}
+                          <div style={{ fontSize: 9, color: "#f0c040", marginTop: 6 }}>Click mention to open article</div>
+                        </div>
+                      )}
+
+                      {/* Scene integrity warnings */}
+                      {(() => {
+                        const sceneWarnings = checkSceneIntegrity(scene.body, articles);
+                        if (sceneWarnings.length === 0) return null;
+                        return (
+                          <div style={{ padding: "6px 28px", background: "rgba(224,112,80,0.04)", borderTop: "1px solid rgba(224,112,80,0.15)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, color: "#e07050" }}>🛡 {sceneWarnings.length} integrity issue{sceneWarnings.length !== 1 ? "s" : ""}:</span>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                              {sceneWarnings.slice(0, 4).map((w, i) => (
+                                <span key={i} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: w.severity === "error" ? "rgba(224,112,80,0.1)" : "rgba(240,192,64,0.1)", color: w.severity === "error" ? "#e07050" : "#f0c040", border: "1px solid " + (w.severity === "error" ? "rgba(224,112,80,0.2)" : "rgba(240,192,64,0.2)") }}>
+                                  {w.message}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Footer bar */}
                       <div style={{ padding: "8px 28px", borderTop: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "#0a0e1a" }}>
@@ -2282,7 +2805,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                           <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_COLORS[ch.status] }} />
                           <span style={{ fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 0.5 }}>{ch.status}</span>
                         </div>
-                        <span style={{ fontSize: 9, color: "#334455" }}>Type @ to reference codex</span>
+                        <span style={{ fontSize: 9, color: "#334455" }}>Type @ to link codex · Click mentions to open</span>
                       </div>
                     </div>
 
@@ -2312,7 +2835,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                                 onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                                 <span style={{ color: CATEGORIES[a.category]?.color, fontSize: 12 }}>{CATEGORIES[a.category]?.icon}</span>
                                 <span style={{ fontSize: 12, color: "#d4c9a8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
-                                <button onClick={(e) => { e.stopPropagation(); const el = novelEditorRef.current; if (el) { const pos = el.selectionStart; const text = el.value; const newText = text.slice(0, pos) + "@" + a.id + " " + text.slice(pos); updateScene(novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId, { body: newText }); el.focus(); } }}
+                                <button onClick={(e) => { e.stopPropagation(); insertMentionFromSidebar(a); }}
                                   style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 10, padding: "2px 4px" }} title="Insert @mention">@+</button>
                               </div>
                               {novelCodexExpanded === a.id && (
@@ -2497,8 +3020,8 @@ export default function FrostfallRealms({ user, onLogout }) {
                 <div key={f.key} onClick={() => setCodexFilter(f.key)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, cursor: "pointer", letterSpacing: 0.5, fontWeight: codexFilter === f.key ? 600 : 400, background: codexFilter === f.key ? f.color + "20" : "transparent", color: codexFilter === f.key ? f.color : "#556677", border: "1px solid " + (codexFilter === f.key ? f.color + "40" : "#1e2a3a") }}>{f.label}</div>
               ))}
             </div>
-            {filtered.map((a) => { const ac = conflictsFor(a.id); return (
-              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: "rgba(17,24,39,0.6)", border: "1px solid " + (ac.length > 0 ? "rgba(224,112,80,0.3)" : "#1a2435"), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
+            {filtered.map((a) => { const ac = conflictsFor(a.id); const ai = checkArticleIntegrity(a, articles, a.id); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); return (
+              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: "rgba(17,24,39,0.6)", border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? "rgba(240,192,64,0.2)" : "#1a2435"), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
                 onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.85)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.6)"; }}>
                 {a.portrait ? (
                   <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid " + (CATEGORIES[a.category]?.color || "#888") + "40", flexShrink: 0, marginTop: 2 }}><img src={a.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
@@ -2510,6 +3033,8 @@ export default function FrostfallRealms({ user, onLogout }) {
                     <span style={{ fontSize: 14, fontWeight: 600, color: "#d4c9a8" }}>{a.title}</span>
                     <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
                     {ac.length > 0 && <span style={{ ...S.catBadge("#e07050"), gap: 3 }}>⚠ {ac.length} conflict{ac.length > 1 ? "s" : ""}</span>}
+                    {aiErrors.length > 0 && <span style={{ ...S.catBadge("#e07050"), gap: 3 }}>🛡 {aiErrors.length} error{aiErrors.length > 1 ? "s" : ""}</span>}
+                    {aiWarns.length > 0 && ac.length === 0 && aiErrors.length === 0 && <span style={{ ...S.catBadge("#f0c040"), gap: 3 }}>🛡 {aiWarns.length} warning{aiWarns.length > 1 ? "s" : ""}</span>}
                   </div>
                   <p style={{ fontSize: 12, color: "#7a8a9a", margin: 0, lineHeight: 1.5 }}>{a.summary}</p>
                   <div style={{ marginTop: 6 }}>{a.tags?.slice(0, 5).map((t) => <span key={t} style={S.tag}>#{t}</span>)}</div>
@@ -2565,6 +3090,24 @@ export default function FrostfallRealms({ user, onLogout }) {
                     </div>
                   </WarningBanner>
                 ))}
+
+                {/* Expanded integrity check */}
+                {(() => {
+                  const artWarnings = checkArticleIntegrity(activeArticle, articles, activeArticle.id)
+                    .filter((w) => w.type !== "orphan");
+                  const actionable = artWarnings.filter((w) => w.severity === "error" || w.severity === "warning");
+                  if (actionable.length === 0) return null;
+                  return (
+                    <WarningBanner severity={artWarnings.some((w) => w.severity === "error") ? "error" : "warning"} icon="🛡" title={"Lore Integrity: " + actionable.length + " issue" + (actionable.length !== 1 ? "s" : "")} style={{ marginTop: 12 }}>
+                      {actionable.map((w, i) => (
+                        <div key={i} style={{ padding: "3px 0", color: w.severity === "error" ? "#e07050" : "#f0c040", fontSize: 12 }}>
+                          {w.severity === "error" ? "⛔" : "⚠"} {w.message}
+                          {w.suggestion && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 1, marginLeft: 18 }}>💡 {w.suggestion}</div>}
+                        </div>
+                      ))}
+                    </WarningBanner>
+                  );
+                })()}
 
                 {activeArticle.fields && Object.keys(activeArticle.fields).length > 0 && (
                   <div style={{ marginTop: 20, marginBottom: 24, background: "rgba(17,24,39,0.4)", border: "1px solid #151d2e", borderRadius: 8, padding: "12px 18px" }}>
@@ -2724,6 +3267,24 @@ export default function FrostfallRealms({ user, onLogout }) {
                     <span>{CATEGORIES[s.article.category]?.icon}</span><span>{s.article.title}</span><span style={{ color: "#556677", fontSize: 10 }}>({s.confidence})</span>
                   </span>
                 ))}</div>
+              </WarningBanner>}
+
+              {liveIntegrity.length > 0 && <WarningBanner severity={liveIntegrity.some((w) => w.severity === "error") ? "error" : "warning"} icon="🛡" title={"Lore Integrity — " + liveIntegrity.length + " issue" + (liveIntegrity.length !== 1 ? "s" : "")} style={{ marginBottom: 16 }}>
+                {liveIntegrity.filter((w) => w.severity === "error").map((w, i) => (
+                  <div key={"e" + i} style={{ padding: "4px 0", fontSize: 12, color: "#e07050", display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <span>⛔</span><div><div>{w.message}</div><div style={{ fontSize: 10, color: "#a07060", marginTop: 2 }}>{w.suggestion}</div></div>
+                  </div>
+                ))}
+                {liveIntegrity.filter((w) => w.severity === "warning").map((w, i) => (
+                  <div key={"w" + i} style={{ padding: "4px 0", fontSize: 12, color: "#f0c040", display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <span>⚠</span><div><div>{w.message}</div><div style={{ fontSize: 10, color: "#a09060", marginTop: 2 }}>{w.suggestion}</div></div>
+                  </div>
+                ))}
+                {liveIntegrity.filter((w) => w.severity === "info").slice(0, 3).map((w, i) => (
+                  <div key={"i" + i} style={{ padding: "4px 0", fontSize: 12, color: "#7ec8e3", display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <span>ℹ</span><div>{w.message}</div>
+                  </div>
+                ))}
               </WarningBanner>}
 
               <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Tags <span style={{ fontWeight: 400, color: "#445566" }}>— comma separated</span></label><input style={S.input} value={formData.tags} onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))} placeholder="war, second-age, dragons..." /></div>
