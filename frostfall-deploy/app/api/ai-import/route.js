@@ -1,11 +1,103 @@
 import { NextResponse } from "next/server";
 
+const SYSTEM_PROMPT = `You are a worldbuilding document parser. Extract structured entries from fantasy lore documents.
+
+For each entity, output a JSON object with these fields:
+- title: Entity name
+- category: One of: deity, race, character, event, location, organization, item, magic, language, flora_fauna, laws_customs
+- summary: 1-2 sentence description
+- fields: Object with category-specific fields
+- body: Detailed lore text using @snake_case_ids for cross-references
+- tags: Array of relevant tags
+- temporal: { type: "immortal"|"mortal"|"event"|"concept"|"race", active_start: number|null, active_end: number|null, birth_year: number|null, death_year: number|null }
+
+Category template fields:
+- deity: domain, symbol, court, sacred_time, worshippers, gift_to_mortals
+- race: creators, lifespan, population, magic_affinity, homeland, capital
+- character: char_race, birth_year, death_year, titles, affiliations, role
+- event: date_range, age, casualties, key_figures, outcome
+- location: region, ruler, population, founding_year, notable_features, status
+- organization: type, founded, leader, headquarters, purpose, members
+- item: type, creator, current_location, power, history
+- magic: type, origin, scope, cost_types, violation_consequence
+- language: speakers, script, lang_origin, sample_phrases, grammar_notes, lang_status
+- flora_fauna: species_type, habitat, rarity, uses, danger_level, description
+- laws_customs: custom_type, enforced_by, applies_to, penalties, cultural_significance, exceptions
+
+CRITICAL RULES:
+1. Your ENTIRE response must be ONLY a valid JSON array
+2. Start with [ and end with ]
+3. No markdown, no code fences, no explanation text
+4. No trailing commas in objects or arrays
+5. All strings must use double quotes`;
+
+function extractJSON(raw, wasTruncated) {
+  let jsonText = raw;
+  if (wasTruncated) {
+    const lastComplete = jsonText.lastIndexOf("}");
+    if (lastComplete !== -1) {
+      jsonText = jsonText.slice(0, lastComplete + 1) + "]";
+    }
+  }
+
+  // Attempt 1: Direct parse
+  try { return JSON.parse(jsonText.trim()); } catch (_) {}
+
+  // Attempt 2: Strip code fences
+  try {
+    const stripped = jsonText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    return JSON.parse(stripped);
+  } catch (_) {}
+
+  // Attempt 3: Bracket matching
+  const start = jsonText.indexOf("[");
+  if (start !== -1) {
+    let depth = 0, end = -1;
+    for (let i = start; i < jsonText.length; i++) {
+      if (jsonText[i] === "[") depth++;
+      if (jsonText[i] === "]") depth--;
+      if (depth === 0) { end = i; break; }
+    }
+    if (end !== -1) {
+      const slice = jsonText.slice(start, end + 1);
+      try { return JSON.parse(slice); } catch (_) {
+        try { return JSON.parse(slice.replace(/,\s*([\]}])/g, "$1")); } catch (_) {}
+    }
+  }
+}
+
+// Attempt 4: Single object
+const objStart = jsonText.indexOf("{");
+if (objStart !== -1) {
+  try {
+    return [JSON.parse(jsonText.slice(objStart).replace(/```\s*$/g, "").trim())];
+  } catch (_) {}
+}
+
+return null;
+}
+
+function cleanEntries(entries) {
+  if (!Array.isArray(entries)) entries = [entries];
+  return entries
+  .filter((e) => e && typeof e === "object" && e.title && e.category)
+  .map((e) => ({
+    title: String(e.title || ""),
+               category: String(e.category || ""),
+               summary: String(e.summary || ""),
+               fields: (typeof e.fields === "object" && e.fields) ? e.fields : {},
+               body: String(e.body || ""),
+               tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
+               temporal: (typeof e.temporal === "object" && e.temporal) ? e.temporal : null,
+  }));
+}
+
 export async function POST(request) {
   try {
-    const { text, filename } = await request.json();
+    const { text, filename, chunkIndex, totalChunks } = await request.json();
 
-    if (!text || text.length < 20) {
-      return NextResponse.json({ error: "Document text too short" }, { status: 400 });
+    if (!text || text.length < 10) {
+      return NextResponse.json({ error: "Text too short", entries: [] }, { status: 200 });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -13,37 +105,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "Anthropic API key not configured" }, { status: 500 });
     }
 
-    const systemPrompt = `You are a worldbuilding document parser. Extract structured entries from fantasy lore documents.
-
-    For each entity, output a JSON object with these fields:
-    - title: Entity name
-    - category: One of: deity, race, character, event, location, organization, item, magic, language, flora_fauna, laws_customs
-    - summary: 1-2 sentence description
-    - fields: Object with category-specific fields
-    - body: Detailed lore text using @snake_case_ids for cross-references
-    - tags: Array of relevant tags
-    - temporal: { type: "immortal"|"mortal"|"event"|"concept"|"race", active_start: number|null, active_end: number|null, birth_year: number|null, death_year: number|null }
-
-    Category template fields:
-    - deity: domain, symbol, court, sacred_time, worshippers, gift_to_mortals
-    - race: creators, lifespan, population, magic_affinity, homeland, capital
-    - character: char_race, birth_year, death_year, titles, affiliations, role
-    - event: date_range, age, casualties, key_figures, outcome
-    - location: region, ruler, population, founding_year, notable_features, status
-    - organization: type, founded, leader, headquarters, purpose, members
-    - item: type, creator, current_location, power, history
-    - magic: type, origin, scope, cost_types, violation_consequence
-    - language: speakers, script, lang_origin, sample_phrases, grammar_notes, lang_status
-    - flora_fauna: species_type, habitat, rarity, uses, danger_level, description
-    - laws_customs: custom_type, enforced_by, applies_to, penalties, cultural_significance, exceptions
-
-    CRITICAL RULES:
-    1. Your ENTIRE response must be ONLY a valid JSON array
-    2. Start with [ and end with ]
-    3. No markdown, no code fences, no explanation text
-    4. No trailing commas in objects or arrays
-    5. All strings must use double quotes
-    6. Escape any double quotes inside strings with backslash`;
+    const chunkContext = totalChunks > 1
+    ? `\n\nThis is chunk ${chunkIndex + 1} of ${totalChunks} from the document "${filename}". Extract only entities found in THIS chunk.`
+    : "";
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -55,11 +119,11 @@ export async function POST(request) {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 8192,
-        system: systemPrompt,
+        system: SYSTEM_PROMPT,
         messages: [
           {
             role: "user",
-            content: "Parse this document into codex entries. Return ONLY a JSON array.\n\nFilename: " + filename + "\n\n" + text.slice(0, 30000),
+            content: "Parse this document section into codex entries. Return ONLY a JSON array." + chunkContext + "\n\n" + text,
           },
         ],
       }),
@@ -68,7 +132,7 @@ export async function POST(request) {
     if (!response.ok) {
       const err = await response.text();
       console.error("Anthropic API error:", response.status, err);
-      return NextResponse.json({ error: "AI API error " + response.status + ": " + err.slice(0, 200) }, { status: 502 });
+      return NextResponse.json({ error: "AI API error " + response.status, entries: [] }, { status: 502 });
     }
 
     const data = await response.json();
@@ -76,100 +140,19 @@ export async function POST(request) {
     const wasTruncated = data.stop_reason === "max_tokens";
 
     if (!raw || raw.trim().length === 0) {
-      return NextResponse.json({ error: "AI returned empty response" }, { status: 502 });
+      return NextResponse.json({ entries: [], warning: "AI returned empty response for this chunk" });
     }
 
-    // If response was truncated, try to repair the JSON by closing open structures
-    let jsonText = raw;
-    if (wasTruncated) {
-      // Remove any partial last entry (cut off mid-object)
-      const lastComplete = jsonText.lastIndexOf("}");
-      if (lastComplete !== -1) {
-        jsonText = jsonText.slice(0, lastComplete + 1) + "]";
-      }
+    const parsed = extractJSON(raw, wasTruncated);
+    if (!parsed) {
+      console.error("Parse failed for chunk", chunkIndex, "Raw:", raw.slice(0, 1000));
+      return NextResponse.json({ entries: [], warning: "Could not parse AI response for this chunk" });
     }
 
-    let entries = null;
-
-    // Attempt 1: Direct parse
-    try { entries = JSON.parse(jsonText.trim()); } catch (_) {}
-
-    // Attempt 2: Strip code fences
-    if (!entries) {
-      try {
-        const stripped = jsonText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-        entries = JSON.parse(stripped);
-      } catch (_) {}
-    }
-
-    // Attempt 3: Extract JSON array with bracket matching
-    if (!entries) {
-      const start = jsonText.indexOf("[");
-      if (start !== -1) {
-        let depth = 0;
-        let end = -1;
-        for (let i = start; i < jsonText.length; i++) {
-          if (jsonText[i] === "[") depth++;
-          if (jsonText[i] === "]") depth--;
-          if (depth === 0) { end = i; break; }
-        }
-        if (end !== -1) {
-          const slice = jsonText.slice(start, end + 1);
-          try { entries = JSON.parse(slice); } catch (_) {
-            // Attempt 4: Fix trailing commas
-            try {
-              const fixed = slice.replace(/,\s*([\]}])/g, "$1");
-              entries = JSON.parse(fixed);
-          } catch (_) {}
-        }
-      }
-    }
+    const entries = cleanEntries(parsed);
+    return NextResponse.json({ entries, wasTruncated });
+  } catch (err) {
+    console.error("AI import error:", err);
+    return NextResponse.json({ error: err.message || "Unknown error", entries: [] }, { status: 500 });
   }
-
-  // Attempt 5: Try parsing as single object and wrap in array
-  if (!entries) {
-    const objStart = jsonText.indexOf("{");
-    if (objStart !== -1) {
-      try {
-        const stripped = jsonText.slice(objStart).replace(/```\s*$/g, "").trim();
-        const obj = JSON.parse(stripped);
-        entries = [obj];
-      } catch (_) {}
-    }
-  }
-
-  if (!entries) {
-    console.error("All parse attempts failed. Raw (first 2000 chars):", raw.slice(0, 2000));
-    return NextResponse.json({
-      error: "Could not parse AI response. Please try uploading again.",
-      debug: jsonText.slice(0, 500),
-    }, { status: 502 });
-  }
-
-  if (!Array.isArray(entries)) entries = [entries];
-
-  // Validate and clean entries
-  entries = entries
-  .filter((e) => e && typeof e === "object" && e.title && e.category)
-  .map((e) => ({
-    title: String(e.title || ""),
-               category: String(e.category || ""),
-               summary: String(e.summary || ""),
-               fields: (typeof e.fields === "object" && e.fields) ? e.fields : {},
-               body: String(e.body || ""),
-               tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
-               temporal: (typeof e.temporal === "object" && e.temporal) ? e.temporal : null,
-  }));
-
-  if (entries.length === 0) {
-    return NextResponse.json({
-      error: "No valid entries found. The document may not contain enough structured lore content.",
-    }, { status: 422 });
-  }
-
-  return NextResponse.json({ entries });
-} catch (err) {
-  console.error("AI import error:", err);
-  return NextResponse.json({ error: err.message || "Unknown server error" }, { status: 500 });
-}
 }

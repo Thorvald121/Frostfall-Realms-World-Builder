@@ -367,6 +367,10 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [importPending, setImportPending] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [activeWorld, setActiveWorld] = useState(null);
+  const [allWorlds, setAllWorlds] = useState([]);
+  const [showWorldCreate, setShowWorldCreate] = useState(false);
+  const [worldForm, setWorldForm] = useState({ name: "", description: "" });
+  const [worldSwitcherOpen, setWorldSwitcherOpen] = useState(false);
   const tlRef = useRef(null);
   const tlLabelRef = useRef(null);
   const tlSyncing = useRef(false);
@@ -379,23 +383,27 @@ export default function FrostfallRealms({ user, onLogout }) {
       if (supabase && user) {
         try {
           const worlds = await fetchWorlds(user.id);
-          let world = worlds[0];
-          if (!world) world = await createWorld(user.id, "Aelvarin", "The world of Frostfall Realms");
-          setActiveWorld(world);
-          const dbArticles = await fetchArticles(world.id);
-          if (dbArticles.length > 0) {
-            setArticles(dbArticles.filter((a) => !a.isArchived));
-            setArchived(dbArticles.filter((a) => a.isArchived));
+          setAllWorlds(worlds);
+          if (worlds.length > 0) {
+            const world = worlds[0];
+            setActiveWorld(world);
+            const dbArticles = await fetchArticles(world.id);
+            if (dbArticles.length > 0) {
+              setArticles(dbArticles.filter((a) => !a.isArchived));
+              setArchived(dbArticles.filter((a) => a.isArchived));
+            }
           }
+          // If no worlds, the welcome screen will show
           setSaveStatus("saved");
         } catch (e) { console.error("Supabase load:", e); setSaveStatus("idle"); }
       } else {
         try {
           if (typeof window !== "undefined" && window.storage) {
-            const result = await window.storage.get("frostfall-world-data");
+            const result = await window.storage.get("frostfall-world-v2");
             const data = JSON.parse(result.value);
             if (data.articles?.length > 0) setArticles(data.articles);
             if (data.archived) setArchived(data.archived);
+            if (data.worldName) setActiveWorld({ name: data.worldName, description: data.worldDesc || "" });
           }
           setSaveStatus("saved");
         } catch (e) { setSaveStatus("idle"); }
@@ -405,17 +413,49 @@ export default function FrostfallRealms({ user, onLogout }) {
     loadData();
   }, [user]);
 
+  const handleCreateWorld = async () => {
+    if (!worldForm.name.trim()) return;
+    try {
+      if (supabase && user) {
+        const newWorld = await createWorld(user.id, worldForm.name.trim(), worldForm.description.trim());
+        setAllWorlds((prev) => [...prev, newWorld]);
+        setActiveWorld(newWorld);
+        setArticles([]);
+        setArchived([]);
+      } else {
+        setActiveWorld({ name: worldForm.name.trim(), description: worldForm.description.trim() });
+      }
+      setWorldForm({ name: "", description: "" });
+      setShowWorldCreate(false);
+      setView("dashboard");
+    } catch (e) { console.error("Create world:", e); }
+  };
+
+  const switchWorld = async (world) => {
+    if (world.id === activeWorld?.id) { setWorldSwitcherOpen(false); return; }
+    setActiveWorld(world);
+    setArticles([]);
+    setArchived([]);
+    setView("dashboard");
+    setWorldSwitcherOpen(false);
+    try {
+      const dbArticles = await fetchArticles(world.id);
+      setArticles(dbArticles.filter((a) => !a.isArchived));
+      setArchived(dbArticles.filter((a) => a.isArchived));
+    } catch (e) { console.error("Switch world:", e); }
+  };
+
   useEffect(() => {
     if (!dataLoaded) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaveStatus("saving");
     saveTimer.current = setTimeout(async () => {
       try {
-        if (supabase && user && activeWorld) {
+        if (supabase && user && activeWorld?.id) {
           const all = [...articles, ...archived.map((a) => ({ ...a, isArchived: true }))];
           for (const article of all) await upsertArticle(activeWorld.id, article);
         } else if (typeof window !== "undefined" && window.storage) {
-          await window.storage.set("frostfall-world-data", JSON.stringify({ articles, archived, version: 1, savedAt: new Date().toISOString() }));
+          await window.storage.set("frostfall-world-v2", JSON.stringify({ articles, archived, worldName: activeWorld?.name, worldDesc: activeWorld?.description, version: 2, savedAt: new Date().toISOString() }));
         }
         setSaveStatus("saved");
       } catch (e) { setSaveStatus("error"); }
@@ -503,46 +543,108 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [aiParsing, setAiParsing] = useState(false);
   const [aiParseError, setAiParseError] = useState(null);
   const [aiSourceName, setAiSourceName] = useState("");
+  const [aiProgress, setAiProgress] = useState({ current: 0, total: 0, entries: 0 });
   const [showDonate, setShowDonate] = useState(false);
-  const [authView, setAuthView] = useState(null); // null | "login" | "register"
+  const [authView, setAuthView] = useState(null);
   const aiFileRef = useRef(null);
   const portraitFileRef = useRef(null);
 
+  // Split text into chunks at paragraph boundaries (~4000 chars each)
+  const chunkText = (text, maxChunkSize = 4000) => {
+    if (text.length <= maxChunkSize) return [text];
+    const chunks = [];
+    const paragraphs = text.split(/\n\s*\n/);
+    let current = "";
+    for (const para of paragraphs) {
+      if (current.length + para.length + 2 > maxChunkSize && current.length > 0) {
+        chunks.push(current.trim());
+        current = para;
+      } else {
+        current += (current ? "\n\n" : "") + para;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    // Merge any tiny trailing chunks
+    if (chunks.length > 1 && chunks[chunks.length - 1].length < 200) {
+      const last = chunks.pop();
+      chunks[chunks.length - 1] += "\n\n" + last;
+    }
+    return chunks;
+  };
+
   const parseDocumentWithAI = async (text, filename) => {
     setAiParsing(true); setAiParseError(null); setAiSourceName(filename);
-    try {
-      const response = await fetch("/api/ai-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.slice(0, 30000), filename }),
-      });
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error + (data.debug ? "\n\nDebug: " + data.debug.slice(0, 200) : "") || "API request failed");
+    setAiStaging([]); setAiProgress({ current: 0, total: 0, entries: 0 });
+
+    const chunks = chunkText(text);
+    setAiProgress({ current: 0, total: chunks.length, entries: 0 });
+    let allEntries = [];
+    let errors = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      setAiProgress((p) => ({ ...p, current: i + 1 }));
+      try {
+        const response = await fetch("/api/ai-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: chunks[i], filename, chunkIndex: i, totalChunks: chunks.length }),
+        });
+        const data = await response.json();
+        if (data.error && !data.entries?.length) {
+          errors.push("Chunk " + (i + 1) + ": " + data.error);
+          continue;
+        }
+        if (data.entries && data.entries.length > 0) {
+          const staged = data.entries.map((e, j) => ({
+            ...e,
+            _stagingId: Date.now() + "-" + i + "-" + j,
+            _status: "pending",
+            id: e.title?.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "") || "entry_" + i + "_" + j,
+            fields: e.fields || {},
+            tags: e.tags || [],
+            linkedIds: (e.body?.match(/@([\w]+)/g) || []).map((m) => m.slice(1)),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }));
+          allEntries = [...allEntries, ...staged];
+          // Stream entries in — show them as they arrive
+          setAiStaging((prev) => [...prev, ...staged]);
+          setAiProgress((p) => ({ ...p, entries: allEntries.length }));
+        }
+        if (data.warning) errors.push("Chunk " + (i + 1) + ": " + data.warning);
+      } catch (err) {
+        errors.push("Chunk " + (i + 1) + ": " + (err.message || "Network error"));
       }
-      const entries = data.entries;
-      const staged = entries.map((e, i) => ({
-        ...e,
-        _stagingId: Date.now() + "-" + i,
-        _status: "pending",
-        id: e.title?.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "") || "entry_" + i,
-        fields: e.fields || {},
-        tags: e.tags || [],
-        linkedIds: (e.body?.match(/@([\w]+)/g) || []).map((m) => m.slice(1)),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }));
-      setAiStaging(staged);
+    }
+
+    if (allEntries.length > 0) {
       setView("staging");
-    } catch (err) {
-      setAiParseError("Failed to parse document: " + (err.message || "Unknown error"));
+    }
+    if (allEntries.length === 0 && errors.length > 0) {
+      setAiParseError("Failed to parse document: " + errors.join("; "));
+    } else if (errors.length > 0) {
+      setAiParseError("Parsed " + allEntries.length + " entries with some warnings: " + errors.slice(0, 2).join("; "));
     }
     setAiParsing(false);
+  };
+
+  // File size estimate helper
+  const estimateParseTime = (fileSize) => {
+    const kb = fileSize / 1024;
+    if (kb < 5) return "~10 seconds";
+    if (kb < 20) return "~20–30 seconds";
+    if (kb < 50) return "~30–60 seconds";
+    if (kb < 100) return "~1–2 minutes";
+    return "~2–5 minutes";
   };
 
   const handleAiFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // File size warning
+    if (file.size > 500000) {
+      setAiParseError("⚠ Large file (" + (file.size / 1024).toFixed(0) + "KB). Estimated parse time: " + estimateParseTime(file.size) + ". The file will be split into chunks for processing.");
+    }
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (ext === "docx" || ext === "doc") {
       const reader = new FileReader();
@@ -871,6 +973,31 @@ export default function FrostfallRealms({ user, onLogout }) {
               onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#556677"; }}>⏻</button>
           </div>
         )}
+        {/* World switcher */}
+        {activeWorld && (
+          <div style={{ padding: "8px 16px", borderBottom: "1px solid #1a2435" }}>
+            <div onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+              <span style={{ fontSize: 14, color: "#f0c040" }}>🌍</span>
+              <span style={{ flex: 1, fontSize: 12, color: "#d4c9a8", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>
+              <span style={{ fontSize: 10, color: "#556677", transition: "transform 0.2s", transform: worldSwitcherOpen ? "rotate(180deg)" : "none" }}>▾</span>
+            </div>
+            {worldSwitcherOpen && (
+              <div style={{ marginTop: 4, background: "rgba(17,24,39,0.5)", borderRadius: 6, border: "1px solid #1e2a3a", overflow: "hidden" }}>
+                {allWorlds.map((w) => (
+                  <div key={w.id} onClick={() => switchWorld(w)} style={{ padding: "8px 12px", fontSize: 11, color: w.id === activeWorld?.id ? "#f0c040" : "#8899aa", cursor: "pointer", borderBottom: "1px solid #111827", display: "flex", alignItems: "center", gap: 8, background: w.id === activeWorld?.id ? "rgba(240,192,64,0.06)" : "transparent" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = w.id === activeWorld?.id ? "rgba(240,192,64,0.06)" : "transparent"; }}>
+                    <span style={{ fontSize: 10 }}>{w.id === activeWorld?.id ? "●" : "○"}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
+                  </div>
+                ))}
+                <div onClick={() => { setWorldSwitcherOpen(false); setShowWorldCreate(true); }} style={{ padding: "8px 12px", fontSize: 11, color: "#8ec8a0", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                  <span>+</span> <span>Create New World</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
           {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: "#1a2435", margin: "8px 16px" }} /> : (
             <div key={item.id} style={{ ...S.navItem(isAct(item)), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} onClick={item.action}
@@ -891,7 +1018,7 @@ export default function FrostfallRealms({ user, onLogout }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? "#f0c040" : saveStatus === "error" ? "#e07050" : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px rgba(240,192,64,0.4)" : "none" }} />
-            <span style={{ fontSize: 9, color: "#556677", letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : "AELVARIN · THIRD AGE"}</span>
+            <span style={{ fontSize: 9, color: "#556677", letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
           </div>
         </div>
       </div>
@@ -925,10 +1052,62 @@ export default function FrostfallRealms({ user, onLogout }) {
 
         <div style={{ ...S.content, opacity: fadeIn ? 1 : 0, transition: "opacity 0.3s ease" }}>
 
+          {/* === WELCOME SCREEN — No world yet === */}
+          {!activeWorld && dataLoaded && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 64, marginBottom: 20 }}>🌍</div>
+              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 28, fontWeight: 700, color: "#e8dcc8", margin: 0, letterSpacing: 2 }}>Welcome to Frostfall Realms</h1>
+              <p style={{ fontSize: 14, color: "#6b7b8d", marginTop: 8, maxWidth: 460, lineHeight: 1.7 }}>
+                Create your first world to begin building your codex. Every world has its own articles, timeline, and lore — you can create as many as you need.
+              </p>
+              <Ornament width={300} />
+              {!showWorldCreate ? (
+                <button onClick={() => setShowWorldCreate(true)} style={{ ...S.btnP, fontSize: 15, padding: "14px 40px", marginTop: 24 }}>Create Your First World</button>
+              ) : (
+                <div style={{ marginTop: 24, background: "rgba(17,24,39,0.6)", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
+                    <input style={S.input} placeholder="e.g. Aelvarin, Middle-earth, Eberron" value={worldForm.name} onChange={(e) => setWorldForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
+                  </div>
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>Description (optional)</label>
+                    <textarea style={{ ...S.textarea, minHeight: 60 }} placeholder="A brief description of your world…" value={worldForm.description} onChange={(e) => setWorldForm((f) => ({ ...f, description: e.target.value }))} />
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={handleCreateWorld} disabled={!worldForm.name.trim()} style={{ ...S.btnP, flex: 1, opacity: worldForm.name.trim() ? 1 : 0.4 }}>Create World</button>
+                    <button onClick={() => setShowWorldCreate(false)} style={{ ...S.btnS }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* === WORLD CREATE MODAL (from sidebar) === */}
+          {showWorldCreate && activeWorld && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={(e) => { if (e.target === e.currentTarget) setShowWorldCreate(false); }}>
+              <div style={{ background: "#111827", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
+                  <input style={S.input} placeholder="e.g. Aelvarin, Middle-earth, Eberron" value={worldForm.name} onChange={(e) => setWorldForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
+                </div>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>Description (optional)</label>
+                  <textarea style={{ ...S.textarea, minHeight: 60 }} placeholder="A brief description of your world…" value={worldForm.description} onChange={(e) => setWorldForm((f) => ({ ...f, description: e.target.value }))} />
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={handleCreateWorld} disabled={!worldForm.name.trim()} style={{ ...S.btnP, flex: 1, opacity: worldForm.name.trim() ? 1 : 0.4 }}>Create World</button>
+                  <button onClick={() => { setShowWorldCreate(false); setWorldForm({ name: "", description: "" }); }} style={{ ...S.btnS }}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* === DASHBOARD === */}
-          {view === "dashboard" && (<div>
+          {view === "dashboard" && activeWorld && (<div>
             <div style={{ marginTop: 28, marginBottom: 8 }}>
-              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: "#e8dcc8", margin: 0, letterSpacing: 2 }}>The Archives of Aelvarin</h1>
+              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: "#e8dcc8", margin: 0, letterSpacing: 2 }}>The Archives of {activeWorld?.name || "Your World"}</h1>
               <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 4, fontStyle: "italic" }}>"Creation requires sacrifice. To give form costs essence."</p>
             </div>
             <Ornament width={300} />
@@ -1051,7 +1230,7 @@ export default function FrostfallRealms({ user, onLogout }) {
             {/* Timeline Header */}
             <div style={{ padding: "20px 28px 12px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <div>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e8dcc8", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⏳ Timeline of Aelvarin</h2>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e8dcc8", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⏳ Timeline of {activeWorld?.name || "Your World"}</h2>
                 <p style={{ fontSize: 12, color: "#6b7b8d", marginTop: 4 }}>{tlData.items.length} temporal entries across {Object.keys(tlData.lanes).length} categories</p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1289,7 +1468,18 @@ export default function FrostfallRealms({ user, onLogout }) {
                   <div style={{ fontSize: 36, marginBottom: 12, animation: "pulse 1.5s ease-in-out infinite" }}>🧠</div>
                   <style>{`@keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
                   <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#f0c040", margin: "0 0 6px" }}>Analyzing Document…</p>
-                  <p style={{ fontSize: 12, color: "#6b7b8d" }}>AI is reading "{aiSourceName}" and extracting lore entries</p>
+                  <p style={{ fontSize: 12, color: "#6b7b8d", marginBottom: 10 }}>AI is reading "{aiSourceName}" and extracting lore entries</p>
+                  {aiProgress.total > 0 && (
+                    <div style={{ width: "80%", maxWidth: 300, margin: "0 auto" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#556677", marginBottom: 4 }}>
+                        <span>Chunk {aiProgress.current} of {aiProgress.total}</span>
+                        <span>{aiProgress.entries} entries found</span>
+                      </div>
+                      <div style={{ height: 6, background: "#1a2435", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", background: "linear-gradient(90deg, #f0c040, #d4a020)", borderRadius: 3, width: (aiProgress.current / aiProgress.total * 100) + "%", transition: "width 0.5s ease" }} />
+                      </div>
+                    </div>
+                  )}
                 </>) : (<>
                   <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
                   <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#d4c9a8", margin: "0 0 6px" }}>Drop or Click to Upload</p>
