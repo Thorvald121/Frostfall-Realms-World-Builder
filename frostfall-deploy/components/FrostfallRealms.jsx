@@ -562,6 +562,21 @@ export default function FrostfallRealms({ user, onLogout }) {
   const mapContainerRef = useRef(null);
   const mapFileRef = useRef(null);
 
+  // === NOVEL WRITING TOOL ===
+  const [manuscripts, setManuscripts] = useState([]); // all manuscripts for active world
+  const [activeMs, setActiveMs] = useState(null); // current manuscript object
+  const [novelView, setNovelView] = useState("select"); // select, outline, write
+  const [novelActiveScene, setNovelActiveScene] = useState(null); // { actId, chId, scId }
+  const [novelCodexOpen, setNovelCodexOpen] = useState(false);
+  const [novelCodexSearch, setNovelCodexSearch] = useState("");
+  const [novelCodexFilter, setNovelCodexFilter] = useState("all");
+  const [novelCodexExpanded, setNovelCodexExpanded] = useState(null); // article id
+  const [novelMention, setNovelMention] = useState(null); // { query, x, y, actId, chId, scId }
+  const [novelOutlineCollapsed, setNovelOutlineCollapsed] = useState(new Set());
+  const [novelMsForm, setNovelMsForm] = useState({ title: "", description: "" });
+  const [showMsCreate, setShowMsCreate] = useState(false);
+  const novelEditorRef = useRef(null);
+
   // Split text into sections at heading boundaries, respecting document structure
   const chunkText = (text, maxChunkSize = 6000) => {
     if (text.length <= maxChunkSize) return [text];
@@ -864,6 +879,260 @@ export default function FrostfallRealms({ user, onLogout }) {
     })();
   }, [activeWorld]);
 
+  // === NOVEL WRITING FUNCTIONS ===
+  const msKey = () => "frostfall-novels-" + (activeWorld?.id || "default");
+
+  // Load manuscripts when world changes
+  useEffect(() => {
+    if (!activeWorld) return;
+    (async () => {
+      try {
+        if (typeof window !== "undefined" && window.storage) {
+          const r = await window.storage.get(msKey());
+          if (r?.value) { const ms = JSON.parse(r.value); setManuscripts(ms); }
+          else setManuscripts([]);
+        }
+      } catch (_) { setManuscripts([]); }
+    })();
+    setActiveMs(null); setNovelView("select");
+  }, [activeWorld]);
+
+  // Save manuscripts
+  useEffect(() => {
+    if (!dataLoaded || !activeWorld || manuscripts.length === 0) return;
+    const t = setTimeout(async () => {
+      try {
+        if (typeof window !== "undefined" && window.storage) {
+          await window.storage.set(msKey(), JSON.stringify(manuscripts));
+        }
+      } catch (_) {}
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [manuscripts, dataLoaded, activeWorld]);
+
+  // Keep activeMs in sync with manuscripts array
+  useEffect(() => {
+    if (activeMs) {
+      const updated = manuscripts.find((m) => m.id === activeMs.id);
+      if (updated) setActiveMs(updated);
+    }
+  }, [manuscripts]);
+
+  const createManuscript = () => {
+    if (!novelMsForm.title.trim()) return;
+    const ms = {
+      id: "ms_" + Date.now(),
+      title: novelMsForm.title.trim(),
+      description: novelMsForm.description.trim(),
+      acts: [{
+        id: "act_" + Date.now(),
+        title: "Act I",
+        synopsis: "",
+        order: 0,
+        color: "#f0c040",
+        chapters: [{
+          id: "ch_" + Date.now(),
+          title: "Chapter 1",
+          synopsis: "",
+          order: 0,
+          status: "draft",
+          scenes: [{
+            id: "sc_" + Date.now(),
+            title: "Scene 1",
+            body: "",
+            order: 0,
+            notes: "",
+          }],
+        }],
+      }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setManuscripts((prev) => [...prev, ms]);
+    setActiveMs(ms);
+    setNovelView("outline");
+    setNovelMsForm({ title: "", description: "" });
+    setShowMsCreate(false);
+  };
+
+  const updateMs = (updater) => {
+    setManuscripts((prev) => prev.map((m) => m.id === activeMs?.id ? { ...updater(m), updatedAt: new Date().toISOString() } : m));
+  };
+
+  const deleteManuscript = (msId) => {
+    setManuscripts((prev) => prev.filter((m) => m.id !== msId));
+    if (activeMs?.id === msId) { setActiveMs(null); setNovelView("select"); }
+  };
+
+  const addAct = () => {
+    updateMs((m) => ({
+      ...m,
+      acts: [...m.acts, {
+        id: "act_" + Date.now(), title: "Act " + (m.acts.length + 1), synopsis: "", order: m.acts.length,
+        color: ["#f0c040", "#7ec8e3", "#e07050", "#8ec8a0", "#c084fc"][m.acts.length % 5],
+        chapters: [{
+          id: "ch_" + Date.now(), title: "Chapter 1", synopsis: "", order: 0, status: "draft",
+          scenes: [{ id: "sc_" + Date.now(), title: "Scene 1", body: "", order: 0, notes: "" }],
+        }],
+      }],
+    }));
+  };
+
+  const addChapter = (actId) => {
+    updateMs((m) => ({
+      ...m,
+      acts: m.acts.map((a) => a.id === actId ? {
+        ...a,
+        chapters: [...a.chapters, {
+          id: "ch_" + Date.now(), title: "Chapter " + (a.chapters.length + 1), synopsis: "", order: a.chapters.length, status: "draft",
+          scenes: [{ id: "sc_" + Date.now(), title: "Scene 1", body: "", order: 0, notes: "" }],
+        }],
+      } : a),
+    }));
+  };
+
+  const addScene = (actId, chId) => {
+    updateMs((m) => ({
+      ...m,
+      acts: m.acts.map((a) => a.id === actId ? {
+        ...a,
+        chapters: a.chapters.map((c) => c.id === chId ? {
+          ...c,
+          scenes: [...c.scenes, { id: "sc_" + Date.now(), title: "Scene " + (c.scenes.length + 1), body: "", order: c.scenes.length, notes: "" }],
+        } : c),
+      } : a),
+    }));
+  };
+
+  const updateAct = (actId, updates) => {
+    updateMs((m) => ({ ...m, acts: m.acts.map((a) => a.id === actId ? { ...a, ...updates } : a) }));
+  };
+
+  const updateChapter = (actId, chId, updates) => {
+    updateMs((m) => ({
+      ...m,
+      acts: m.acts.map((a) => a.id === actId ? {
+        ...a, chapters: a.chapters.map((c) => c.id === chId ? { ...c, ...updates } : c),
+      } : a),
+    }));
+  };
+
+  const updateScene = (actId, chId, scId, updates) => {
+    updateMs((m) => ({
+      ...m,
+      acts: m.acts.map((a) => a.id === actId ? {
+        ...a,
+        chapters: a.chapters.map((c) => c.id === chId ? {
+          ...c, scenes: c.scenes.map((s) => s.id === scId ? { ...s, ...updates } : s),
+        } : c),
+      } : a),
+    }));
+  };
+
+  const deleteAct = (actId) => {
+    updateMs((m) => ({ ...m, acts: m.acts.filter((a) => a.id !== actId) }));
+    if (novelActiveScene?.actId === actId) setNovelActiveScene(null);
+  };
+
+  const deleteChapter = (actId, chId) => {
+    updateMs((m) => ({
+      ...m,
+      acts: m.acts.map((a) => a.id === actId ? { ...a, chapters: a.chapters.filter((c) => c.id !== chId) } : a),
+    }));
+    if (novelActiveScene?.chId === chId) setNovelActiveScene(null);
+  };
+
+  const deleteScene = (actId, chId, scId) => {
+    updateMs((m) => ({
+      ...m,
+      acts: m.acts.map((a) => a.id === actId ? {
+        ...a, chapters: a.chapters.map((c) => c.id === chId ? { ...c, scenes: c.scenes.filter((s) => s.id !== scId) } : c),
+      } : a),
+    }));
+    if (novelActiveScene?.scId === scId) setNovelActiveScene(null);
+  };
+
+  const getActiveScene = () => {
+    if (!activeMs || !novelActiveScene) return null;
+    const act = activeMs.acts.find((a) => a.id === novelActiveScene.actId);
+    const ch = act?.chapters.find((c) => c.id === novelActiveScene.chId);
+    return ch?.scenes.find((s) => s.id === novelActiveScene.scId) || null;
+  };
+
+  const msWordCount = useMemo(() => {
+    if (!activeMs) return { total: 0, acts: {} };
+    let total = 0;
+    const acts = {};
+    for (const act of activeMs.acts) {
+      let actWords = 0;
+      for (const ch of act.chapters) {
+        for (const sc of ch.scenes) {
+          const w = sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0;
+          actWords += w;
+        }
+      }
+      acts[act.id] = actWords;
+      total += actWords;
+    }
+    return { total, acts };
+  }, [activeMs]);
+
+  const chapterWordCount = (ch) => ch.scenes.reduce((sum, sc) => sum + (sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0), 0);
+
+  // Navigate to next/prev scene
+  const navigateScene = (dir) => {
+    if (!activeMs || !novelActiveScene) return;
+    const allScenes = [];
+    for (const a of activeMs.acts) for (const c of a.chapters) for (const s of c.scenes) allScenes.push({ actId: a.id, chId: c.id, scId: s.id });
+    const idx = allScenes.findIndex((s) => s.scId === novelActiveScene.scId);
+    const next = allScenes[idx + dir];
+    if (next) setNovelActiveScene(next);
+  };
+
+  // @mention detection in editor
+  const handleNovelInput = (e, actId, chId, scId) => {
+    const text = e.target.value;
+    updateScene(actId, chId, scId, { body: text });
+    // Check for @mention trigger
+    const cursor = e.target.selectionStart;
+    const before = text.slice(0, cursor);
+    const atMatch = before.match(/@(\w*)$/);
+    if (atMatch) {
+      const rect = e.target.getBoundingClientRect();
+      setNovelMention({ query: atMatch[1], actId, chId, scId, x: rect.left + 20, y: rect.top + 40 });
+    } else {
+      setNovelMention(null);
+    }
+  };
+
+  const insertMention = (articleId) => {
+    if (!novelMention) return;
+    const { actId, chId, scId } = novelMention;
+    const act = activeMs?.acts.find((a) => a.id === actId);
+    const ch = act?.chapters.find((c) => c.id === chId);
+    const sc = ch?.scenes.find((s) => s.id === scId);
+    if (!sc) return;
+    const text = sc.body || "";
+    const atPos = text.lastIndexOf("@");
+    if (atPos === -1) return;
+    const newText = text.slice(0, atPos) + "@" + articleId + " " + text.slice(novelEditorRef.current?.selectionStart || text.length);
+    updateScene(actId, chId, scId, { body: newText });
+    setNovelMention(null);
+  };
+
+  // Codex articles filtered for sidebar
+  const novelCodexArticles = useMemo(() => {
+    let filtered = articles;
+    if (novelCodexFilter !== "all") filtered = filtered.filter((a) => a.category === novelCodexFilter);
+    if (novelCodexSearch) {
+      const q = novelCodexSearch.toLowerCase();
+      filtered = filtered.filter((a) => a.title.toLowerCase().includes(q) || a.summary?.toLowerCase().includes(q));
+    }
+    return filtered.slice(0, 50);
+  }, [articles, novelCodexFilter, novelCodexSearch]);
+
+  const STATUS_COLORS = { draft: "#556677", revised: "#f0c040", final: "#8ec8a0" };
+
   useEffect(() => { setFadeIn(false); const t = setTimeout(() => setFadeIn(true), 30); return () => clearTimeout(t); }, [view, activeArticle]);
 
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } }, [articles]);
@@ -1061,6 +1330,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     { divider: true },
     { id: "timeline", icon: "⏳", label: "Timeline", action: () => { setTlSelected(null); setTlPanelOpen(false); setView("timeline"); } },
     { id: "map", icon: "🗺", label: "Map Builder", action: () => setView("map") },
+    { id: "novel", icon: "✒", label: "Novel Writing", action: () => setView("novel") },
     { id: "integrity", icon: "🛡", label: "Lore Integrity", action: () => setView("integrity"), count: stats.conflicts > 0 ? stats.conflicts : undefined, alert: stats.conflicts > 0 },
     { id: "archives", icon: "📦", label: "Archives", action: () => setView("archives"), count: archived.length > 0 ? archived.length : undefined },
     { divider: true },
@@ -1076,6 +1346,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "timeline" && view === "timeline") return true;
     if (item.id === "map" && view === "map") return true;
+    if (item.id === "novel" && view === "novel") return true;
     if (item.id === "archives" && view === "archives") return true;
     if (item.id === "ai_import" && view === "ai_import") return true;
     if (item.id === "staging" && view === "staging") return true;
@@ -1791,6 +2062,280 @@ export default function FrostfallRealms({ user, onLogout }) {
                 </div>
               )}
             </div>
+          </div>)}
+
+          {/* === NOVEL WRITING === */}
+          {view === "novel" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+            {/* Manuscript Selector */}
+            {novelView === "select" && (
+              <div style={{ padding: "40px 28px", overflowY: "auto", flex: 1 }}>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>✒ Manuscripts</h2>
+                <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6, lineHeight: 1.6, maxWidth: 520 }}>Write your novels with full access to your codex. Organize by Acts, Chapters, and Scenes.</p>
+                <Ornament width={300} />
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 24 }}>
+                  {manuscripts.map((ms) => {
+                    const wc = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.reduce((ts, s) => ts + (s.body?.trim().split(/\s+/).filter(Boolean).length || 0), 0), 0), 0);
+                    const chCount = ms.acts.reduce((t, a) => t + a.chapters.length, 0);
+                    return (
+                      <div key={ms.id} onClick={() => { setActiveMs(ms); setNovelView("outline"); }} style={{ width: 220, padding: "20px 18px", background: "rgba(17,24,39,0.5)", border: "1px solid #1e2a3a", borderRadius: 10, cursor: "pointer", transition: "all 0.2s", position: "relative" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; e.currentTarget.style.transform = "none"; }}>
+                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#f0c040", borderRadius: "10px 10px 0 0" }} />
+                        <div style={{ fontSize: 28, marginBottom: 10 }}>📖</div>
+                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: "#e8dcc8", fontWeight: 600, letterSpacing: 0.5 }}>{ms.title}</div>
+                        {ms.description && <div style={{ fontSize: 11, color: "#6b7b8d", marginTop: 4, lineHeight: 1.4 }}>{ms.description.slice(0, 80)}</div>}
+                        <div style={{ display: "flex", gap: 12, marginTop: 12, fontSize: 10, color: "#556677" }}>
+                          <span>{ms.acts.length} act{ms.acts.length !== 1 ? "s" : ""}</span>
+                          <span>{chCount} ch.</span>
+                          <span>{wc.toLocaleString()} words</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Create new card */}
+                  <div onClick={() => setShowMsCreate(true)} style={{ width: 220, padding: "20px 18px", background: "transparent", border: "2px dashed #1e2a3a", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 140, transition: "all 0.2s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; }}>
+                    <div style={{ fontSize: 32, color: "#334455" }}>+</div>
+                    <div style={{ fontSize: 12, color: "#556677", marginTop: 6 }}>New Manuscript</div>
+                  </div>
+                </div>
+                {showMsCreate && (
+                  <div style={{ marginTop: 20, background: "rgba(17,24,39,0.6)", border: "1px solid #1e2a3a", borderRadius: 10, padding: "20px 24px", maxWidth: 400 }}>
+                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#f0c040", margin: "0 0 14px" }}>New Manuscript</h3>
+                    <input style={S.input} placeholder="Title" value={novelMsForm.title} onChange={(e) => setNovelMsForm((f) => ({ ...f, title: e.target.value }))} autoFocus />
+                    <textarea style={{ ...S.textarea, minHeight: 50, marginTop: 8 }} placeholder="Description (optional)" value={novelMsForm.description} onChange={(e) => setNovelMsForm((f) => ({ ...f, description: e.target.value }))} />
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <button onClick={createManuscript} disabled={!novelMsForm.title.trim()} style={{ ...S.btnP, fontSize: 11, opacity: novelMsForm.title.trim() ? 1 : 0.4 }}>Create</button>
+                      <button onClick={() => setShowMsCreate(false)} style={{ ...S.btnS, fontSize: 11 }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Outline Mode */}
+            {novelView === "outline" && activeMs && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                {/* Outline header */}
+                <div style={{ padding: "14px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span onClick={() => { setNovelView("select"); setActiveMs(null); }} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Manuscripts</span>
+                    <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>{activeMs.title}</h2>
+                    <span style={{ fontSize: 11, color: "#556677" }}>{msWordCount.total.toLocaleString()} words</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={addAct} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>+ Act</button>
+                    <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>Delete</button>
+                  </div>
+                </div>
+                {/* Outline body */}
+                <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
+                  {activeMs.acts.map((act, ai) => (
+                    <div key={act.id} style={{ marginBottom: 20 }}>
+                      {/* Act header */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}
+                        onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(act.id) ? n.delete(act.id) : n.add(act.id); return n; })}>
+                        <div style={{ width: 4, height: 28, background: act.color, borderRadius: 2 }} />
+                        <span style={{ fontSize: 10, color: "#556677", transform: novelOutlineCollapsed.has(act.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
+                        <input style={{ background: "none", border: "none", fontFamily: "'Cinzel', serif", fontSize: 16, color: act.color, fontWeight: 700, letterSpacing: 1, outline: "none", flex: 1, cursor: "text", minWidth: 0 }}
+                          value={act.title} onClick={(e) => e.stopPropagation()} onChange={(e) => updateAct(act.id, { title: e.target.value })} />
+                        <span style={{ fontSize: 10, color: "#556677" }}>{(msWordCount.acts[act.id] || 0).toLocaleString()} words</span>
+                        <button onClick={(e) => { e.stopPropagation(); addChapter(act.id); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px" }}>+ Ch</button>
+                        {activeMs.acts.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteAct(act.id); }} style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕</button>}
+                      </div>
+                      {/* Chapters */}
+                      {!novelOutlineCollapsed.has(act.id) && (
+                        <div style={{ marginLeft: 20 }}>
+                          {act.chapters.map((ch) => (
+                            <div key={ch.id} style={{ marginBottom: 10, background: "rgba(17,24,39,0.4)", border: "1px solid #1a2435", borderRadius: 8, overflow: "hidden" }}>
+                              {/* Chapter header */}
+                              <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #111827" }}>
+                                <span onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(ch.id) ? n.delete(ch.id) : n.add(ch.id); return n; })}
+                                  style={{ fontSize: 10, color: "#556677", cursor: "pointer", transform: novelOutlineCollapsed.has(ch.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
+                                <input style={{ background: "none", border: "none", fontSize: 13, color: "#d4c9a8", fontWeight: 600, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit" }}
+                                  value={ch.title} onChange={(e) => updateChapter(act.id, ch.id, { title: e.target.value })} />
+                                <select value={ch.status} onChange={(e) => updateChapter(act.id, ch.id, { status: e.target.value })}
+                                  style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 4, fontSize: 9, color: STATUS_COLORS[ch.status], padding: "2px 6px", cursor: "pointer", outline: "none", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+                                  <option value="draft">Draft</option><option value="revised">Revised</option><option value="final">Final</option>
+                                </select>
+                                <span style={{ fontSize: 10, color: "#556677", minWidth: 50, textAlign: "right" }}>{chapterWordCount(ch).toLocaleString()} w</span>
+                                <button onClick={() => addScene(act.id, ch.id)} style={{ ...S.btnS, fontSize: 8, padding: "2px 8px" }}>+ Scene</button>
+                                {act.chapters.length > 1 && <button onClick={() => deleteChapter(act.id, ch.id)} style={{ background: "none", border: "none", color: "#445566", cursor: "pointer", fontSize: 11 }}>✕</button>}
+                              </div>
+                              {/* Synopsis */}
+                              <div style={{ padding: "0 14px" }}>
+                                <input style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: "#6b7b8d", padding: "6px 0", outline: "none", fontStyle: "italic", fontFamily: "inherit", boxSizing: "border-box" }}
+                                  placeholder="Chapter synopsis..." value={ch.synopsis || ""} onChange={(e) => updateChapter(act.id, ch.id, { synopsis: e.target.value })} />
+                              </div>
+                              {/* Scenes */}
+                              {!novelOutlineCollapsed.has(ch.id) && (
+                                <div style={{ padding: "4px 14px 10px" }}>
+                                  {ch.scenes.map((sc) => {
+                                    const scWords = sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0;
+                                    return (
+                                      <div key={sc.id} onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
+                                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: "rgba(240,192,64,0.02)" }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.02)"; }}>
+                                        <span style={{ fontSize: 10, color: "#f0c040" }}>▸</span>
+                                        <input style={{ background: "none", border: "none", fontSize: 12, color: "#8899aa", outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit", cursor: "pointer" }}
+                                          value={sc.title} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); updateScene(act.id, ch.id, sc.id, { title: e.target.value }); }} />
+                                        <span style={{ fontSize: 9, color: "#445566" }}>{scWords > 0 ? scWords.toLocaleString() + " w" : "empty"}</span>
+                                        {ch.scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(act.id, ch.id, sc.id); }} style={{ background: "none", border: "none", color: "#334455", cursor: "pointer", fontSize: 10 }}>✕</button>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Writing Mode */}
+            {novelView === "write" && activeMs && (() => {
+              const scene = getActiveScene();
+              const act = activeMs.acts.find((a) => a.id === novelActiveScene?.actId);
+              const ch = act?.chapters.find((c) => c.id === novelActiveScene?.chId);
+              if (!scene || !act || !ch) return <div style={{ padding: 40, color: "#556677" }}>No scene selected.</div>;
+              const scWords = scene.body ? scene.body.trim().split(/\s+/).filter(Boolean).length : 0;
+              // @mention matches for inline highlighting info
+              const mentionMatches = articles.filter((a) => novelMention?.query && a.title.toLowerCase().startsWith(novelMention.query.toLowerCase())).slice(0, 8);
+              return (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  {/* Writing toolbar */}
+                  <div style={{ padding: "10px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Outline</span>
+                    <div style={{ width: 1, height: 16, background: "#1e2a3a" }} />
+                    <span style={{ fontSize: 11, color: act.color, fontWeight: 600 }}>{act.title}</span>
+                    <span style={{ color: "#334455" }}>›</span>
+                    <span style={{ fontSize: 11, color: "#d4c9a8", fontWeight: 600 }}>{ch.title}</span>
+                    <span style={{ color: "#334455" }}>›</span>
+                    <span style={{ fontSize: 11, color: "#8899aa" }}>{scene.title}</span>
+                    <div style={{ flex: 1 }} />
+                    <button onClick={() => navigateScene(-1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>← Prev</button>
+                    <button onClick={() => navigateScene(1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>Next →</button>
+                    <div style={{ width: 1, height: 16, background: "#1e2a3a" }} />
+                    <button onClick={() => setNovelCodexOpen(!novelCodexOpen)} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", background: novelCodexOpen ? "rgba(240,192,64,0.1)" : "transparent", color: novelCodexOpen ? "#f0c040" : "#8899aa" }}>
+                      📖 Codex {novelCodexOpen ? "▸" : "◂"}
+                    </button>
+                  </div>
+
+                  <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+                    {/* Chapter nav rail */}
+                    <div style={{ width: 180, borderRight: "1px solid #1a2435", overflowY: "auto", flexShrink: 0, padding: "12px 0", background: "#0a0e1a" }}>
+                      {activeMs.acts.map((a) => (
+                        <div key={a.id}>
+                          <div style={{ padding: "6px 14px", fontSize: 10, color: a.color, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ width: 3, height: 12, background: a.color, borderRadius: 1 }} />{a.title}
+                          </div>
+                          {a.chapters.map((c) => (
+                            <div key={c.id}>
+                              {c.scenes.map((s) => (
+                                <div key={s.id} onClick={() => setNovelActiveScene({ actId: a.id, chId: c.id, scId: s.id })}
+                                  style={{ padding: "5px 14px 5px 26px", fontSize: 11, color: s.id === scene.id ? "#f0c040" : "#6b7b8d", cursor: "pointer", background: s.id === scene.id ? "rgba(240,192,64,0.06)" : "transparent", borderLeft: s.id === scene.id ? "2px solid #f0c040" : "2px solid transparent", transition: "all 0.15s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                  onMouseEnter={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                                  onMouseLeave={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "transparent"; }}>
+                                  <span style={{ fontSize: 9, color: "#445566" }}>{c.title.replace(/Chapter\s*/i, "Ch")} · </span>{s.title}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Editor */}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      <textarea ref={novelEditorRef} value={scene.body || ""} onChange={(e) => handleNovelInput(e, novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId)}
+                        onKeyDown={(e) => { if (e.key === "Escape") setNovelMention(null); if (e.key === "Tab" && novelMention && mentionMatches.length > 0) { e.preventDefault(); insertMention(mentionMatches[0].id); } }}
+                        placeholder={"Begin writing " + scene.title + "...\n\nUse @name to reference codex entries."}
+                        style={{ flex: 1, width: "100%", background: "#0d1117", border: "none", color: "#d4c9a8", fontSize: 15, fontFamily: "'Georgia', 'Times New Roman', serif", lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none", boxSizing: "border-box", letterSpacing: 0.3 }} />
+
+                      {/* @mention dropdown */}
+                      {novelMention && mentionMatches.length > 0 && (
+                        <div style={{ position: "fixed", left: novelMention.x, top: novelMention.y, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 8, padding: 4, minWidth: 200, maxHeight: 240, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                          {mentionMatches.map((a) => (
+                            <div key={a.id} onClick={() => insertMention(a.id)} style={{ padding: "8px 12px", fontSize: 12, color: "#d4c9a8", cursor: "pointer", borderRadius: 4, display: "flex", alignItems: "center", gap: 8 }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                              <span style={{ color: CATEGORIES[a.category]?.color || "#888" }}>{CATEGORIES[a.category]?.icon || "?"}</span>
+                              <span>{a.title}</span>
+                              <span style={{ fontSize: 9, color: "#556677", marginLeft: "auto" }}>{CATEGORIES[a.category]?.label}</span>
+                            </div>
+                          ))}
+                          <div style={{ padding: "4px 12px", fontSize: 9, color: "#445566" }}>Tab to insert first · Esc to close</div>
+                        </div>
+                      )}
+
+                      {/* Footer bar */}
+                      <div style={{ padding: "8px 28px", borderTop: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "#0a0e1a" }}>
+                        <span style={{ fontSize: 10, color: "#556677" }}>Scene: <strong style={{ color: "#8899aa" }}>{scWords.toLocaleString()}</strong> words</span>
+                        <span style={{ fontSize: 10, color: "#556677" }}>Chapter: <strong style={{ color: "#8899aa" }}>{chapterWordCount(ch).toLocaleString()}</strong></span>
+                        <span style={{ fontSize: 10, color: "#556677" }}>Total: <strong style={{ color: "#8899aa" }}>{msWordCount.total.toLocaleString()}</strong></span>
+                        <div style={{ flex: 1 }} />
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_COLORS[ch.status] }} />
+                          <span style={{ fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 0.5 }}>{ch.status}</span>
+                        </div>
+                        <span style={{ fontSize: 9, color: "#334455" }}>Type @ to reference codex</span>
+                      </div>
+                    </div>
+
+                    {/* Codex sidebar */}
+                    {novelCodexOpen && (
+                      <div style={{ width: 300, borderLeft: "1px solid #1a2435", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, background: "#0d1117" }}>
+                        <div style={{ padding: "12px 14px", borderBottom: "1px solid #1a2435" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                            <span style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: "#f0c040", letterSpacing: 1 }}>Codex Reference</span>
+                            <span onClick={() => setNovelCodexOpen(false)} style={{ cursor: "pointer", color: "#556677", fontSize: 12 }}>✕</span>
+                          </div>
+                          <input style={{ ...S.input, fontSize: 11, padding: "6px 10px" }} placeholder="Search articles..." value={novelCodexSearch} onChange={(e) => setNovelCodexSearch(e.target.value)} />
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                            <span onClick={() => setNovelCodexFilter("all")} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === "all" ? "rgba(240,192,64,0.15)" : "transparent", color: novelCodexFilter === "all" ? "#f0c040" : "#556677", border: "1px solid " + (novelCodexFilter === "all" ? "rgba(240,192,64,0.3)" : "#1e2a3a") }}>All</span>
+                            {["character", "location", "race", "deity", "item", "event"].map((cat) => (
+                              <span key={cat} onClick={() => setNovelCodexFilter(cat)} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === cat ? CATEGORIES[cat].color + "20" : "transparent", color: novelCodexFilter === cat ? CATEGORIES[cat].color : "#556677", border: "1px solid " + (novelCodexFilter === cat ? CATEGORIES[cat].color + "40" : "#1e2a3a") }}>
+                                {CATEGORIES[cat].icon} {CATEGORIES[cat].label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+                          {novelCodexArticles.map((a) => (
+                            <div key={a.id} style={{ marginBottom: 2, borderRadius: 6, overflow: "hidden" }}>
+                              <div onClick={() => setNovelCodexExpanded(novelCodexExpanded === a.id ? null : a.id)}
+                                style={{ padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "background 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                                <span style={{ color: CATEGORIES[a.category]?.color, fontSize: 12 }}>{CATEGORIES[a.category]?.icon}</span>
+                                <span style={{ fontSize: 12, color: "#d4c9a8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
+                                <button onClick={(e) => { e.stopPropagation(); const el = novelEditorRef.current; if (el) { const pos = el.selectionStart; const text = el.value; const newText = text.slice(0, pos) + "@" + a.id + " " + text.slice(pos); updateScene(novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId, { body: newText }); el.focus(); } }}
+                                  style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 10, padding: "2px 4px" }} title="Insert @mention">@+</button>
+                              </div>
+                              {novelCodexExpanded === a.id && (
+                                <div style={{ padding: "4px 10px 12px 30px" }}>
+                                  {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid #1e2a3a" }} />}
+                                  <p style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
+                                  {Object.entries(a.fields || {}).filter(([_, v]) => v).slice(0, 5).map(([k, v]) => (
+                                    <div key={k} style={{ fontSize: 10, color: "#556677", marginBottom: 2 }}><strong style={{ color: "#6b7b8d" }}>{k.replace(/_/g, " ")}:</strong> {String(v).slice(0, 60)}</div>
+                                  ))}
+                                  <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", marginTop: 6 }}>Open full article →</div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {novelCodexArticles.length === 0 && <p style={{ fontSize: 11, color: "#445566", textAlign: "center", padding: 20 }}>No matching articles.</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
           </div>)}
 
           {/* === AI DOCUMENT IMPORT === */}
