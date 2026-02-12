@@ -1605,6 +1605,16 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   useEffect(() => { setFadeIn(false); const t = setTimeout(() => setFadeIn(true), 30); return () => clearTimeout(t); }, [view, activeArticle]);
 
+  // Keep activeArticle in sync when articles array updates (e.g. inline fixes)
+  useEffect(() => {
+    if (activeArticle && view === "article") {
+      const updated = articles.find((a) => a.id === activeArticle.id);
+      if (updated && updated.updatedAt !== activeArticle.updatedAt) {
+        setActiveArticle(updated);
+      }
+    }
+  }, [articles]);
+
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } }, [articles]);
   const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); };
   const goDash = () => setView("dashboard");
@@ -1666,7 +1676,8 @@ export default function FrostfallRealms({ user, onLogout }) {
       }
       return { ...prev, body: newBody };
     });
-    setExpandedWarning(null);
+    // Don't close expandedWarning — the fixed warning disappears naturally from the recalculated list,
+    // and other expanded warnings remain visible for the user to continue fixing
   };
 
   // Smart insert a link suggestion — find where the name appears in body and wrap it in-place
@@ -3272,17 +3283,19 @@ export default function FrostfallRealms({ user, onLogout }) {
                   if (actionable.length === 0) return null;
                   return (
                     <WarningBanner severity={artWarnings.some((w) => w.severity === "error") ? "error" : "warning"} icon="🛡" title={"Lore Integrity: " + actionable.length + " issue" + (actionable.length !== 1 ? "s" : "")} style={{ marginTop: 12 }}>
-                      {actionable.map((w, i) => (
-                        <div key={i} style={{ padding: "4px 0", fontSize: 12 }}>
+                      {actionable.map((w, i) => {
+                        const wKey = "av_" + (w.refId || i);
+                        return (
+                        <div key={wKey} style={{ padding: "4px 0", fontSize: 12 }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "flex-start", color: w.severity === "error" ? "#e07050" : "#f0c040", cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
-                            onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === "av" + i ? null : "av" + i); }}>
+                            onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === wKey ? null : wKey); }}>
                             <span>{w.severity === "error" ? "⛔" : "⚠"}</span>
                             <div style={{ flex: 1 }}>
                               <div>{w.message}</div>
                               {w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? (
                                 <div style={{ fontSize: 10, color: "#7ec8e3", marginTop: 3 }}>
                                   <span style={{ background: "rgba(126,200,227,0.15)", padding: "2px 8px", borderRadius: 8 }}>
-                                    {expandedWarning === "av" + i ? "▾" : "▸"} {w.fuzzyMatches.length} possible match{w.fuzzyMatches.length !== 1 ? "es" : ""} — click to fix
+                                    {expandedWarning === wKey ? "▾" : "▸"} {w.fuzzyMatches.length} possible match{w.fuzzyMatches.length !== 1 ? "es" : ""} — click to fix
                                   </span>
                                 </div>
                               ) : (
@@ -3290,22 +3303,21 @@ export default function FrostfallRealms({ user, onLogout }) {
                               )}
                             </div>
                           </div>
-                          {expandedWarning === "av" + i && w.fuzzyMatches && (
+                          {expandedWarning === wKey && w.fuzzyMatches && (
                             <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                              <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{w.rawMention}</span> with:</div>
+                              <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
                               {w.fuzzyMatches.map((fm) => (
                                 <div key={fm.article.id}
                                   onClick={() => {
-                                    // Quick fix: directly update the article body
                                     const richMention = "@[" + fm.article.title + "](" + fm.article.id + ")";
                                     setArticles((prev) => prev.map((a) => {
                                       if (a.id !== activeArticle.id) return a;
                                       let newBody = a.body || "";
                                       if (w.rawMention && newBody.includes(w.rawMention)) newBody = newBody.replace(w.rawMention, richMention);
                                       else { const legacy = "@" + w.refId; if (newBody.includes(legacy)) newBody = newBody.replace(legacy, richMention); }
-                                      return { ...a, body: newBody, updatedAt: new Date().toISOString() };
+                                      const newLinked = [...new Set([...(a.linkedIds || []), fm.article.id])];
+                                      return { ...a, body: newBody, linkedIds: newLinked, updatedAt: new Date().toISOString() };
                                     }));
-                                    setExpandedWarning(null);
                                   }}
                                   style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", background: "rgba(126,200,227,0.05)", border: "1px solid rgba(126,200,227,0.1)", transition: "all 0.2s" }}
                                   onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.15)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.3)"; }}
@@ -3322,7 +3334,6 @@ export default function FrostfallRealms({ user, onLogout }) {
                                 <span style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.7 }}
                                   onClick={() => {
                                     setArticles((prev) => prev.map((a) => a.id !== activeArticle.id ? a : { ...a, body: (a.body || "").replace(w.rawMention, ""), updatedAt: new Date().toISOString() }));
-                                    setExpandedWarning(null);
                                   }}>
                                   🗑 Remove mention
                                 </span>
@@ -3334,7 +3345,8 @@ export default function FrostfallRealms({ user, onLogout }) {
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </WarningBanner>
                   );
                 })()}
@@ -3538,17 +3550,19 @@ export default function FrostfallRealms({ user, onLogout }) {
                     <span>⛔</span><div style={{ flex: 1 }}><div>{w.message}</div><div style={{ fontSize: 10, color: "#a07060", marginTop: 2 }}>{w.suggestion}</div></div>
                   </div>
                 ))}
-                {liveIntegrity.filter((w) => w.severity === "warning").map((w, i) => (
-                  <div key={"w" + i} style={{ padding: "6px 0", fontSize: 12, color: "#f0c040" }}>
+                {liveIntegrity.filter((w) => w.severity === "warning").map((w, i) => {
+                  const warnKey = w.refId || ("w" + i);
+                  return (
+                  <div key={warnKey} style={{ padding: "6px 0", fontSize: 12, color: "#f0c040" }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "flex-start", cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
-                      onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === "w" + i ? null : "w" + i); }}>
+                      onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === warnKey ? null : warnKey); }}>
                       <span>⚠</span>
                       <div style={{ flex: 1 }}>
                         <div>{w.message}</div>
                         {w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? (
                           <div style={{ fontSize: 10, color: "#7ec8e3", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
                             <span style={{ background: "rgba(126,200,227,0.15)", padding: "2px 8px", borderRadius: 8, cursor: "pointer" }}>
-                              {expandedWarning === "w" + i ? "▾" : "▸"} {w.fuzzyMatches.length} possible match{w.fuzzyMatches.length !== 1 ? "es" : ""} — click to fix
+                              {expandedWarning === warnKey ? "▾" : "▸"} {w.fuzzyMatches.length} possible match{w.fuzzyMatches.length !== 1 ? "es" : ""} — click to fix
                             </span>
                           </div>
                         ) : (
@@ -3557,9 +3571,9 @@ export default function FrostfallRealms({ user, onLogout }) {
                       </div>
                     </div>
                     {/* Inline suggestion dropdown */}
-                    {expandedWarning === "w" + i && w.fuzzyMatches && (
+                    {expandedWarning === warnKey && w.fuzzyMatches && (
                       <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                        <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{w.rawMention}</span> with:</div>
+                        <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
                         {w.fuzzyMatches.map((fm) => (
                           <div key={fm.article.id}
                             onClick={() => resolveRef(w, fm.article)}
@@ -3577,7 +3591,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                         {w.type === "broken_ref" && (
                           <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 4, borderTop: "1px solid #1a2435" }}>
                             <span style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.7 }}
-                              onClick={() => { setFormData((p) => ({ ...p, body: p.body.replace(w.rawMention, "") })); setExpandedWarning(null); }}>
+                              onClick={() => { setFormData((p) => ({ ...p, body: p.body.replace(w.rawMention, "") })); }}>
                               🗑 Remove mention
                             </span>
                           </div>
@@ -3585,7 +3599,8 @@ export default function FrostfallRealms({ user, onLogout }) {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
                 {liveIntegrity.filter((w) => w.severity === "info").slice(0, 3).map((w, i) => (
                   <div key={"i" + i} style={{ padding: "4px 0", fontSize: 12, color: "#7ec8e3", display: "flex", gap: 6, alignItems: "flex-start" }}>
                     <span>ℹ</span><div>{w.message}</div>
