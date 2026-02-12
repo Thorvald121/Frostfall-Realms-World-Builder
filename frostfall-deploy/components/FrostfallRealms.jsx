@@ -106,17 +106,19 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
   const allText = (text || "") + " " + Object.values(fields || {}).join(" ");
   const allTextLower = allText.toLowerCase();
   const linked = new Set(existingLinks || []);
-  const mentioned = new Set((text?.match(/@([\w]+)/g) || []).map((m) => m.slice(1)));
+  // Also exclude rich mentions already in the text
+  const richMentionIds = new Set((text?.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean));
+  const mentioned = new Set([...(text?.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1)), ...richMentionIds]);
   articles.forEach((a) => {
     if (linked.has(a.id) || mentioned.has(a.id)) return;
     const tl = a.title.toLowerCase();
-    if (allTextLower.includes(tl)) { suggestions.push({ article: a, confidence: "high", match: a.title }); return; }
+    if (allTextLower.includes(tl)) { suggestions.push({ article: a, confidence: "exact", label: "Exact title match", match: a.title }); return; }
     const words = a.title.replace(/[()]/g, "").split(/[\s,\-\u2013\u2014]+/).filter((w) => w.length >= 4);
     const matched = words.filter((w) => allTextLower.includes(w.toLowerCase()));
-    if (matched.length >= 2) suggestions.push({ article: a, confidence: "medium", match: matched.join(", ") });
-    else if (matched.length === 1 && matched[0].length >= 6) suggestions.push({ article: a, confidence: "low", match: matched[0] });
+    if (matched.length >= 2) suggestions.push({ article: a, confidence: "strong", label: "Multiple word match", match: matched.join(", ") });
+    else if (matched.length === 1 && matched[0].length >= 6) suggestions.push({ article: a, confidence: "possible", label: "Partial word match", match: matched[0] });
   });
-  return suggestions.sort((a, b) => ({ high: 3, medium: 2, low: 1 }[b.confidence] || 0) - ({ high: 3, medium: 2, low: 1 }[a.confidence] || 0));
+  return suggestions.sort((a, b) => ({ exact: 3, strong: 2, possible: 1 }[b.confidence] || 0) - ({ exact: 3, strong: 2, possible: 1 }[a.confidence] || 0));
 }
 
 // Check a single article or form data against all existing articles for integrity violations
@@ -135,13 +137,24 @@ function checkArticleIntegrity(data, articles, excludeId = null) {
     const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/);
     return match ? { title: match[1], id: match[2] } : null;
   }).filter(Boolean);
-  const legacyRefs = (body.match(/@([\w]+)/g) || []).filter((m) => !m.match(/@\[/)).map((m) => m.slice(1));
+  // Legacy @id refs: only flag if they look like real article IDs (contain underscores = generated IDs)
+  // and actually match or nearly match an existing article
+  const legacyRefs = (body.match(/@([\w]+)/g) || [])
+    .filter((m) => !m.match(/@\[/))
+    .map((m) => m.slice(1))
+    .filter((refId) => {
+      // Only treat as a reference if it matches an actual article ID or contains underscores (generated ID format)
+      if (entityMap[refId]) return true;
+      if (refId.includes("_") && refId.length > 5) return true;
+      return false;
+    });
   const allRefs = [...mentionRefs.map((r) => r.id), ...legacyRefs];
 
   allRefs.forEach((refId) => {
     if (refId === excludeId) return;
     if (!entityMap[refId]) {
-      warnings.push({ type: "broken_ref", severity: "error", message: "References \"@" + refId + "\" which doesn't exist in the codex.", suggestion: "Create the referenced article or fix the @mention." });
+      const readableName = refId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      warnings.push({ type: "broken_ref", severity: "warning", message: "References \"" + readableName + "\" which doesn't exist in the codex.", suggestion: "Create the referenced article, or remove the @mention if unintended." });
     }
   });
 
@@ -187,7 +200,7 @@ function checkArticleIntegrity(data, articles, excludeId = null) {
   if (requiredFields[cat]) {
     requiredFields[cat].forEach((f) => {
       if (!fields[f] || !String(fields[f]).trim()) {
-        warnings.push({ type: "missing_field", severity: "info", message: "\"" + f.replace(/_/g, " ") + "\" is empty — this field helps with cross-referencing and integrity checks.", suggestion: "Fill in this field for better codex integration." });
+        warnings.push({ type: "missing_field", severity: "info", message: "\"" + formatKey(f) + "\" is empty — this field helps with cross-referencing and integrity checks.", suggestion: "Fill in this field for better codex integration." });
       }
     });
   }
@@ -286,7 +299,7 @@ const FIELD_LABELS = {
   type: "Type", origin: "Origin", scope: "Scope", cost_types: "Cost Types",
   violation_consequence: "Violation Consequence", counterpart: "Counterpart",
   current_state: "Current State", legacy: "Legacy", current_age: "Current Age",
-  notable_regions: "Notable Regions",
+  notable_regions: "Notable Regions", physical_characteristics: "Physical Characteristics",
   // Character fields
   char_race: "Race", birth_year: "Birth Year", death_year: "Death Year",
   titles: "Titles", affiliations: "Affiliations", role: "Role",
@@ -303,6 +316,8 @@ const FIELD_LABELS = {
   // Laws & Customs fields
   custom_type: "Type", enforced_by: "Enforced By", applies_to: "Applies To", penalties: "Penalties", cultural_significance: "Cultural Significance", exceptions: "Exceptions",
 };
+// Universal field key formatter — never show raw underscored keys to users
+const formatKey = (k) => FIELD_LABELS[k] || k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 const TEMPLATE_FIELDS = {
   deity: ["domain", "symbol", "court", "sacred_time", "worshippers", "gift_to_mortals"],
   race: ["creators", "lifespan", "population", "magic_affinity", "homeland", "capital"],
@@ -1041,59 +1056,102 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   useEffect(() => {
     if (!dataLoaded || !activeWorld) return;
+    const mapKey = "frostfall-map-" + (activeWorld?.id || "default");
     const t = setTimeout(async () => {
-      try {
-        if (typeof window !== "undefined" && window.storage) {
-          await window.storage.set("frostfall-map-" + (activeWorld?.id || "default"), JSON.stringify(mapData));
-        }
-      } catch (_) {}
+      const json = JSON.stringify(mapData);
+      try { if (typeof window !== "undefined" && window.storage) { await window.storage.set(mapKey, json); return; } } catch (_) {}
+      try { if (typeof window !== "undefined") localStorage.setItem(mapKey, json); } catch (_) {}
     }, 2000);
     return () => clearTimeout(t);
   }, [mapData, dataLoaded, activeWorld]);
 
   useEffect(() => {
     if (!activeWorld) return;
+    const mapKey = "frostfall-map-" + (activeWorld?.id || "default");
+    const defaultMap = { image: null, imageW: 0, imageH: 0, pins: [], territories: [] };
     (async () => {
       try {
         if (typeof window !== "undefined" && window.storage) {
-          const r = await window.storage.get("frostfall-map-" + (activeWorld?.id || "default"));
-          if (r?.value) setMapData(JSON.parse(r.value));
-          else setMapData({ image: null, imageW: 0, imageH: 0, pins: [], territories: [] });
+          const r = await window.storage.get(mapKey);
+          if (r?.value) { setMapData(JSON.parse(r.value)); return; }
         }
-      } catch (_) { setMapData({ image: null, imageW: 0, imageH: 0, pins: [], territories: [] }); }
+      } catch (_) {}
+      try {
+        if (typeof window !== "undefined") {
+          const stored = localStorage.getItem(mapKey);
+          if (stored) { setMapData(JSON.parse(stored)); return; }
+        }
+      } catch (_) {}
+      setMapData(defaultMap);
     })();
   }, [activeWorld]);
 
   // === NOVEL WRITING FUNCTIONS ===
   const msKey = () => "frostfall-novels-" + (activeWorld?.id || "default");
 
+  // Helper: save manuscripts to best available storage
+  const saveNovelsNow = async (data) => {
+    const key = msKey();
+    const json = JSON.stringify(data);
+    // Try window.storage (Claude artifacts)
+    try { if (typeof window !== "undefined" && window.storage) { await window.storage.set(key, json); return; } } catch (_) {}
+    // Fallback to localStorage
+    try { if (typeof window !== "undefined" && window.localStorage) { localStorage.setItem(key, json); return; } } catch (_) {}
+  };
+
+  // Helper: load manuscripts from best available storage
+  const loadNovels = async () => {
+    const key = msKey();
+    // Try window.storage first
+    try {
+      if (typeof window !== "undefined" && window.storage) {
+        const r = await window.storage.get(key);
+        if (r?.value) return JSON.parse(r.value);
+      }
+    } catch (_) {}
+    // Fallback to localStorage
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        const stored = localStorage.getItem(key);
+        if (stored) return JSON.parse(stored);
+      }
+    } catch (_) {}
+    return null;
+  };
+
   // Load manuscripts when world changes
   useEffect(() => {
     if (!activeWorld) return;
     (async () => {
       try {
-        if (typeof window !== "undefined" && window.storage) {
-          const r = await window.storage.get(msKey());
-          if (r?.value) { const ms = JSON.parse(r.value); setManuscripts(ms); }
-          else setManuscripts([]);
-        }
+        const ms = await loadNovels();
+        if (ms && ms.length > 0) setManuscripts(ms);
+        else setManuscripts([]);
       } catch (_) { setManuscripts([]); }
     })();
     setActiveMs(null); setNovelView("select");
   }, [activeWorld]);
 
-  // Save manuscripts
+  // Save manuscripts with debounce
+  const novelSaveTimer = useRef(null);
   useEffect(() => {
     if (!dataLoaded || !activeWorld || manuscripts.length === 0) return;
-    const t = setTimeout(async () => {
-      try {
-        if (typeof window !== "undefined" && window.storage) {
-          await window.storage.set(msKey(), JSON.stringify(manuscripts));
-        }
-      } catch (_) {}
-    }, 1500);
-    return () => clearTimeout(t);
+    if (novelSaveTimer.current) clearTimeout(novelSaveTimer.current);
+    novelSaveTimer.current = setTimeout(() => saveNovelsNow(manuscripts), 800);
+    return () => { if (novelSaveTimer.current) clearTimeout(novelSaveTimer.current); };
   }, [manuscripts, dataLoaded, activeWorld]);
+
+  // Force save on page unload
+  useEffect(() => {
+    const handler = () => {
+      if (manuscripts.length > 0 && activeWorld) {
+        const key = msKey();
+        try { localStorage.setItem(key, JSON.stringify(manuscripts)); } catch (_) {}
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [manuscripts, activeWorld]);
 
   // Keep activeMs in sync with manuscripts array
   useEffect(() => {
@@ -2313,7 +2371,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                       <div style={{ marginBottom: 16 }}>
                         {Object.entries(tlSelected.fields).slice(0, 4).map(([k, v]) => (
                           <div key={k} style={{ display: "flex", padding: "5px 0", borderBottom: "1px solid #111827" }}>
-                            <div style={{ width: 100, fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{FIELD_LABELS[k] || k}</div>
+                            <div style={{ width: 100, fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{formatKey(k)}</div>
                             <div style={{ flex: 1, fontSize: 12, color: "#c8bda0", lineHeight: 1.4 }}>{v}</div>
                           </div>
                         ))}
@@ -2771,7 +2829,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                           </div>
                           <div style={{ fontSize: 11, color: "#8899aa", lineHeight: 1.5 }}>{mentionTooltip.article.summary?.slice(0, 150) || "No summary."}{mentionTooltip.article.summary?.length > 150 ? "…" : ""}</div>
                           {Object.entries(mentionTooltip.article.fields || {}).filter(([_, v]) => v).slice(0, 3).map(([k, v]) => (
-                            <div key={k} style={{ fontSize: 10, color: "#556677", marginTop: 3 }}><strong style={{ color: "#6b7b8d" }}>{k.replace(/_/g, " ")}:</strong> {String(v).slice(0, 50)}</div>
+                            <div key={k} style={{ fontSize: 10, color: "#556677", marginTop: 3 }}><strong style={{ color: "#6b7b8d" }}>{formatKey(k)}:</strong> {String(v).slice(0, 50)}</div>
                           ))}
                           <div style={{ fontSize: 9, color: "#f0c040", marginTop: 6 }}>Click mention to open article</div>
                         </div>
@@ -2843,7 +2901,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                                   {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid #1e2a3a" }} />}
                                   <p style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
                                   {Object.entries(a.fields || {}).filter(([_, v]) => v).slice(0, 5).map(([k, v]) => (
-                                    <div key={k} style={{ fontSize: 10, color: "#556677", marginBottom: 2 }}><strong style={{ color: "#6b7b8d" }}>{k.replace(/_/g, " ")}:</strong> {String(v).slice(0, 60)}</div>
+                                    <div key={k} style={{ fontSize: 10, color: "#556677", marginBottom: 2 }}><strong style={{ color: "#6b7b8d" }}>{formatKey(k)}:</strong> {String(v).slice(0, 60)}</div>
                                   ))}
                                   <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", marginTop: 6 }}>Open full article →</div>
                                 </div>
@@ -2985,7 +3043,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                         {entry.fields && Object.keys(entry.fields).length > 0 && (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
                             {Object.entries(entry.fields).slice(0, 4).map(([k, v]) => v ? (
-                              <span key={k} style={{ fontSize: 10, color: "#6b7b8d", background: "rgba(85,102,119,0.1)", padding: "2px 8px", borderRadius: 8 }}>{FIELD_LABELS[k] || k}: {typeof v === "string" ? v.slice(0, 40) : v}{typeof v === "string" && v.length > 40 ? "…" : ""}</span>
+                              <span key={k} style={{ fontSize: 10, color: "#6b7b8d", background: "rgba(85,102,119,0.1)", padding: "2px 8px", borderRadius: 8 }}>{formatKey(k)}: {typeof v === "string" ? v.slice(0, 40) : v}{typeof v === "string" && v.length > 40 ? "…" : ""}</span>
                             ) : null)}
                           </div>
                         )}
@@ -3110,11 +3168,11 @@ export default function FrostfallRealms({ user, onLogout }) {
                 })()}
 
                 {activeArticle.fields && Object.keys(activeArticle.fields).length > 0 && (
-                  <div style={{ marginTop: 20, marginBottom: 24, background: "rgba(17,24,39,0.4)", border: "1px solid #151d2e", borderRadius: 8, padding: "12px 18px" }}>
-                    {Object.entries(activeArticle.fields).map(([k, v]) => (
-                      <div key={k} style={{ display: "flex", borderBottom: "1px solid #111827", padding: "8px 0" }}>
-                        <div style={{ width: 140, minWidth: 140, fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, paddingTop: 2 }}>{FIELD_LABELS[k] || k}</div>
-                        <div style={{ flex: 1, fontSize: 13, color: "#c8bda0", lineHeight: 1.5 }}>{v}</div>
+                  <div style={{ marginTop: 20, marginBottom: 24, background: "rgba(17,24,39,0.4)", border: "1px solid #151d2e", borderRadius: 8, padding: "12px 18px", overflow: "hidden" }}>
+                    {Object.entries(activeArticle.fields).filter(([_, v]) => v).map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", flexWrap: "wrap", borderBottom: "1px solid #111827", padding: "8px 0", gap: "4px 12px" }}>
+                        <div style={{ width: 160, minWidth: 160, fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, paddingTop: 2 }}>{formatKey(k)}</div>
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: "#c8bda0", lineHeight: 1.5, wordWrap: "break-word", overflowWrap: "break-word" }}>{v}</div>
                       </div>
                     ))}
                   </div>
@@ -3144,16 +3202,16 @@ export default function FrostfallRealms({ user, onLogout }) {
               {/* SIDEBAR */}
               <div style={{ width: 280, minWidth: 280, borderLeft: "1px solid #1a2435", overflowY: "auto", padding: "20px 18px", background: "rgba(10,14,26,0.4)" }}>
                 <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#8899aa", letterSpacing: 1, textTransform: "uppercase", marginTop: 0, marginBottom: 12 }}>Related Articles</p>
-                {activeArticle.linkedIds?.map((lid) => { const lk = articles.find((a) => a.id === lid); if (!lk) return <div key={lid} style={{ ...S.relItem, opacity: 0.5, cursor: "default" }}><span style={{ fontSize: 12, color: "#445566" }}>✦</span><span style={{ fontStyle: "italic" }}>{lid} (unwritten)</span></div>;
+                {activeArticle.linkedIds?.map((lid) => { const lk = articles.find((a) => a.id === lid); if (!lk) return <div key={lid} style={{ ...S.relItem, opacity: 0.5, cursor: "default" }}><span style={{ fontSize: 12, color: "#445566" }}>✦</span><span style={{ fontStyle: "italic" }}>{lid.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} (unwritten)</span></div>;
                   return <div key={lid} style={S.relItem} onClick={() => navigate(lid)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.8)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}><span style={{ fontSize: 14, color: CATEGORIES[lk.category]?.color }}>{CATEGORIES[lk.category]?.icon}</span><div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{lk.title}</div><div style={{ fontSize: 10, color: "#556677", marginTop: 1 }}>{CATEGORIES[lk.category]?.label}</div></div></div>;
                 })}
 
                 {(() => { const sugs = findUnlinkedMentions(activeArticle.body, activeArticle.fields, articles, activeArticle.linkedIds || []); if (!sugs.length) return null; return (<>
                   <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#7ec8e3", letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 8 }}>💡 Suggested Links</p>
-                  <p style={{ fontSize: 10, color: "#556677", margin: "0 0 8px" }}>Unlinked references detected</p>
-                  {sugs.map((s) => <div key={s.article.id} style={{ ...S.relItem, borderLeft: "2px solid rgba(126,200,227,0.3)" }} onClick={() => navigate(s.article.id)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
+                  <p style={{ fontSize: 10, color: "#556677", margin: "0 0 8px" }}>Names found in text that may refer to codex entries</p>
+                  {sugs.map((s) => <div key={s.article.id} style={{ ...S.relItem, borderLeft: "2px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.4)" : s.confidence === "strong" ? "rgba(126,200,227,0.3)" : "rgba(240,192,64,0.2)") }} onClick={() => navigate(s.article.id)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
                     <span style={{ fontSize: 14, color: CATEGORIES[s.article.category]?.color }}>{CATEGORIES[s.article.category]?.icon}</span>
-                    <div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{s.article.title}</div><div style={{ fontSize: 10, color: "#7ec8e3" }}>matched: "{s.match}" · {s.confidence}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{s.article.title}</div><div style={{ fontSize: 10, color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : "#f0c040", marginTop: 1 }}>{s.label}: "{s.match}"</div></div>
                   </div>)}
                 </>); })()}
 
@@ -3238,7 +3296,7 @@ export default function FrostfallRealms({ user, onLogout }) {
 
               <p style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, color: "#d4c9a8", marginTop: 24, marginBottom: 16, letterSpacing: 1 }}>◈ Template Fields</p>
               {TEMPLATE_FIELDS[createCat]?.map((fk) => (
-                <div key={fk} style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>{FIELD_LABELS[fk] || fk}</label><input style={S.input} value={formData.fields[fk] || ""} onChange={(e) => setFormData((p) => ({ ...p, fields: { ...p.fields, [fk]: e.target.value } }))} placeholder={"Enter " + (FIELD_LABELS[fk] || fk).toLowerCase() + "..."} /></div>
+                <div key={fk} style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>{formatKey(fk)}</label><input style={S.input} value={formData.fields[fk] || ""} onChange={(e) => setFormData((p) => ({ ...p, fields: { ...p.fields, [fk]: e.target.value } }))} placeholder={"Enter " + formatKey(fk).toLowerCase() + "..."} /></div>
               ))}
 
               {/* Temporal override for deity/magic/race */}
@@ -3256,15 +3314,16 @@ export default function FrostfallRealms({ user, onLogout }) {
                 </div>
               </>)}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— use @article_id to link</span></label><textarea style={S.textarea} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={"Write about this " + CATEGORIES[createCat]?.label.toLowerCase() + "..."} rows={8} /></div>
+              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={S.textarea} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={"Write about this " + CATEGORIES[createCat]?.label.toLowerCase() + "..."} rows={8} /></div>
 
-              {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Suggested Links" style={{ marginBottom: 16 }}>
-                <p style={{ margin: "0 0 8px" }}>These existing articles may be related. Click to add an @mention:</p>
+              {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
+                <p style={{ margin: "0 0 8px" }}>These codex entries may be referenced in your text. Click to add an @mention link to the body:</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{linkSugs.map((s) => (
-                  <span key={s.article.id} onClick={() => { const tag = "@" + s.article.id; if (!formData.body.includes(tag)) setFormData((p) => ({ ...p, body: p.body + (p.body ? " " : "") + tag })); }}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "4px 10px", background: "rgba(126,200,227,0.1)", border: "1px solid rgba(126,200,227,0.2)", borderRadius: 12, cursor: "pointer", color: CATEGORIES[s.article.category]?.color, transition: "all 0.2s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.1)"; }}>
-                    <span>{CATEGORIES[s.article.category]?.icon}</span><span>{s.article.title}</span><span style={{ color: "#556677", fontSize: 10 }}>({s.confidence})</span>
+                  <span key={s.article.id} onClick={() => { const mention = "@[" + s.article.title + "](" + s.article.id + ")"; if (!formData.body.includes(mention) && !formData.body.includes("@" + s.article.id)) setFormData((p) => ({ ...p, body: p.body + (p.body ? "\n\n" : "") + mention })); }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "4px 10px", background: s.confidence === "exact" ? "rgba(142,200,160,0.1)" : s.confidence === "strong" ? "rgba(126,200,227,0.1)" : "rgba(240,192,64,0.08)", border: "1px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.25)" : s.confidence === "strong" ? "rgba(126,200,227,0.2)" : "rgba(240,192,64,0.15)"), borderRadius: 12, cursor: "pointer", color: CATEGORIES[s.article.category]?.color, transition: "all 0.2s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = s.confidence === "exact" ? "rgba(142,200,160,0.1)" : "rgba(126,200,227,0.1)"; }}
+                    title={s.label + ': "' + s.match + '"'}>
+                    <span>{CATEGORIES[s.article.category]?.icon}</span><span>{s.article.title}</span><span style={{ color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : "#f0c040", fontSize: 9 }}>● {s.confidence === "exact" ? "exact" : s.confidence === "strong" ? "likely" : "possible"}</span>
                   </span>
                 ))}</div>
               </WarningBanner>}
