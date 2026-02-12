@@ -105,6 +105,7 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
   const suggestions = [];
   const allText = (text || "") + " " + Object.values(fields || {}).join(" ");
   const allTextLower = allText.toLowerCase();
+  const bodyOnly = (text || "").toLowerCase();
   const linked = new Set(existingLinks || []);
   // Also exclude rich mentions already in the text
   const richMentionIds = new Set((text?.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean));
@@ -112,13 +113,63 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
   articles.forEach((a) => {
     if (linked.has(a.id) || mentioned.has(a.id)) return;
     const tl = a.title.toLowerCase();
-    if (allTextLower.includes(tl)) { suggestions.push({ article: a, confidence: "exact", label: "Exact title match", match: a.title }); return; }
+    // Find the actual position in body text where this name appears (for contextual insertion)
+    let matchPosition = -1;
+    let matchText = "";
+    const titleIdx = bodyOnly.indexOf(tl);
+    if (titleIdx !== -1) {
+      matchPosition = titleIdx;
+      matchText = (text || "").substring(titleIdx, titleIdx + a.title.length);
+      suggestions.push({ article: a, confidence: "exact", label: "Exact title match", match: a.title, matchPosition, matchText });
+      return;
+    }
     const words = a.title.replace(/[()]/g, "").split(/[\s,\-\u2013\u2014]+/).filter((w) => w.length >= 4);
     const matched = words.filter((w) => allTextLower.includes(w.toLowerCase()));
-    if (matched.length >= 2) suggestions.push({ article: a, confidence: "strong", label: "Multiple word match", match: matched.join(", ") });
-    else if (matched.length === 1 && matched[0].length >= 6) suggestions.push({ article: a, confidence: "possible", label: "Partial word match", match: matched[0] });
+    if (matched.length >= 2) {
+      // Find longest matched word position for contextual placement
+      const longest = matched.sort((a, b) => b.length - a.length)[0];
+      const wIdx = bodyOnly.indexOf(longest.toLowerCase());
+      if (wIdx !== -1) { matchPosition = wIdx; matchText = (text || "").substring(wIdx, wIdx + longest.length); }
+      suggestions.push({ article: a, confidence: "strong", label: "Multiple word match", match: matched.join(", "), matchPosition, matchText });
+    }
+    else if (matched.length === 1 && matched[0].length >= 6) {
+      const wIdx = bodyOnly.indexOf(matched[0].toLowerCase());
+      if (wIdx !== -1) { matchPosition = wIdx; matchText = (text || "").substring(wIdx, wIdx + matched[0].length); }
+      suggestions.push({ article: a, confidence: "possible", label: "Partial word match", match: matched[0], matchPosition, matchText });
+    }
   });
   return suggestions.sort((a, b) => ({ exact: 3, strong: 2, possible: 1 }[b.confidence] || 0) - ({ exact: 3, strong: 2, possible: 1 }[a.confidence] || 0));
+}
+
+// Fuzzy match a broken ref ID against all existing articles — returns scored suggestions
+function findFuzzyMatches(brokenRefId, articles) {
+  const broken = brokenRefId.toLowerCase().replace(/_/g, " ");
+  const brokenWords = broken.split(/[\s_]+/).filter((w) => w.length >= 3);
+  const results = [];
+  articles.forEach((a) => {
+    let score = 0;
+    const titleLower = a.title.toLowerCase();
+    const idLower = a.id.toLowerCase().replace(/_/g, " ");
+    // Exact substring match in ID (azurax in azurax_the_storm_wing)
+    if (idLower.includes(broken)) score += 50;
+    else if (broken.includes(idLower)) score += 40;
+    // Exact substring match in title
+    if (titleLower.includes(broken)) score += 45;
+    else if (broken.includes(titleLower)) score += 35;
+    // Word overlap scoring
+    const titleWords = titleLower.split(/[\s_\-]+/).filter((w) => w.length >= 3);
+    brokenWords.forEach((bw) => {
+      titleWords.forEach((tw) => {
+        if (tw === bw) score += 20;
+        else if (tw.startsWith(bw) || bw.startsWith(tw)) score += 12;
+        else if (tw.includes(bw) || bw.includes(tw)) score += 8;
+      });
+    });
+    // Levenshtein-like: first word match boost (handles "azurax" vs "azurax")
+    if (brokenWords[0] && titleWords[0] && (titleWords[0].startsWith(brokenWords[0]) || brokenWords[0].startsWith(titleWords[0]))) score += 15;
+    if (score > 5) results.push({ article: a, score });
+  });
+  return results.sort((a, b) => b.score - a.score).slice(0, 5);
 }
 
 // Check a single article or form data against all existing articles for integrity violations
@@ -135,33 +186,42 @@ function checkArticleIntegrity(data, articles, excludeId = null) {
   // 1. Broken @mentions — references to non-existent articles
   const mentionRefs = (body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => {
     const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/);
-    return match ? { title: match[1], id: match[2] } : null;
+    return match ? { title: match[1], id: match[2], rawMention: m, isRich: true } : null;
   }).filter(Boolean);
   // Legacy @id refs: only flag if they look like real article IDs (contain underscores = generated IDs)
-  // and actually match or nearly match an existing article
-  const legacyRefs = (body.match(/@([\w]+)/g) || [])
+  const legacyRefs = (body.match(/@(?!\[)([\w]+)/g) || [])
     .filter((m) => !m.match(/@\[/))
-    .map((m) => m.slice(1))
-    .filter((refId) => {
-      // Only treat as a reference if it matches an actual article ID or contains underscores (generated ID format)
-      if (entityMap[refId]) return true;
-      if (refId.includes("_") && refId.length > 5) return true;
+    .map((m) => ({ id: m.slice(1), rawMention: m, isRich: false }))
+    .filter((ref) => {
+      if (entityMap[ref.id]) return true;
+      if (ref.id.includes("_") && ref.id.length > 5) return true;
       return false;
     });
-  const allRefs = [...mentionRefs.map((r) => r.id), ...legacyRefs];
+  const allRefs = [
+    ...mentionRefs.map((r) => ({ id: r.id, rawMention: r.rawMention, isRich: r.isRich })),
+    ...legacyRefs,
+  ];
 
-  allRefs.forEach((refId) => {
-    if (refId === excludeId) return;
-    if (!entityMap[refId]) {
-      const readableName = refId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-      warnings.push({ type: "broken_ref", severity: "warning", message: "References \"" + readableName + "\" which doesn't exist in the codex.", suggestion: "Create the referenced article, or remove the @mention if unintended." });
+  allRefs.forEach((ref) => {
+    if (ref.id === excludeId) return;
+    if (!entityMap[ref.id]) {
+      const readableName = ref.id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const fuzzyMatches = findFuzzyMatches(ref.id, articles.filter((a) => a.id !== excludeId));
+      warnings.push({
+        type: "broken_ref", severity: "warning",
+        message: "References \"" + readableName + "\" which doesn't exist in the codex.",
+        suggestion: fuzzyMatches.length > 0 ? "Did you mean one of these? Click to fix:" : "Create the referenced article, or remove the @mention if unintended.",
+        refId: ref.id,
+        rawMention: ref.rawMention,
+        fuzzyMatches,
+      });
     }
   });
 
   // 2. Temporal conflicts — referencing entities that weren't alive/active at this time
   if (temporal && temporal.active_start != null) {
-    allRefs.forEach((refId) => {
-      const target = entityMap[refId];
+    allRefs.forEach((ref) => {
+      const target = entityMap[ref.id];
       if (!target?.temporal || target.temporal.type === "concept") return;
       const tt = target.temporal;
       if (tt.type === "immortal" && !tt.active_end) return;
@@ -1587,6 +1647,61 @@ export default function FrostfallRealms({ user, onLogout }) {
   };
 
   const [integrityGate, setIntegrityGate] = useState(null); // { warnings, onProceed }
+  const [expandedWarning, setExpandedWarning] = useState(null); // index of expanded broken_ref warning
+
+  // Replace a broken @mention in the body with a proper rich mention to the selected article
+  const resolveRef = (warning, selectedArticle) => {
+    const richMention = "@[" + selectedArticle.title + "](" + selectedArticle.id + ")";
+    setFormData((prev) => {
+      let newBody = prev.body;
+      if (warning.rawMention && newBody.includes(warning.rawMention)) {
+        // Direct replacement of the broken mention text
+        newBody = newBody.replace(warning.rawMention, richMention);
+      } else if (warning.refId) {
+        // Try to find @refId pattern
+        const legacyPattern = "@" + warning.refId;
+        if (newBody.includes(legacyPattern)) {
+          newBody = newBody.replace(legacyPattern, richMention);
+        }
+      }
+      return { ...prev, body: newBody };
+    });
+    setExpandedWarning(null);
+  };
+
+  // Smart insert a link suggestion — find where the name appears in body and wrap it in-place
+  const smartInsertLink = (sug) => {
+    const richMention = "@[" + sug.article.title + "](" + sug.article.id + ")";
+    // Don't add if already linked
+    if (formData.body.includes(richMention) || formData.body.includes("@" + sug.article.id)) return;
+
+    setFormData((prev) => {
+      let newBody = prev.body;
+      // Try to find the exact title text in body and wrap it
+      const titleLower = sug.article.title.toLowerCase();
+      const bodyLower = newBody.toLowerCase();
+      const exactIdx = bodyLower.indexOf(titleLower);
+      if (exactIdx !== -1) {
+        // Found exact title — replace the plain text with a rich mention
+        const before = newBody.substring(0, exactIdx);
+        const after = newBody.substring(exactIdx + sug.article.title.length);
+        return { ...prev, body: before + richMention + after };
+      }
+      // Try to find the longest matched word and wrap a region around it
+      if (sug.matchText && sug.matchPosition >= 0) {
+        const matchIdx = bodyLower.indexOf(sug.matchText.toLowerCase());
+        if (matchIdx !== -1) {
+          // Find the word/phrase boundary around this match to wrap it cleanly
+          const before = newBody.substring(0, matchIdx);
+          const matchedText = newBody.substring(matchIdx, matchIdx + sug.matchText.length);
+          const after = newBody.substring(matchIdx + sug.matchText.length);
+          return { ...prev, body: before + richMention + after };
+        }
+      }
+      // Fallback: append on a new line with context
+      return { ...prev, body: newBody + (newBody ? "\n\n" : "") + richMention };
+    });
+  };
 
   const attemptSave = () => {
     const dupes = findDuplicates(formData.title, articles, editingId);
@@ -3158,9 +3273,66 @@ export default function FrostfallRealms({ user, onLogout }) {
                   return (
                     <WarningBanner severity={artWarnings.some((w) => w.severity === "error") ? "error" : "warning"} icon="🛡" title={"Lore Integrity: " + actionable.length + " issue" + (actionable.length !== 1 ? "s" : "")} style={{ marginTop: 12 }}>
                       {actionable.map((w, i) => (
-                        <div key={i} style={{ padding: "3px 0", color: w.severity === "error" ? "#e07050" : "#f0c040", fontSize: 12 }}>
-                          {w.severity === "error" ? "⛔" : "⚠"} {w.message}
-                          {w.suggestion && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 1, marginLeft: 18 }}>💡 {w.suggestion}</div>}
+                        <div key={i} style={{ padding: "4px 0", fontSize: 12 }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "flex-start", color: w.severity === "error" ? "#e07050" : "#f0c040", cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
+                            onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === "av" + i ? null : "av" + i); }}>
+                            <span>{w.severity === "error" ? "⛔" : "⚠"}</span>
+                            <div style={{ flex: 1 }}>
+                              <div>{w.message}</div>
+                              {w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? (
+                                <div style={{ fontSize: 10, color: "#7ec8e3", marginTop: 3 }}>
+                                  <span style={{ background: "rgba(126,200,227,0.15)", padding: "2px 8px", borderRadius: 8 }}>
+                                    {expandedWarning === "av" + i ? "▾" : "▸"} {w.fuzzyMatches.length} possible match{w.fuzzyMatches.length !== 1 ? "es" : ""} — click to fix
+                                  </span>
+                                </div>
+                              ) : (
+                                w.suggestion && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 1 }}>💡 {w.suggestion}</div>
+                              )}
+                            </div>
+                          </div>
+                          {expandedWarning === "av" + i && w.fuzzyMatches && (
+                            <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                              <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{w.rawMention}</span> with:</div>
+                              {w.fuzzyMatches.map((fm) => (
+                                <div key={fm.article.id}
+                                  onClick={() => {
+                                    // Quick fix: directly update the article body
+                                    const richMention = "@[" + fm.article.title + "](" + fm.article.id + ")";
+                                    setArticles((prev) => prev.map((a) => {
+                                      if (a.id !== activeArticle.id) return a;
+                                      let newBody = a.body || "";
+                                      if (w.rawMention && newBody.includes(w.rawMention)) newBody = newBody.replace(w.rawMention, richMention);
+                                      else { const legacy = "@" + w.refId; if (newBody.includes(legacy)) newBody = newBody.replace(legacy, richMention); }
+                                      return { ...a, body: newBody, updatedAt: new Date().toISOString() };
+                                    }));
+                                    setExpandedWarning(null);
+                                  }}
+                                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", background: "rgba(126,200,227,0.05)", border: "1px solid rgba(126,200,227,0.1)", transition: "all 0.2s" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.15)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.3)"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.05)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.1)"; }}>
+                                  <span style={{ fontSize: 14, color: CATEGORIES[fm.article.category]?.color }}>{CATEGORIES[fm.article.category]?.icon}</span>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 12, color: "#c8bda0", fontWeight: 500 }}>{fm.article.title}</div>
+                                    <div style={{ fontSize: 10, color: "#556677" }}>{CATEGORIES[fm.article.category]?.label} · match score: {fm.score}</div>
+                                  </div>
+                                  <span style={{ fontSize: 10, color: "#8ec8a0", fontWeight: 600 }}>✓ Fix</span>
+                                </div>
+                              ))}
+                              <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 4, borderTop: "1px solid #1a2435" }}>
+                                <span style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.7 }}
+                                  onClick={() => {
+                                    setArticles((prev) => prev.map((a) => a.id !== activeArticle.id ? a : { ...a, body: (a.body || "").replace(w.rawMention, ""), updatedAt: new Date().toISOString() }));
+                                    setExpandedWarning(null);
+                                  }}>
+                                  🗑 Remove mention
+                                </span>
+                                <span style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", opacity: 0.7 }}
+                                  onClick={() => goEdit(activeArticle)}>
+                                  ✎ Edit in full editor
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </WarningBanner>
@@ -3208,10 +3380,42 @@ export default function FrostfallRealms({ user, onLogout }) {
 
                 {(() => { const sugs = findUnlinkedMentions(activeArticle.body, activeArticle.fields, articles, activeArticle.linkedIds || []); if (!sugs.length) return null; return (<>
                   <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#7ec8e3", letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 8 }}>💡 Suggested Links</p>
-                  <p style={{ fontSize: 10, color: "#556677", margin: "0 0 8px" }}>Names found in text that may refer to codex entries</p>
-                  {sugs.map((s) => <div key={s.article.id} style={{ ...S.relItem, borderLeft: "2px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.4)" : s.confidence === "strong" ? "rgba(126,200,227,0.3)" : "rgba(240,192,64,0.2)") }} onClick={() => navigate(s.article.id)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
-                    <span style={{ fontSize: 14, color: CATEGORIES[s.article.category]?.color }}>{CATEGORIES[s.article.category]?.icon}</span>
-                    <div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{s.article.title}</div><div style={{ fontSize: 10, color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : "#f0c040", marginTop: 1 }}>{s.label}: "{s.match}"</div></div>
+                  <p style={{ fontSize: 10, color: "#556677", margin: "0 0 8px" }}>Names found in text that may refer to codex entries. Click ✓ to link in-place.</p>
+                  {sugs.map((s) => <div key={s.article.id} style={{ ...S.relItem, borderLeft: "2px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.4)" : s.confidence === "strong" ? "rgba(126,200,227,0.3)" : "rgba(240,192,64,0.2)"), display: "flex", alignItems: "center" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => navigate(s.article.id)}>
+                      <span style={{ fontSize: 14, color: CATEGORIES[s.article.category]?.color }}>{CATEGORIES[s.article.category]?.icon}</span>
+                      <div><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{s.article.title}</div><div style={{ fontSize: 10, color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : "#f0c040", marginTop: 1 }}>{s.label}</div></div>
+                    </div>
+                    <span title={"Link \"" + s.match + "\" to " + s.article.title + " in body text"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const richMention = "@[" + s.article.title + "](" + s.article.id + ")";
+                        setArticles((prev) => prev.map((a) => {
+                          if (a.id !== activeArticle.id) return a;
+                          let newBody = a.body || "";
+                          if (newBody.includes(richMention)) return a;
+                          // Try in-place replacement of the matched text
+                          const titleLower = s.article.title.toLowerCase();
+                          const bodyLower = newBody.toLowerCase();
+                          const idx = bodyLower.indexOf(titleLower);
+                          if (idx !== -1) {
+                            newBody = newBody.substring(0, idx) + richMention + newBody.substring(idx + s.article.title.length);
+                          } else if (s.matchText) {
+                            const mIdx = bodyLower.indexOf(s.matchText.toLowerCase());
+                            if (mIdx !== -1) newBody = newBody.substring(0, mIdx) + richMention + newBody.substring(mIdx + s.matchText.length);
+                            else newBody = newBody + "\n\n" + richMention;
+                          } else {
+                            newBody = newBody + "\n\n" + richMention;
+                          }
+                          return { ...a, body: newBody, linkedIds: [...(a.linkedIds || []), s.article.id], updatedAt: new Date().toISOString() };
+                        }));
+                      }}
+                      style={{ fontSize: 11, color: "#8ec8a0", cursor: "pointer", padding: "3px 8px", borderRadius: 6, background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.2)", fontWeight: 600, whiteSpace: "nowrap" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.25)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.1)"; }}>
+                      ✓ Link
+                    </span>
                   </div>)}
                 </>); })()}
 
@@ -3317,12 +3521,12 @@ export default function FrostfallRealms({ user, onLogout }) {
               <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={S.textarea} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={"Write about this " + CATEGORIES[createCat]?.label.toLowerCase() + "..."} rows={8} /></div>
 
               {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
-                <p style={{ margin: "0 0 8px" }}>These codex entries may be referenced in your text. Click to add an @mention link to the body:</p>
+                <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{linkSugs.map((s) => (
-                  <span key={s.article.id} onClick={() => { const mention = "@[" + s.article.title + "](" + s.article.id + ")"; if (!formData.body.includes(mention) && !formData.body.includes("@" + s.article.id)) setFormData((p) => ({ ...p, body: p.body + (p.body ? "\n\n" : "") + mention })); }}
+                  <span key={s.article.id} onClick={() => smartInsertLink(s)}
                     style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "4px 10px", background: s.confidence === "exact" ? "rgba(142,200,160,0.1)" : s.confidence === "strong" ? "rgba(126,200,227,0.1)" : "rgba(240,192,64,0.08)", border: "1px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.25)" : s.confidence === "strong" ? "rgba(126,200,227,0.2)" : "rgba(240,192,64,0.15)"), borderRadius: 12, cursor: "pointer", color: CATEGORIES[s.article.category]?.color, transition: "all 0.2s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = s.confidence === "exact" ? "rgba(142,200,160,0.1)" : "rgba(126,200,227,0.1)"; }}
-                    title={s.label + ': "' + s.match + '"'}>
+                    title={s.label + ': "' + s.match + '" — will replace in-place if found in text'}>
                     <span>{CATEGORIES[s.article.category]?.icon}</span><span>{s.article.title}</span><span style={{ color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : "#f0c040", fontSize: 9 }}>● {s.confidence === "exact" ? "exact" : s.confidence === "strong" ? "likely" : "possible"}</span>
                   </span>
                 ))}</div>
@@ -3331,12 +3535,55 @@ export default function FrostfallRealms({ user, onLogout }) {
               {liveIntegrity.length > 0 && <WarningBanner severity={liveIntegrity.some((w) => w.severity === "error") ? "error" : "warning"} icon="🛡" title={"Lore Integrity — " + liveIntegrity.length + " issue" + (liveIntegrity.length !== 1 ? "s" : "")} style={{ marginBottom: 16 }}>
                 {liveIntegrity.filter((w) => w.severity === "error").map((w, i) => (
                   <div key={"e" + i} style={{ padding: "4px 0", fontSize: 12, color: "#e07050", display: "flex", gap: 6, alignItems: "flex-start" }}>
-                    <span>⛔</span><div><div>{w.message}</div><div style={{ fontSize: 10, color: "#a07060", marginTop: 2 }}>{w.suggestion}</div></div>
+                    <span>⛔</span><div style={{ flex: 1 }}><div>{w.message}</div><div style={{ fontSize: 10, color: "#a07060", marginTop: 2 }}>{w.suggestion}</div></div>
                   </div>
                 ))}
                 {liveIntegrity.filter((w) => w.severity === "warning").map((w, i) => (
-                  <div key={"w" + i} style={{ padding: "4px 0", fontSize: 12, color: "#f0c040", display: "flex", gap: 6, alignItems: "flex-start" }}>
-                    <span>⚠</span><div><div>{w.message}</div><div style={{ fontSize: 10, color: "#a09060", marginTop: 2 }}>{w.suggestion}</div></div>
+                  <div key={"w" + i} style={{ padding: "6px 0", fontSize: 12, color: "#f0c040" }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "flex-start", cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
+                      onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === "w" + i ? null : "w" + i); }}>
+                      <span>⚠</span>
+                      <div style={{ flex: 1 }}>
+                        <div>{w.message}</div>
+                        {w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? (
+                          <div style={{ fontSize: 10, color: "#7ec8e3", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ background: "rgba(126,200,227,0.15)", padding: "2px 8px", borderRadius: 8, cursor: "pointer" }}>
+                              {expandedWarning === "w" + i ? "▾" : "▸"} {w.fuzzyMatches.length} possible match{w.fuzzyMatches.length !== 1 ? "es" : ""} — click to fix
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 10, color: "#a09060", marginTop: 2 }}>{w.suggestion}</div>
+                        )}
+                      </div>
+                    </div>
+                    {/* Inline suggestion dropdown */}
+                    {expandedWarning === "w" + i && w.fuzzyMatches && (
+                      <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{w.rawMention}</span> with:</div>
+                        {w.fuzzyMatches.map((fm) => (
+                          <div key={fm.article.id}
+                            onClick={() => resolveRef(w, fm.article)}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", background: "rgba(126,200,227,0.05)", border: "1px solid rgba(126,200,227,0.1)", transition: "all 0.2s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.15)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.3)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.05)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.1)"; }}>
+                            <span style={{ fontSize: 14, color: CATEGORIES[fm.article.category]?.color }}>{CATEGORIES[fm.article.category]?.icon}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 12, color: "#c8bda0", fontWeight: 500 }}>{fm.article.title}</div>
+                              <div style={{ fontSize: 10, color: "#556677" }}>{CATEGORIES[fm.article.category]?.label} · match score: {fm.score}</div>
+                            </div>
+                            <span style={{ fontSize: 10, color: "#8ec8a0", fontWeight: 600 }}>✓ Apply</span>
+                          </div>
+                        ))}
+                        {w.type === "broken_ref" && (
+                          <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 4, borderTop: "1px solid #1a2435" }}>
+                            <span style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.7 }}
+                              onClick={() => { setFormData((p) => ({ ...p, body: p.body.replace(w.rawMention, "") })); setExpandedWarning(null); }}>
+                              🗑 Remove mention
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {liveIntegrity.filter((w) => w.severity === "info").slice(0, 3).map((w, i) => (
