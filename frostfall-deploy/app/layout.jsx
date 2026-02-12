@@ -1,3 +1,5 @@
+import { Analytics } from '@vercel/analytics/next';
+
 export const metadata = {
   title: "Frostfall Realms — Worldbuilding Engine",
   description: "A dark fantasy worldbuilding platform for writers, game masters, and world creators.",
@@ -20,7 +22,10 @@ export default function RootLayout({ children }) {
           ::-webkit-scrollbar-thumb:hover { background: #2a3a4e; }
         `}</style>
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
