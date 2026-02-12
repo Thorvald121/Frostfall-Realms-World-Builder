@@ -1684,32 +1684,43 @@ export default function FrostfallRealms({ user, onLogout }) {
   const smartInsertLink = (sug) => {
     const richMention = "@[" + sug.article.title + "](" + sug.article.id + ")";
     // Don't add if already linked
-    if (formData.body.includes(richMention) || formData.body.includes("@" + sug.article.id)) return;
+    if (formData.body.includes(richMention) || formData.body.includes("@[" + sug.article.title + "]")) return;
+
+    // Helper: check if a position falls inside an existing @mention
+    const findEnclosingMention = (body, pos) => {
+      const legacyPattern = /@(?!\[)([\w]+)/g;
+      let m;
+      while ((m = legacyPattern.exec(body)) !== null) {
+        if (pos >= m.index && pos < m.index + m[0].length) return { start: m.index, end: m.index + m[0].length, text: m[0] };
+      }
+      return null;
+    };
 
     setFormData((prev) => {
       let newBody = prev.body;
-      // Try to find the exact title text in body and wrap it
-      const titleLower = sug.article.title.toLowerCase();
       const bodyLower = newBody.toLowerCase();
+
+      // Strategy 1: exact title match
+      const titleLower = sug.article.title.toLowerCase();
       const exactIdx = bodyLower.indexOf(titleLower);
       if (exactIdx !== -1) {
-        // Found exact title — replace the plain text with a rich mention
-        const before = newBody.substring(0, exactIdx);
-        const after = newBody.substring(exactIdx + sug.article.title.length);
-        return { ...prev, body: before + richMention + after };
+        return { ...prev, body: newBody.substring(0, exactIdx) + richMention + newBody.substring(exactIdx + sug.article.title.length) };
       }
-      // Try to find the longest matched word and wrap a region around it
-      if (sug.matchText && sug.matchPosition >= 0) {
-        const matchIdx = bodyLower.indexOf(sug.matchText.toLowerCase());
+
+      // Strategy 2: matched text — but check if it's inside an @mention
+      const searchText = (sug.matchText || sug.match || "").toLowerCase();
+      if (searchText) {
+        const matchIdx = bodyLower.indexOf(searchText);
         if (matchIdx !== -1) {
-          // Find the word/phrase boundary around this match to wrap it cleanly
-          const before = newBody.substring(0, matchIdx);
-          const matchedText = newBody.substring(matchIdx, matchIdx + sug.matchText.length);
-          const after = newBody.substring(matchIdx + sug.matchText.length);
-          return { ...prev, body: before + richMention + after };
+          const enclosing = findEnclosingMention(newBody, matchIdx);
+          if (enclosing) {
+            return { ...prev, body: newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end) };
+          }
+          return { ...prev, body: newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length) };
         }
       }
-      // Fallback: append on a new line with context
+
+      // Fallback: append
       return { ...prev, body: newBody + (newBody ? "\n\n" : "") + richMention };
     });
   };
@@ -3407,20 +3418,46 @@ export default function FrostfallRealms({ user, onLogout }) {
                           if (a.id !== activeArticle.id) return a;
                           let newBody = a.body || "";
                           if (newBody.includes(richMention)) return a;
-                          // Try in-place replacement of the matched text
+
+                          // Helper: check if a position falls inside an existing @mention and return the full @mention to replace
+                          const findEnclosingMention = (body, pos) => {
+                            // Check for legacy @word mentions
+                            const legacyPattern = /@(?!\[)([\w]+)/g;
+                            let m;
+                            while ((m = legacyPattern.exec(body)) !== null) {
+                              if (pos >= m.index && pos < m.index + m[0].length) return { start: m.index, end: m.index + m[0].length, text: m[0] };
+                            }
+                            return null;
+                          };
+
+                          // Strategy 1: Try exact full title match first
                           const titleLower = s.article.title.toLowerCase();
                           const bodyLower = newBody.toLowerCase();
-                          const idx = bodyLower.indexOf(titleLower);
-                          if (idx !== -1) {
-                            newBody = newBody.substring(0, idx) + richMention + newBody.substring(idx + s.article.title.length);
-                          } else if (s.matchText) {
-                            const mIdx = bodyLower.indexOf(s.matchText.toLowerCase());
-                            if (mIdx !== -1) newBody = newBody.substring(0, mIdx) + richMention + newBody.substring(mIdx + s.matchText.length);
-                            else newBody = newBody + "\n\n" + richMention;
-                          } else {
-                            newBody = newBody + "\n\n" + richMention;
+                          const titleIdx = bodyLower.indexOf(titleLower);
+                          if (titleIdx !== -1) {
+                            newBody = newBody.substring(0, titleIdx) + richMention + newBody.substring(titleIdx + s.article.title.length);
+                            return { ...a, body: newBody, linkedIds: [...new Set([...(a.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
                           }
-                          return { ...a, body: newBody, linkedIds: [...(a.linkedIds || []), s.article.id], updatedAt: new Date().toISOString() };
+
+                          // Strategy 2: Find where the matched text appears
+                          const searchText = (s.matchText || s.match || "").toLowerCase();
+                          if (searchText) {
+                            const matchIdx = bodyLower.indexOf(searchText);
+                            if (matchIdx !== -1) {
+                              // Check if this match is inside an existing @mention — if so, replace the whole @mention
+                              const enclosing = findEnclosingMention(newBody, matchIdx);
+                              if (enclosing) {
+                                newBody = newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end);
+                              } else {
+                                newBody = newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length);
+                              }
+                              return { ...a, body: newBody, linkedIds: [...new Set([...(a.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
+                            }
+                          }
+
+                          // Fallback: append
+                          newBody = newBody + "\n\n" + richMention;
+                          return { ...a, body: newBody, linkedIds: [...new Set([...(a.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
                         }));
                       }}
                       style={{ fontSize: 11, color: "#8ec8a0", cursor: "pointer", padding: "3px 8px", borderRadius: 6, background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.2)", fontWeight: 600, whiteSpace: "nowrap" }}
