@@ -825,7 +825,7 @@ export default function FrostfallRealms({ user, onLogout }) {
   // === NOVEL WRITING TOOL ===
   const [manuscripts, setManuscripts] = useState([]); // all manuscripts for active world
   const [activeMs, setActiveMs] = useState(null); // current manuscript object
-  const [novelView, setNovelView] = useState("select"); // select, outline, write
+  const [novelView, setNovelView] = useState("select"); // select, outline, write, corkboard
   const [novelActiveScene, setNovelActiveScene] = useState(null); // { actId, chId, scId }
   const [novelCodexOpen, setNovelCodexOpen] = useState(false);
   const [novelCodexSearch, setNovelCodexSearch] = useState("");
@@ -836,6 +836,29 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [novelMsForm, setNovelMsForm] = useState({ title: "", description: "" });
   const [showMsCreate, setShowMsCreate] = useState(false);
   const novelEditorRef = useRef(null);
+  // Enhanced features
+  const [novelFocusMode, setNovelFocusMode] = useState(false); // composition/focus mode
+  const [novelSplitPane, setNovelSplitPane] = useState("codex"); // "codex" | "notes" | "article" | null
+  const [novelSplitArticle, setNovelSplitArticle] = useState(null); // article to show in split pane
+  const [novelGoal, setNovelGoal] = useState({ daily: 0, session: 0, sessionStart: 0 }); // word targets
+  const [novelGoalInput, setNovelGoalInput] = useState("");
+  const [novelShowGoalSet, setNovelShowGoalSet] = useState(false);
+  const [novelCompiling, setNovelCompiling] = useState(false);
+  const [corkboardChapter, setCorkboardChapter] = useState(null); // { actId, chId } for corkboard focus
+  const [corkboardDragId, setCorkboardDragId] = useState(null);
+  const [novelSnapshotView, setNovelSnapshotView] = useState(null); // snapshot index to view
+
+  // Scene color/label options
+  const SCENE_COLORS = [
+    { id: "none", color: "transparent", label: "None" },
+    { id: "red", color: "#e07050", label: "Action" },
+    { id: "blue", color: "#7ec8e3", label: "World Building" },
+    { id: "green", color: "#8ec8a0", label: "Character Dev" },
+    { id: "gold", color: "#f0c040", label: "Plot Point" },
+    { id: "purple", color: "#c084fc", label: "Dialogue" },
+    { id: "pink", color: "#f472b6", label: "Romance" },
+    { id: "teal", color: "#5eead4", label: "Mystery" },
+  ];
 
   // Split text into sections at heading boundaries, respecting document structure
   const chunkText = (text, maxChunkSize = 6000) => {
@@ -1245,6 +1268,10 @@ export default function FrostfallRealms({ user, onLogout }) {
             body: "",
             order: 0,
             notes: "",
+            color: "none",
+            label: "",
+            povCharacter: "",
+            snapshots: [],
           }],
         }],
       }],
@@ -1275,7 +1302,7 @@ export default function FrostfallRealms({ user, onLogout }) {
         color: ["#f0c040", "#7ec8e3", "#e07050", "#8ec8a0", "#c084fc"][m.acts.length % 5],
         chapters: [{
           id: "ch_" + Date.now(), title: "Chapter 1", synopsis: "", order: 0, status: "draft",
-          scenes: [{ id: "sc_" + Date.now(), title: "Scene 1", body: "", order: 0, notes: "" }],
+          scenes: [{ id: "sc_" + Date.now(), title: "Scene 1", body: "", order: 0, notes: "", color: "none", label: "", povCharacter: "", snapshots: [] }],
         }],
       }],
     }));
@@ -1288,7 +1315,7 @@ export default function FrostfallRealms({ user, onLogout }) {
         ...a,
         chapters: [...a.chapters, {
           id: "ch_" + Date.now(), title: "Chapter " + (a.chapters.length + 1), synopsis: "", order: a.chapters.length, status: "draft",
-          scenes: [{ id: "sc_" + Date.now(), title: "Scene 1", body: "", order: 0, notes: "" }],
+          scenes: [{ id: "sc_" + Date.now(), title: "Scene 1", body: "", order: 0, notes: "", color: "none", label: "", povCharacter: "", snapshots: [] }],
         }],
       } : a),
     }));
@@ -1301,7 +1328,7 @@ export default function FrostfallRealms({ user, onLogout }) {
         ...a,
         chapters: a.chapters.map((c) => c.id === chId ? {
           ...c,
-          scenes: [...c.scenes, { id: "sc_" + Date.now(), title: "Scene " + (c.scenes.length + 1), body: "", order: c.scenes.length, notes: "" }],
+          scenes: [...c.scenes, { id: "sc_" + Date.now(), title: "Scene " + (c.scenes.length + 1), body: "", order: c.scenes.length, notes: "", color: "none", label: "", povCharacter: "", snapshots: [] }],
         } : c),
       } : a),
     }));
@@ -1390,6 +1417,97 @@ export default function FrostfallRealms({ user, onLogout }) {
     const idx = allScenes.findIndex((s) => s.scId === novelActiveScene.scId);
     const next = allScenes[idx + dir];
     if (next) setNovelActiveScene(next);
+  };
+
+  // === SCENE SNAPSHOTS ===
+  const saveSnapshot = (actId, chId, scId) => {
+    updateMs((m) => ({
+      ...m, acts: m.acts.map((a) => a.id !== actId ? a : {
+        ...a, chapters: a.chapters.map((c) => c.id !== chId ? c : {
+          ...c, scenes: c.scenes.map((s) => {
+            if (s.id !== scId) return s;
+            const snaps = s.snapshots || [];
+            return { ...s, snapshots: [...snaps, { body: s.body || "", savedAt: new Date().toISOString(), wordCount: (s.body || "").trim().split(/\s+/).filter(Boolean).length }].slice(-10) };
+          }),
+        }),
+      }),
+    }));
+  };
+
+  const restoreSnapshot = (actId, chId, scId, snapIdx) => {
+    updateMs((m) => ({
+      ...m, acts: m.acts.map((a) => a.id !== actId ? a : {
+        ...a, chapters: a.chapters.map((c) => c.id !== chId ? c : {
+          ...c, scenes: c.scenes.map((s) => {
+            if (s.id !== scId || !s.snapshots?.[snapIdx]) return s;
+            return { ...s, body: s.snapshots[snapIdx].body };
+          }),
+        }),
+      }),
+    }));
+    if (novelEditorRef.current) lastRenderedSceneRef.current = null; // force re-render
+  };
+
+  // === SESSION WORD TRACKING ===
+  useEffect(() => {
+    if (novelView === "write" && novelGoal.sessionStart === 0 && msWordCount.total > 0) {
+      setNovelGoal((g) => ({ ...g, sessionStart: msWordCount.total }));
+    }
+  }, [novelView, msWordCount.total]);
+  const sessionWords = msWordCount.total - (novelGoal.sessionStart || msWordCount.total);
+  const goalProgress = novelGoal.daily > 0 ? Math.min(100, Math.round((sessionWords / novelGoal.daily) * 100)) : 0;
+
+  // === COMPILE TO DOCX ===
+  const compileManuscript = async () => {
+    if (!activeMs || novelCompiling) return;
+    setNovelCompiling(true);
+    try {
+      // Build plain text manuscript
+      let text = activeMs.title + "\n\n";
+      if (activeMs.description) text += activeMs.description + "\n\n";
+      text += "---\n\n";
+      for (const act of activeMs.acts) {
+        text += act.title.toUpperCase() + "\n\n";
+        for (const ch of act.chapters) {
+          text += ch.title + "\n\n";
+          if (ch.synopsis) text += ch.synopsis + "\n\n";
+          for (const sc of ch.scenes) {
+            if (sc.body) {
+              // Strip @mentions to plain text
+              let clean = sc.body.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, "$1").replace(/@([\w]+)/g, (_, id) => id.replace(/_/g, " "));
+              text += clean + "\n\n";
+            }
+          }
+          text += "* * *\n\n";
+        }
+      }
+      // Create downloadable file
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = (activeMs.title || "manuscript").replace(/[^a-z0-9]+/gi, "_") + ".txt";
+      a.click(); URL.revokeObjectURL(url);
+    } catch (e) { console.error("Compile error:", e); }
+    setNovelCompiling(false);
+  };
+
+  // === CORKBOARD DRAG-AND-DROP ===
+  const handleCorkDrop = (actId, chId, dragScId, dropScId) => {
+    if (dragScId === dropScId) return;
+    updateMs((m) => ({
+      ...m, acts: m.acts.map((a) => a.id !== actId ? a : {
+        ...a, chapters: a.chapters.map((c) => {
+          if (c.id !== chId) return c;
+          const scenes = [...c.scenes];
+          const dragIdx = scenes.findIndex((s) => s.id === dragScId);
+          const dropIdx = scenes.findIndex((s) => s.id === dropScId);
+          if (dragIdx === -1 || dropIdx === -1) return c;
+          const [moved] = scenes.splice(dragIdx, 1);
+          scenes.splice(dropIdx, 0, moved);
+          return { ...c, scenes };
+        }),
+      }),
+    }));
   };
 
   // @mention detection in editor — uses @[Title](article_id) format for rich display
@@ -2724,24 +2842,25 @@ export default function FrostfallRealms({ user, onLogout }) {
                   {manuscripts.map((ms) => {
                     const wc = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.reduce((ts, s) => ts + (s.body?.trim().split(/\s+/).filter(Boolean).length || 0), 0), 0), 0);
                     const chCount = ms.acts.reduce((t, a) => t + a.chapters.length, 0);
+                    const scCount = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.length, 0), 0);
                     return (
-                      <div key={ms.id} onClick={() => { setActiveMs(ms); setNovelView("outline"); }} style={{ width: 220, padding: "20px 18px", background: "rgba(17,24,39,0.5)", border: "1px solid #1e2a3a", borderRadius: 10, cursor: "pointer", transition: "all 0.2s", position: "relative" }}
+                      <div key={ms.id} onClick={() => { setActiveMs(ms); setNovelView("outline"); }} style={{ width: 240, padding: "20px 18px", background: "rgba(17,24,39,0.5)", border: "1px solid #1e2a3a", borderRadius: 10, cursor: "pointer", transition: "all 0.2s", position: "relative" }}
                         onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; e.currentTarget.style.transform = "none"; }}>
-                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#f0c040", borderRadius: "10px 10px 0 0" }} />
+                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #f0c040, #e07050)", borderRadius: "10px 10px 0 0" }} />
                         <div style={{ fontSize: 28, marginBottom: 10 }}>📖</div>
                         <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: "#e8dcc8", fontWeight: 600, letterSpacing: 0.5 }}>{ms.title}</div>
                         {ms.description && <div style={{ fontSize: 11, color: "#6b7b8d", marginTop: 4, lineHeight: 1.4 }}>{ms.description.slice(0, 80)}</div>}
-                        <div style={{ display: "flex", gap: 12, marginTop: 12, fontSize: 10, color: "#556677" }}>
-                          <span>{ms.acts.length} act{ms.acts.length !== 1 ? "s" : ""}</span>
-                          <span>{chCount} ch.</span>
-                          <span>{wc.toLocaleString()} words</span>
+                        <div style={{ display: "flex", gap: 8, marginTop: 12, fontSize: 10, color: "#556677", flexWrap: "wrap" }}>
+                          <span style={{ background: "rgba(240,192,64,0.08)", padding: "2px 8px", borderRadius: 8 }}>{ms.acts.length} act{ms.acts.length !== 1 ? "s" : ""}</span>
+                          <span style={{ background: "rgba(126,200,227,0.08)", padding: "2px 8px", borderRadius: 8 }}>{chCount} ch</span>
+                          <span style={{ background: "rgba(142,200,160,0.08)", padding: "2px 8px", borderRadius: 8 }}>{scCount} scenes</span>
+                          <span style={{ background: "rgba(192,132,252,0.08)", padding: "2px 8px", borderRadius: 8 }}>{wc.toLocaleString()} words</span>
                         </div>
                       </div>
                     );
                   })}
-                  {/* Create new card */}
-                  <div onClick={() => setShowMsCreate(true)} style={{ width: 220, padding: "20px 18px", background: "transparent", border: "2px dashed #1e2a3a", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 140, transition: "all 0.2s" }}
+                  <div onClick={() => setShowMsCreate(true)} style={{ width: 240, padding: "20px 18px", background: "transparent", border: "2px dashed #1e2a3a", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 140, transition: "all 0.2s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; }}>
                     <div style={{ fontSize: 32, color: "#334455" }}>+</div>
                     <div style={{ fontSize: 12, color: "#556677", marginTop: 6 }}>New Manuscript</div>
@@ -2761,10 +2880,9 @@ export default function FrostfallRealms({ user, onLogout }) {
               </div>
             )}
 
-            {/* Outline Mode */}
+            {/* Outline Mode — Enhanced */}
             {novelView === "outline" && activeMs && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                {/* Outline header */}
                 <div style={{ padding: "14px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span onClick={() => { setNovelView("select"); setActiveMs(null); }} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Manuscripts</span>
@@ -2772,15 +2890,15 @@ export default function FrostfallRealms({ user, onLogout }) {
                     <span style={{ fontSize: 11, color: "#556677" }}>{msWordCount.total.toLocaleString()} words</span>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => setNovelView("corkboard")} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>🗂 Corkboard</button>
+                    <button onClick={compileManuscript} disabled={novelCompiling} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export"}</button>
                     <button onClick={addAct} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>+ Act</button>
                     <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>Delete</button>
                   </div>
                 </div>
-                {/* Outline body */}
                 <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
                   {activeMs.acts.map((act, ai) => (
                     <div key={act.id} style={{ marginBottom: 20 }}>
-                      {/* Act header */}
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}
                         onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(act.id) ? n.delete(act.id) : n.add(act.id); return n; })}>
                         <div style={{ width: 4, height: 28, background: act.color, borderRadius: 2 }} />
@@ -2791,12 +2909,10 @@ export default function FrostfallRealms({ user, onLogout }) {
                         <button onClick={(e) => { e.stopPropagation(); addChapter(act.id); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px" }}>+ Ch</button>
                         {activeMs.acts.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteAct(act.id); }} style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕</button>}
                       </div>
-                      {/* Chapters */}
                       {!novelOutlineCollapsed.has(act.id) && (
                         <div style={{ marginLeft: 20 }}>
                           {act.chapters.map((ch) => (
                             <div key={ch.id} style={{ marginBottom: 10, background: "rgba(17,24,39,0.4)", border: "1px solid #1a2435", borderRadius: 8, overflow: "hidden" }}>
-                              {/* Chapter header */}
                               <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #111827" }}>
                                 <span onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(ch.id) ? n.delete(ch.id) : n.add(ch.id); return n; })}
                                   style={{ fontSize: 10, color: "#556677", cursor: "pointer", transform: novelOutlineCollapsed.has(ch.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
@@ -2810,24 +2926,27 @@ export default function FrostfallRealms({ user, onLogout }) {
                                 <button onClick={() => addScene(act.id, ch.id)} style={{ ...S.btnS, fontSize: 8, padding: "2px 8px" }}>+ Scene</button>
                                 {act.chapters.length > 1 && <button onClick={() => deleteChapter(act.id, ch.id)} style={{ background: "none", border: "none", color: "#445566", cursor: "pointer", fontSize: 11 }}>✕</button>}
                               </div>
-                              {/* Synopsis */}
                               <div style={{ padding: "0 14px" }}>
                                 <input style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: "#6b7b8d", padding: "6px 0", outline: "none", fontStyle: "italic", fontFamily: "inherit", boxSizing: "border-box" }}
                                   placeholder="Chapter synopsis..." value={ch.synopsis || ""} onChange={(e) => updateChapter(act.id, ch.id, { synopsis: e.target.value })} />
                               </div>
-                              {/* Scenes */}
                               {!novelOutlineCollapsed.has(ch.id) && (
                                 <div style={{ padding: "4px 14px 10px" }}>
                                   {ch.scenes.map((sc) => {
                                     const scWords = sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0;
+                                    const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
                                     return (
                                       <div key={sc.id} onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
-                                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: "rgba(240,192,64,0.02)" }}
+                                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: "rgba(240,192,64,0.02)", borderLeft: scColor.color !== "transparent" ? "3px solid " + scColor.color : "3px solid transparent" }}
                                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.02)"; }}>
                                         <span style={{ fontSize: 10, color: "#f0c040" }}>▸</span>
                                         <input style={{ background: "none", border: "none", fontSize: 12, color: "#8899aa", outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit", cursor: "pointer" }}
                                           value={sc.title} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); updateScene(act.id, ch.id, sc.id, { title: e.target.value }); }} />
+                                        {sc.povCharacter && <span style={{ fontSize: 9, color: "#c084fc", background: "rgba(192,132,252,0.1)", padding: "1px 6px", borderRadius: 8 }}>{sc.povCharacter}</span>}
+                                        {sc.label && <span style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#556677", background: (scColor.color !== "transparent" ? scColor.color : "#556677") + "18", padding: "1px 6px", borderRadius: 8 }}>{sc.label || scColor.label}</span>}
                                         <span style={{ fontSize: 9, color: "#445566" }}>{scWords > 0 ? scWords.toLocaleString() + " w" : "empty"}</span>
+                                        {sc.notes && <span style={{ fontSize: 9, color: "#f0c040" }} title="Has notes">📝</span>}
+                                        {sc.snapshots?.length > 0 && <span style={{ fontSize: 9, color: "#7ec8e3" }} title={sc.snapshots.length + " snapshot(s)"}>📸{sc.snapshots.length}</span>}
                                         {ch.scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(act.id, ch.id, sc.id); }} style={{ background: "none", border: "none", color: "#334455", cursor: "pointer", fontSize: 10 }}>✕</button>}
                                       </div>
                                     );
@@ -2844,23 +2963,169 @@ export default function FrostfallRealms({ user, onLogout }) {
               </div>
             )}
 
-            {/* Writing Mode */}
+            {/* === CORKBOARD VIEW === */}
+            {novelView === "corkboard" && activeMs && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <div style={{ padding: "14px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                  <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Outline</span>
+                  <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>🗂 Corkboard</h2>
+                  <div style={{ flex: 1 }} />
+                  {/* Chapter filter */}
+                  <select value={corkboardChapter ? corkboardChapter.actId + "|" + corkboardChapter.chId : "all"}
+                    onChange={(e) => {
+                      if (e.target.value === "all") setCorkboardChapter(null);
+                      else { const [a, c] = e.target.value.split("|"); setCorkboardChapter({ actId: a, chId: c }); }
+                    }}
+                    style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, fontSize: 11, color: "#d4c9a8", padding: "4px 10px", outline: "none" }}>
+                    <option value="all">All Chapters</option>
+                    {activeMs.acts.map((a) => a.chapters.map((c) => (
+                      <option key={c.id} value={a.id + "|" + c.id}>{a.title} › {c.title}</option>
+                    )))}
+                  </select>
+                </div>
+                <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
+                  {activeMs.acts.filter((a) => !corkboardChapter || a.id === corkboardChapter.actId).map((act) => (
+                    act.chapters.filter((c) => !corkboardChapter || c.id === corkboardChapter.chId).map((ch) => (
+                      <div key={ch.id} style={{ marginBottom: 28 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                          <div style={{ width: 3, height: 16, background: act.color, borderRadius: 2 }} />
+                          <span style={{ fontSize: 13, color: act.color, fontWeight: 700, fontFamily: "'Cinzel', serif" }}>{act.title}</span>
+                          <span style={{ color: "#334455" }}>›</span>
+                          <span style={{ fontSize: 13, color: "#d4c9a8", fontWeight: 600 }}>{ch.title}</span>
+                          <span style={{ fontSize: 10, color: "#556677" }}>{chapterWordCount(ch).toLocaleString()} words</span>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                          {ch.scenes.map((sc, si) => {
+                            const scWords = sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0;
+                            const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
+                            return (
+                              <div key={sc.id}
+                                draggable onDragStart={() => setCorkboardDragId(sc.id)}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => { if (corkboardDragId && corkboardDragId !== sc.id) handleCorkDrop(act.id, ch.id, corkboardDragId, sc.id); setCorkboardDragId(null); }}
+                                onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
+                                style={{
+                                  width: 200, minHeight: 140, padding: "14px 16px",
+                                  background: corkboardDragId === sc.id ? "rgba(240,192,64,0.15)" : "rgba(17,24,39,0.6)",
+                                  border: "1px solid " + (corkboardDragId === sc.id ? "rgba(240,192,64,0.4)" : "#1e2a3a"),
+                                  borderTop: "3px solid " + (scColor.color !== "transparent" ? scColor.color : "#1e2a3a"),
+                                  borderRadius: 8, cursor: "grab", transition: "all 0.2s", position: "relative",
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
+                                <div style={{ fontSize: 13, color: "#d4c9a8", fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>{sc.title}</div>
+                                {sc.povCharacter && <div style={{ fontSize: 9, color: "#c084fc", marginBottom: 4 }}>POV: {sc.povCharacter}</div>}
+                                {sc.label && <div style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", marginBottom: 4 }}>{sc.label}</div>}
+                                <div style={{ fontSize: 10, color: "#6b7b8d", lineHeight: 1.4, overflow: "hidden", maxHeight: 52 }}>
+                                  {sc.body ? sc.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1").slice(0, 120) + (sc.body.length > 120 ? "..." : "") : <span style={{ fontStyle: "italic", color: "#445566" }}>Empty scene</span>}
+                                </div>
+                                <div style={{ position: "absolute", bottom: 10, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <span style={{ fontSize: 9, color: "#445566" }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}</span>
+                                  <div style={{ display: "flex", gap: 4 }}>
+                                    {sc.notes && <span style={{ fontSize: 9 }} title="Has notes">📝</span>}
+                                    {sc.snapshots?.length > 0 && <span style={{ fontSize: 9 }}>📸</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div onClick={() => addScene(act.id, ch.id)}
+                            style={{ width: 200, minHeight: 140, border: "2px dashed #1e2a3a", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; }}>
+                            <span style={{ color: "#445566", fontSize: 24 }}>+</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* === WRITING MODE — Enhanced === */}
             {novelView === "write" && activeMs && (() => {
               const scene = getActiveScene();
               const act = activeMs.acts.find((a) => a.id === novelActiveScene?.actId);
               const ch = act?.chapters.find((c) => c.id === novelActiveScene?.chId);
               if (!scene || !act || !ch) return <div style={{ padding: 40, color: "#556677" }}>No scene selected.</div>;
               const scWords = scene.body ? scene.body.trim().split(/\s+/).filter(Boolean).length : 0;
-              // @mention matches for inline highlighting info
+              const scColor = SCENE_COLORS.find((c) => c.id === (scene.color || "none")) || SCENE_COLORS[0];
               const mentionMatches = novelMention ? articles.filter((a) => {
-                if (!novelMention.query) return true; // show all when just @ typed
+                if (!novelMention.query) return true;
                 const q = novelMention.query.toLowerCase();
                 return a.title.toLowerCase().includes(q) || a.id.toLowerCase().startsWith(q);
               }).slice(0, 8) : [];
+
+              // Focus mode — fullscreen overlay
+              if (novelFocusMode) return (
+                <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#0a0e1a", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ position: "absolute", top: 16, right: 20, display: "flex", gap: 10, opacity: 0.3, transition: "opacity 0.3s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}>
+                    <span style={{ fontSize: 11, color: "#556677" }}>{scWords.toLocaleString()} words</span>
+                    {novelGoal.daily > 0 && <span style={{ fontSize: 11, color: goalProgress >= 100 ? "#8ec8a0" : "#f0c040" }}>{sessionWords}/{novelGoal.daily} today</span>}
+                    <button onClick={() => setNovelFocusMode(false)} style={{ background: "none", border: "1px solid #1e2a3a", color: "#6b7b8d", borderRadius: 6, padding: "3px 12px", cursor: "pointer", fontSize: 10 }}>Exit Focus</button>
+                  </div>
+                  <div style={{ position: "absolute", top: 16, left: 20, opacity: 0.15 }}>
+                    <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: "#556677" }}>{act.title} › {ch.title} › {scene.title}</span>
+                  </div>
+                  {/* Typewriter progress bar */}
+                  {novelGoal.daily > 0 && <div style={{ position: "absolute", top: 0, left: 0, height: 2, background: goalProgress >= 100 ? "#8ec8a0" : "#f0c040", width: goalProgress + "%", transition: "width 0.5s", borderRadius: 1 }} />}
+                  <div style={{ flex: 1, width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", overflow: "hidden", padding: "60px 0 40px" }}>
+                    <div
+                      ref={novelEditorRef}
+                      contentEditable suppressContentEditableWarning
+                      onInput={handleNovelInput}
+                      onClick={handleEditorClick}
+                      onMouseOver={handleEditorMouseOver}
+                      onMouseLeave={() => setMentionTooltip(null)}
+                      onCompositionStart={() => { isComposingRef.current = true; }}
+                      onCompositionEnd={() => { isComposingRef.current = false; handleNovelInput(); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") { if (novelMention) setNovelMention(null); else setNovelFocusMode(false); }
+                        if (novelMention && mentionMatches.length > 0 && (e.key === "Tab" || e.key === "Enter")) { e.preventDefault(); insertMention(mentionMatches[0]); }
+                      }}
+                      onBlur={() => setTimeout(() => setNovelMention(null), 200)}
+                      data-placeholder={"Begin writing...\nType @ to reference codex entries."}
+                      style={{
+                        flex: 1, width: "100%", background: "transparent", border: "none",
+                        color: "#c8bda0", caretColor: "#f0c040",
+                        fontSize: 18, fontFamily: "'Georgia', 'Times New Roman', serif",
+                        lineHeight: 2.2, padding: "0 20px", outline: "none", resize: "none",
+                        letterSpacing: 0.4, overflowY: "auto", whiteSpace: "pre-wrap", wordWrap: "break-word",
+                      }}
+                    />
+                  </div>
+                  {/* @mention autocomplete in focus mode */}
+                  {novelMention && mentionMatches.length > 0 && (
+                    <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: "#111827", border: "1px solid rgba(240,192,64,0.3)", borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 10000, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+                      <div style={{ padding: "4px 10px 6px", fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
+                      {mentionMatches.map((a, idx) => (
+                        <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
+                          style={{ padding: "8px 12px", fontSize: 12, color: "#d4c9a8", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? "rgba(240,192,64,0.08)" : "transparent"; }}>
+                          <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
+                          <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{a.title}</div></div>
+                          <span style={{ fontSize: 9, color: "#445566" }}>{CATEGORIES[a.category]?.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {mentionTooltip && mentionTooltip.article && (
+                    <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 10001, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color, fontFamily: "'Cinzel', serif" }}>{CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}</div>
+                      <div style={{ fontSize: 11, color: "#8899aa", lineHeight: 1.5, marginTop: 4 }}>{mentionTooltip.article.summary?.slice(0, 120) || "No summary."}</div>
+                    </div>
+                  )}
+                </div>
+              );
+
+              // Normal write mode
               return (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   {/* Writing toolbar */}
-                  <div style={{ padding: "10px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  <div style={{ padding: "8px 20px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                     <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Outline</span>
                     <div style={{ width: 1, height: 16, background: "#1e2a3a" }} />
                     <span style={{ fontSize: 11, color: act.color, fontWeight: 600 }}>{act.title}</span>
@@ -2869,13 +3134,47 @@ export default function FrostfallRealms({ user, onLogout }) {
                     <span style={{ color: "#334455" }}>›</span>
                     <span style={{ fontSize: 11, color: "#8899aa" }}>{scene.title}</span>
                     <div style={{ flex: 1 }} />
-                    <button onClick={() => navigateScene(-1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>← Prev</button>
-                    <button onClick={() => navigateScene(1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>Next →</button>
+
+                    {/* Scene color tag */}
+                    <select value={scene.color || "none"} onChange={(e) => updateScene(act.id, ch.id, scene.id, { color: e.target.value })}
+                      style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 4, fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", padding: "2px 8px", cursor: "pointer", outline: "none" }}>
+                      {SCENE_COLORS.map((c) => <option key={c.id} value={c.id} style={{ color: c.color !== "transparent" ? c.color : "#ccc" }}>{c.label}</option>)}
+                    </select>
+
+                    <button onClick={() => navigateScene(-1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>←</button>
+                    <button onClick={() => navigateScene(1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>→</button>
                     <div style={{ width: 1, height: 16, background: "#1e2a3a" }} />
-                    <button onClick={() => setNovelCodexOpen(!novelCodexOpen)} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", background: novelCodexOpen ? "rgba(240,192,64,0.1)" : "transparent", color: novelCodexOpen ? "#f0c040" : "#8899aa" }}>
-                      📖 Codex {novelCodexOpen ? "▸" : "◂"}
+                    <button onClick={() => setNovelFocusMode(true)} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }} title="Distraction-free writing">⊡ Focus</button>
+                    <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? "rgba(240,192,64,0.1)" : "transparent", color: novelSplitPane ? "#f0c040" : "#8899aa" }}>
+                      ◫ Split
                     </button>
                   </div>
+
+                  {/* Writing goal bar */}
+                  {(novelGoal.daily > 0 || novelShowGoalSet) && (
+                    <div style={{ padding: "6px 20px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(17,24,39,0.3)" }}>
+                      {novelShowGoalSet ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 10, color: "#6b7b8d" }}>Daily word goal:</span>
+                          <input type="number" style={{ ...S.input, width: 80, padding: "3px 8px", fontSize: 11 }} placeholder="e.g. 1000" value={novelGoalInput}
+                            onChange={(e) => setNovelGoalInput(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); } }} />
+                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px" }}>Set</button>
+                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: 0 })); setNovelShowGoalSet(false); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px", color: "#e07050" }}>Clear</button>
+                        </div>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 10, color: "#6b7b8d" }}>Session:</span>
+                          <span style={{ fontSize: 11, color: sessionWords > 0 ? "#8ec8a0" : "#556677", fontWeight: 600 }}>+{sessionWords.toLocaleString()}</span>
+                          <div style={{ flex: 1, height: 4, background: "#111827", borderRadius: 2, maxWidth: 200, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: goalProgress + "%", background: goalProgress >= 100 ? "#8ec8a0" : goalProgress > 50 ? "#f0c040" : "#e07050", borderRadius: 2, transition: "width 0.5s" }} />
+                          </div>
+                          <span style={{ fontSize: 10, color: goalProgress >= 100 ? "#8ec8a0" : "#556677" }}>{goalProgress}% of {novelGoal.daily.toLocaleString()}</span>
+                          {goalProgress >= 100 && <span style={{ fontSize: 10, color: "#8ec8a0" }}>🎉 Goal reached!</span>}
+                          <span onClick={() => { setNovelGoalInput(String(novelGoal.daily)); setNovelShowGoalSet(true); }} style={{ fontSize: 9, color: "#445566", cursor: "pointer" }}>✎</span>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
                     {/* Chapter nav rail */}
@@ -2887,26 +3186,81 @@ export default function FrostfallRealms({ user, onLogout }) {
                           </div>
                           {a.chapters.map((c) => (
                             <div key={c.id}>
-                              {c.scenes.map((s) => (
-                                <div key={s.id} onClick={() => setNovelActiveScene({ actId: a.id, chId: c.id, scId: s.id })}
-                                  style={{ padding: "5px 14px 5px 26px", fontSize: 11, color: s.id === scene.id ? "#f0c040" : "#6b7b8d", cursor: "pointer", background: s.id === scene.id ? "rgba(240,192,64,0.06)" : "transparent", borderLeft: s.id === scene.id ? "2px solid #f0c040" : "2px solid transparent", transition: "all 0.15s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                                  onMouseEnter={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
-                                  onMouseLeave={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "transparent"; }}>
-                                  <span style={{ fontSize: 9, color: "#445566" }}>{c.title.replace(/Chapter\s*/i, "Ch")} · </span>{s.title}
-                                </div>
-                              ))}
+                              {c.scenes.map((s) => {
+                                const sColor = SCENE_COLORS.find((sc) => sc.id === s.color) || SCENE_COLORS[0];
+                                return (
+                                  <div key={s.id} onClick={() => setNovelActiveScene({ actId: a.id, chId: c.id, scId: s.id })}
+                                    style={{ padding: "5px 14px 5px 26px", fontSize: 11, color: s.id === scene.id ? "#f0c040" : "#6b7b8d", cursor: "pointer", background: s.id === scene.id ? "rgba(240,192,64,0.06)" : "transparent", borderLeft: s.id === scene.id ? "2px solid #f0c040" : sColor.color !== "transparent" ? "2px solid " + sColor.color + "60" : "2px solid transparent", transition: "all 0.15s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                    onMouseEnter={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                                    onMouseLeave={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "transparent"; }}>
+                                    <span style={{ fontSize: 9, color: "#445566" }}>{c.title.replace(/Chapter\s*/i, "Ch")} · </span>{s.title}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ))}
                         </div>
                       ))}
+                      {/* Goal set button in nav */}
+                      <div style={{ padding: "12px 14px", borderTop: "1px solid #1a2435", marginTop: 8 }}>
+                        <span onClick={() => setNovelShowGoalSet(true)} style={{ fontSize: 10, color: "#556677", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>🎯 {novelGoal.daily > 0 ? novelGoal.daily.toLocaleString() + " word goal" : "Set word goal"}</span>
+                      </div>
                     </div>
 
-                    {/* ContentEditable editor with inline mention chips */}
+                    {/* Main editor area */}
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      {/* Scene metadata bar */}
+                      <div style={{ padding: "6px 20px", borderBottom: "1px solid #111827", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: "rgba(17,24,39,0.3)" }}>
+                        <input style={{ background: "none", border: "none", fontSize: 10, color: "#c084fc", outline: "none", width: 100, fontFamily: "inherit" }}
+                          placeholder="POV character..." value={scene.povCharacter || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { povCharacter: e.target.value })} />
+                        <div style={{ width: 1, height: 12, background: "#1a2435" }} />
+                        <input style={{ background: "none", border: "none", fontSize: 10, color: "#6b7b8d", outline: "none", flex: 1, fontFamily: "inherit" }}
+                          placeholder="Scene label / notes tag..." value={scene.label || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { label: e.target.value })} />
+                        <div style={{ width: 1, height: 12, background: "#1a2435" }} />
+                        <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} title="Save snapshot of current text"
+                          style={{ background: "none", border: "1px solid #1e2a3a", borderRadius: 4, color: "#7ec8e3", cursor: "pointer", fontSize: 9, padding: "2px 8px" }}>📸 Snapshot</button>
+                        {scene.snapshots?.length > 0 && (
+                          <span onClick={() => setNovelSnapshotView(novelSnapshotView !== null ? null : scene.snapshots.length - 1)}
+                            style={{ fontSize: 9, color: "#7ec8e3", cursor: "pointer", background: "rgba(126,200,227,0.1)", padding: "2px 8px", borderRadius: 4 }}>
+                            {scene.snapshots.length} snapshot{scene.snapshots.length !== 1 ? "s" : ""} {novelSnapshotView !== null ? "▾" : "▸"}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Snapshot viewer */}
+                      {novelSnapshotView !== null && scene.snapshots?.length > 0 && (
+                        <div style={{ padding: "10px 20px", borderBottom: "1px solid #1a2435", background: "rgba(126,200,227,0.03)", flexShrink: 0, maxHeight: 200, overflowY: "auto" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, color: "#7ec8e3", fontWeight: 600 }}>📸 Snapshots</span>
+                            <div style={{ flex: 1 }} />
+                            <span onClick={() => setNovelSnapshotView(null)} style={{ fontSize: 10, color: "#556677", cursor: "pointer" }}>✕</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                            {scene.snapshots.map((snap, si) => (
+                              <span key={si} onClick={() => setNovelSnapshotView(si)}
+                                style={{ fontSize: 10, padding: "3px 10px", borderRadius: 6, cursor: "pointer", background: novelSnapshotView === si ? "rgba(126,200,227,0.15)" : "rgba(17,24,39,0.5)", border: "1px solid " + (novelSnapshotView === si ? "rgba(126,200,227,0.3)" : "#1e2a3a"), color: novelSnapshotView === si ? "#7ec8e3" : "#6b7b8d" }}>
+                                {new Date(snap.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {snap.wordCount}w
+                              </span>
+                            ))}
+                          </div>
+                          {scene.snapshots[novelSnapshotView] && (
+                            <div>
+                              <div style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.6, maxHeight: 80, overflow: "hidden", padding: 8, background: "rgba(10,14,26,0.5)", borderRadius: 6, fontFamily: "'Georgia', serif" }}>
+                                {scene.snapshots[novelSnapshotView].body.slice(0, 300) || "(empty)"}...
+                              </div>
+                              <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, novelSnapshotView); setNovelSnapshotView(null); }}
+                                style={{ ...S.btnS, fontSize: 10, padding: "4px 12px", marginTop: 6, color: "#f0c040", borderColor: "rgba(240,192,64,0.3)" }}>
+                                ↩ Restore this snapshot
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ContentEditable editor */}
                       <div
                         ref={novelEditorRef}
-                        contentEditable
-                        suppressContentEditableWarning
+                        contentEditable suppressContentEditableWarning
                         onInput={handleNovelInput}
                         onClick={handleEditorClick}
                         onMouseOver={handleEditorMouseOver}
@@ -2915,9 +3269,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                         onCompositionEnd={() => { isComposingRef.current = false; handleNovelInput(); }}
                         onKeyDown={(e) => {
                           if (e.key === "Escape") setNovelMention(null);
-                          if (novelMention && mentionMatches.length > 0) {
-                            if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); insertMention(mentionMatches[0]); }
-                          }
+                          if (novelMention && mentionMatches.length > 0 && (e.key === "Tab" || e.key === "Enter")) { e.preventDefault(); insertMention(mentionMatches[0]); }
                         }}
                         onBlur={() => setTimeout(() => setNovelMention(null), 200)}
                         data-placeholder={"Begin writing " + scene.title + "...\nType @ to reference codex entries — they'll appear as clickable links."}
@@ -2931,7 +3283,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                         }}
                       />
 
-                      {/* @mention autocomplete dropdown */}
+                      {/* @mention autocomplete */}
                       {novelMention && mentionMatches.length > 0 && (
                         <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: "#111827", border: "1px solid rgba(240,192,64,0.3)", borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(240,192,64,0.1)" }}>
                           <div style={{ padding: "4px 10px 6px", fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
@@ -2991,7 +3343,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                       })()}
 
                       {/* Footer bar */}
-                      <div style={{ padding: "8px 28px", borderTop: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "#0a0e1a" }}>
+                      <div style={{ padding: "8px 20px", borderTop: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "#0a0e1a" }}>
                         <span style={{ fontSize: 10, color: "#556677" }}>Scene: <strong style={{ color: "#8899aa" }}>{scWords.toLocaleString()}</strong> words</span>
                         <span style={{ fontSize: 10, color: "#556677" }}>Chapter: <strong style={{ color: "#8899aa" }}>{chapterWordCount(ch).toLocaleString()}</strong></span>
                         <span style={{ fontSize: 10, color: "#556677" }}>Total: <strong style={{ color: "#8899aa" }}>{msWordCount.total.toLocaleString()}</strong></span>
@@ -3000,53 +3352,123 @@ export default function FrostfallRealms({ user, onLogout }) {
                           <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_COLORS[ch.status] }} />
                           <span style={{ fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 0.5 }}>{ch.status}</span>
                         </div>
-                        <span style={{ fontSize: 9, color: "#334455" }}>Type @ to link codex · Click mentions to open</span>
+                        <span style={{ fontSize: 9, color: "#334455" }}>@ codex · ⊡ focus · ◫ split</span>
                       </div>
                     </div>
 
-                    {/* Codex sidebar */}
-                    {novelCodexOpen && (
-                      <div style={{ width: 300, borderLeft: "1px solid #1a2435", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, background: "#0d1117" }}>
-                        <div style={{ padding: "12px 14px", borderBottom: "1px solid #1a2435" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                            <span style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: "#f0c040", letterSpacing: 1 }}>Codex Reference</span>
-                            <span onClick={() => setNovelCodexOpen(false)} style={{ cursor: "pointer", color: "#556677", fontSize: 12 }}>✕</span>
-                          </div>
-                          <input style={{ ...S.input, fontSize: 11, padding: "6px 10px" }} placeholder="Search articles..." value={novelCodexSearch} onChange={(e) => setNovelCodexSearch(e.target.value)} />
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                            <span onClick={() => setNovelCodexFilter("all")} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === "all" ? "rgba(240,192,64,0.15)" : "transparent", color: novelCodexFilter === "all" ? "#f0c040" : "#556677", border: "1px solid " + (novelCodexFilter === "all" ? "rgba(240,192,64,0.3)" : "#1e2a3a") }}>All</span>
-                            {["character", "location", "race", "deity", "item", "event"].map((cat) => (
-                              <span key={cat} onClick={() => setNovelCodexFilter(cat)} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === cat ? CATEGORIES[cat].color + "20" : "transparent", color: novelCodexFilter === cat ? CATEGORIES[cat].color : "#556677", border: "1px solid " + (novelCodexFilter === cat ? CATEGORIES[cat].color + "40" : "#1e2a3a") }}>
-                                {CATEGORIES[cat].icon} {CATEGORIES[cat].label}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
-                          {novelCodexArticles.map((a) => (
-                            <div key={a.id} style={{ marginBottom: 2, borderRadius: 6, overflow: "hidden" }}>
-                              <div onClick={() => setNovelCodexExpanded(novelCodexExpanded === a.id ? null : a.id)}
-                                style={{ padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "background 0.15s" }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                                <span style={{ color: CATEGORIES[a.category]?.color, fontSize: 12 }}>{CATEGORIES[a.category]?.icon}</span>
-                                <span style={{ fontSize: 12, color: "#d4c9a8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
-                                <button onClick={(e) => { e.stopPropagation(); insertMentionFromSidebar(a); }}
-                                  style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 10, padding: "2px 4px" }} title="Insert @mention">@+</button>
-                              </div>
-                              {novelCodexExpanded === a.id && (
-                                <div style={{ padding: "4px 10px 12px 30px" }}>
-                                  {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid #1e2a3a" }} />}
-                                  <p style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
-                                  {Object.entries(a.fields || {}).filter(([_, v]) => v).slice(0, 5).map(([k, v]) => (
-                                    <div key={k} style={{ fontSize: 10, color: "#556677", marginBottom: 2 }}><strong style={{ color: "#6b7b8d" }}>{formatKey(k)}:</strong> {String(v).slice(0, 60)}</div>
-                                  ))}
-                                  <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", marginTop: 6 }}>Open full article →</div>
-                                </div>
-                              )}
-                            </div>
+                    {/* === SPLIT PANE RIGHT SIDE === */}
+                    {novelSplitPane && (
+                      <div style={{ width: 340, borderLeft: "1px solid #1a2435", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, background: "#0d1117" }}>
+                        {/* Split pane tabs */}
+                        <div style={{ padding: "8px 12px", borderBottom: "1px solid #1a2435", display: "flex", gap: 4, flexShrink: 0 }}>
+                          {[
+                            { id: "notes", icon: "📝", label: "Notes" },
+                            { id: "codex", icon: "📖", label: "Codex" },
+                            { id: "snapshots", icon: "📸", label: "Snapshots" },
+                          ].map((tab) => (
+                            <span key={tab.id} onClick={() => setNovelSplitPane(tab.id)}
+                              style={{ fontSize: 10, padding: "4px 10px", borderRadius: 6, cursor: "pointer", background: novelSplitPane === tab.id ? "rgba(240,192,64,0.1)" : "transparent", color: novelSplitPane === tab.id ? "#f0c040" : "#556677", border: "1px solid " + (novelSplitPane === tab.id ? "rgba(240,192,64,0.25)" : "transparent"), transition: "all 0.15s" }}>
+                              {tab.icon} {tab.label}
+                            </span>
                           ))}
-                          {novelCodexArticles.length === 0 && <p style={{ fontSize: 11, color: "#445566", textAlign: "center", padding: 20 }}>No matching articles.</p>}
+                          <div style={{ flex: 1 }} />
+                          <span onClick={() => setNovelSplitPane(null)} style={{ cursor: "pointer", color: "#445566", fontSize: 12 }}>✕</span>
                         </div>
+
+                        {/* NOTES PANE */}
+                        {novelSplitPane === "notes" && (
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                            <div style={{ padding: "10px 14px 6px", flexShrink: 0 }}>
+                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#f0c040", letterSpacing: 0.5 }}>Scene Notes</span>
+                              <div style={{ fontSize: 10, color: "#445566", marginTop: 2 }}>Private notes — won't appear in exports</div>
+                            </div>
+                            <textarea
+                              value={scene.notes || ""}
+                              onChange={(e) => updateScene(act.id, ch.id, scene.id, { notes: e.target.value })}
+                              placeholder={"Research notes for " + scene.title + "...\n\nCharacter motivations, plot threads, setting details, reminders..."}
+                              style={{
+                                flex: 1, background: "transparent", border: "none", color: "#8899aa",
+                                fontSize: 13, fontFamily: "'Georgia', serif", lineHeight: 1.7,
+                                padding: "8px 14px", outline: "none", resize: "none", overflowY: "auto",
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        {/* CODEX PANE (replaces old sidebar) */}
+                        {novelSplitPane === "codex" && (
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                            <div style={{ padding: "10px 14px", borderBottom: "1px solid #1a2435", flexShrink: 0 }}>
+                              <input style={{ ...S.input, fontSize: 11, padding: "6px 10px" }} placeholder="Search articles..." value={novelCodexSearch} onChange={(e) => setNovelCodexSearch(e.target.value)} />
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                                <span onClick={() => setNovelCodexFilter("all")} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === "all" ? "rgba(240,192,64,0.15)" : "transparent", color: novelCodexFilter === "all" ? "#f0c040" : "#556677", border: "1px solid " + (novelCodexFilter === "all" ? "rgba(240,192,64,0.3)" : "#1e2a3a") }}>All</span>
+                                {["character", "location", "race", "deity", "item", "event"].map((cat) => (
+                                  <span key={cat} onClick={() => setNovelCodexFilter(cat)} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === cat ? CATEGORIES[cat].color + "20" : "transparent", color: novelCodexFilter === cat ? CATEGORIES[cat].color : "#556677", border: "1px solid " + (novelCodexFilter === cat ? CATEGORIES[cat].color + "40" : "#1e2a3a") }}>
+                                    {CATEGORIES[cat].icon}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+                              {novelCodexArticles.map((a) => (
+                                <div key={a.id} style={{ marginBottom: 2, borderRadius: 6, overflow: "hidden" }}>
+                                  <div onClick={() => setNovelCodexExpanded(novelCodexExpanded === a.id ? null : a.id)}
+                                    style={{ padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "background 0.15s" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                                    <span style={{ color: CATEGORIES[a.category]?.color, fontSize: 12 }}>{CATEGORIES[a.category]?.icon}</span>
+                                    <span style={{ fontSize: 12, color: "#d4c9a8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
+                                    <button onClick={(e) => { e.stopPropagation(); insertMentionFromSidebar(a); }}
+                                      style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 10, padding: "2px 4px" }} title="Insert @mention">@+</button>
+                                  </div>
+                                  {novelCodexExpanded === a.id && (
+                                    <div style={{ padding: "4px 10px 12px 30px" }}>
+                                      {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid #1e2a3a" }} />}
+                                      <p style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
+                                      {Object.entries(a.fields || {}).filter(([_, v]) => v).slice(0, 5).map(([k, v]) => (
+                                        <div key={k} style={{ fontSize: 10, color: "#556677", marginBottom: 2 }}><strong style={{ color: "#6b7b8d" }}>{formatKey(k)}:</strong> {String(v).slice(0, 60)}</div>
+                                      ))}
+                                      <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", marginTop: 6 }}>Open full article →</div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                              {novelCodexArticles.length === 0 && <p style={{ fontSize: 11, color: "#445566", textAlign: "center", padding: 20 }}>No matching articles.</p>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SNAPSHOTS PANE */}
+                        {novelSplitPane === "snapshots" && (
+                          <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#7ec8e3", letterSpacing: 0.5 }}>Scene Snapshots</span>
+                              <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px", color: "#7ec8e3", borderColor: "rgba(126,200,227,0.3)" }}>📸 Save</button>
+                            </div>
+                            {(!scene.snapshots || scene.snapshots.length === 0) ? (
+                              <div style={{ textAlign: "center", padding: "30px 10px", color: "#445566" }}>
+                                <div style={{ fontSize: 28, marginBottom: 8 }}>📸</div>
+                                <p style={{ fontSize: 12 }}>No snapshots yet.</p>
+                                <p style={{ fontSize: 10, color: "#334455" }}>Save a snapshot to create a restorable version of this scene.</p>
+                              </div>
+                            ) : (
+                              scene.snapshots.map((snap, si) => (
+                                <div key={si} style={{ marginBottom: 10, background: "rgba(17,24,39,0.5)", border: "1px solid #1e2a3a", borderRadius: 8, padding: "10px 12px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                    <span style={{ fontSize: 11, color: "#7ec8e3" }}>
+                                      {new Date(snap.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                    <span style={{ fontSize: 10, color: "#556677" }}>{snap.wordCount} words</span>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.5, maxHeight: 60, overflow: "hidden", marginBottom: 6 }}>
+                                    {snap.body.slice(0, 150) || "(empty)"}...
+                                  </div>
+                                  <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, si); }}
+                                    style={{ ...S.btnS, fontSize: 9, padding: "3px 10px", color: "#f0c040", borderColor: "rgba(240,192,64,0.3)" }}>↩ Restore</button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
