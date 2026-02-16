@@ -29,10 +29,14 @@ const SWIM_LANE_ORDER = ["deity", "magic", "race", "character", "event", "locati
 
 const SEED_ARTICLES = [];
 
+// === SAFE TEXT HELPERS (module-scope) ===
+const safeTextS = (v) => (v == null ? "" : String(v));
+const lowerS = (v) => safeTextS(v).toLowerCase();
+
 // === INTEGRITY ENGINES ===
 function similarity(a, b) {
   if (!a || !b) return 0;
-  a = a.toLowerCase().trim(); b = b.toLowerCase().trim();
+  a = lowerS(a).trim(); b = lowerS(b).trim();
   if (a === b) return 1;
   if (a.length < 2 || b.length < 2) return 0;
   const bigrams = (s) => { const r = new Set(); for (let i = 0; i < s.length - 1; i++) r.add(s.slice(i, i + 2)); return r; };
@@ -81,8 +85,8 @@ function detectConflicts(articles) {
         if (!target.temporal || target.id === source.id) return;
         const tt = target.temporal;
         if (tt.death_year && st.active_start > tt.death_year) {
-          const words = target.title.toLowerCase().split(/\s+/);
-          const kfL = kf.toLowerCase();
+          const words = lowerS(target.title).split(/\s+/);
+          const kfL = lowerS(kf);
           const match = words.some((w) => w.length > 3 && kfL.includes(w));
           if (match && !conflicts.find((c) => c.sourceId === source.id && c.targetId === target.id)) {
             conflicts.push({
@@ -104,15 +108,15 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
   if (!text && !fields) return [];
   const suggestions = [];
   const allText = (text || "") + " " + Object.values(fields || {}).join(" ");
-  const allTextLower = allText.toLowerCase();
-  const bodyOnly = (text || "").toLowerCase();
+  const allTextLower = lowerS(allText);
+  const bodyOnly = lowerS(text || "");
   const linked = new Set(existingLinks || []);
   // Also exclude rich mentions already in the text
   const richMentionIds = new Set((text?.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean));
   const mentioned = new Set([...(text?.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1)), ...richMentionIds]);
   articles.forEach((a) => {
     if (linked.has(a.id) || mentioned.has(a.id)) return;
-    const tl = a.title.toLowerCase();
+    const tl = lowerS(a.title);
     // Find the actual position in body text where this name appears (for contextual insertion)
     let matchPosition = -1;
     let matchText = "";
@@ -143,13 +147,13 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
 
 // Fuzzy match a broken ref ID against all existing articles — returns scored suggestions
 function findFuzzyMatches(brokenRefId, articles) {
-  const broken = brokenRefId.toLowerCase().replace(/_/g, " ");
+  const broken = lowerS(brokenRefId).replace(/_/g, " ");
   const brokenWords = broken.split(/[\s_]+/).filter((w) => w.length >= 3);
   const results = [];
   articles.forEach((a) => {
     let score = 0;
-    const titleLower = a.title.toLowerCase();
-    const idLower = a.id.toLowerCase().replace(/_/g, " ");
+    const titleLower = lowerS(a.title);
+    const idLower = lowerS(a.id).replace(/_/g, " ");
     // Exact substring match in ID (azurax in azurax_the_storm_wing)
     if (idLower.includes(broken)) score += 50;
     else if (broken.includes(idLower)) score += 40;
@@ -270,13 +274,13 @@ function checkArticleIntegrity(data, articles, excludeId = null) {
     const roleText = (fields.titles || "") + " " + (fields.role || "");
     const uniqueRoles = ["king", "queen", "emperor", "empress", "high priest", "archmage", "chieftain", "ruler"];
     uniqueRoles.forEach((role) => {
-      if (!roleText.toLowerCase().includes(role)) return;
+      if (!lowerS(roleText).includes(role)) return;
       const region = fields.region || fields.affiliations || fields.homeland || "";
       articles.forEach((other) => {
         if (other.id === excludeId || other.category !== data.category) return;
-        const otherRoles = ((other.fields?.titles || "") + " " + (other.fields?.role || "")).toLowerCase();
+        const otherRoles = lowerS((other.fields?.titles || "") + " " + (other.fields?.role || ""));
         const otherRegion = other.fields?.region || other.fields?.affiliations || other.fields?.homeland || "";
-        if (otherRoles.includes(role) && region && otherRegion && region.toLowerCase() === otherRegion.toLowerCase()) {
+        if (otherRoles.includes(role) && region && otherRegion && lowerS(region) === lowerS(otherRegion)) {
           // Check temporal overlap
           const ot = other.temporal;
           if (temporal && ot && temporal.active_start != null && ot.active_start != null) {
@@ -921,8 +925,8 @@ export default function FrostfallRealms({ user, onLogout }) {
         const longer = Math.max(chunk.length, existing.length);
         if (shorter / longer < 0.7) return false;
         // Quick check: compare first 500 chars
-        const a = chunk.slice(0, 500).toLowerCase().replace(/\s+/g, " ");
-        const b = existing.slice(0, 500).toLowerCase().replace(/\s+/g, " ");
+        const a = lowerS(safeTextS(chunk).slice(0, 500)).replace(/\s+/g, " ");
+        const b = lowerS(safeTextS(existing).slice(0, 500)).replace(/\s+/g, " ");
         let matches = 0;
         const words = a.split(" ");
         for (const w of words) { if (b.includes(w)) matches++; }
@@ -1033,7 +1037,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     if (file.size > 500000) {
       setAiParseError("⚠ Large file (" + (file.size / 1024).toFixed(0) + "KB). Estimated parse time: " + estimateParseTime(file.size) + ". The file will be split into chunks for processing.");
     }
-    const ext = file.name.split(".").pop()?.toLowerCase();
+    const ext = lowerS(file?.name?.split(".").pop() || "");
     if (ext === "docx" || ext === "doc") {
       const reader = new FileReader();
       reader.onload = async (ev) => {
@@ -1840,17 +1844,17 @@ export default function FrostfallRealms({ user, onLogout }) {
 
     setFormData((prev) => {
       let newBody = prev.body;
-      const bodyLower = newBody.toLowerCase();
+      const bodyLower = lowerS(newBody);
 
       // Strategy 1: exact title match
-      const titleLower = sug.article.title.toLowerCase();
+      const titleLower = lowerS(sug.article.title);
       const exactIdx = bodyLower.indexOf(titleLower);
       if (exactIdx !== -1) {
         return { ...prev, body: newBody.substring(0, exactIdx) + richMention + newBody.substring(exactIdx + sug.article.title.length) };
       }
 
       // Strategy 2: matched text — but check if it's inside an @mention
-      const searchText = (sug.matchText || sug.match || "").toLowerCase();
+      const searchText = lowerS(sug?.matchText || sug?.match || "");
       if (searchText) {
         const matchIdx = bodyLower.indexOf(searchText);
         if (matchIdx !== -1) {
@@ -2147,8 +2151,8 @@ export default function FrostfallRealms({ user, onLogout }) {
             <Ornament width={420} />
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
               {[
-                { name: "Buy Me a Coffee", icon: "☕", color: "#FFDD00", textColor: "#0a0e1a", url: "https://buymeacoffee.com", desc: "Quick one-time support" },
-                { name: "Ko-fi", icon: "🎨", color: "#FF5E5B", textColor: "#fff", url: "https://ko-fi.com", desc: "Support with no platform fees" },
+                { name: "Buy Me a Coffee", icon: "☕", color: "#FFDD00", textColor: "#0a0e1a", url: "https://buymeacoffee.com/viktor.13", desc: "Quick one-time support" },
+                { name: "Ko-fi", icon: "🎨", color: "#FF5E5B", textColor: "#fff", url: "ko-fi.com/viktor13", desc: "Support with no platform fees" },
                 { name: "Stripe", icon: "💳", color: "#635BFF", textColor: "#fff", url: "https://stripe.com", desc: "Flexible payment options" },
               ].map((p) => (
                 <div key={p.name} onClick={() => window.open(p.url, "_blank")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: p.color + "12", border: "1px solid " + p.color + "30", borderRadius: 8, cursor: "pointer", transition: "all 0.2s" }}
@@ -3894,8 +3898,8 @@ export default function FrostfallRealms({ user, onLogout }) {
                           };
 
                           // Strategy 1: Try exact full title match first
-                          const titleLower = s.article.title.toLowerCase();
-                          const bodyLower = newBody.toLowerCase();
+                          const titleLower = lowerS(s.article.title);
+                          const bodyLower = lowerS(newBody);
                           const titleIdx = bodyLower.indexOf(titleLower);
                           if (titleIdx !== -1) {
                             newBody = newBody.substring(0, titleIdx) + richMention + newBody.substring(titleIdx + s.article.title.length);
@@ -3903,7 +3907,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                           }
 
                           // Strategy 2: Find where the matched text appears
-                          const searchText = (s.matchText || s.match || "").toLowerCase();
+                          const searchText = lowerS(s?.matchText || s?.match || "");
                           if (searchText) {
                             const matchIdx = bodyLower.indexOf(searchText);
                             if (matchIdx !== -1) {
@@ -3956,7 +3960,7 @@ export default function FrostfallRealms({ user, onLogout }) {
             <div style={{ marginTop: 20 }}>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Title</label>
-                <input style={{ ...S.input, ...(liveDupes.length > 0 ? { borderColor: "#e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={"Name this " + CATEGORIES[createCat]?.label.toLowerCase() + "..."} />
+                <input style={{ ...S.input, ...(liveDupes.length > 0 ? { borderColor: "#e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={"Name this " + CATEGORIES[createCat]lowerS(?.label) + "..."} />
                 {liveDupes.length > 0 && <WarningBanner severity="error" icon="⚠" title="Potential Duplicates Found" style={{ marginTop: 8 }}>
                   <p style={{ margin: "0 0 8px" }}>Saving will require confirmation. Similar entries:</p>
                   {liveDupes.map((d) => <div key={d.article.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
@@ -4012,7 +4016,7 @@ export default function FrostfallRealms({ user, onLogout }) {
 
               <p style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, color: "#d4c9a8", marginTop: 24, marginBottom: 16, letterSpacing: 1 }}>◈ Template Fields</p>
               {TEMPLATE_FIELDS[createCat]?.map((fk) => (
-                <div key={fk} style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>{formatKey(fk)}</label><input style={S.input} value={formData.fields[fk] || ""} onChange={(e) => setFormData((p) => ({ ...p, fields: { ...p.fields, [fk]: e.target.value } }))} placeholder={"Enter " + formatKey(fk).toLowerCase() + "..."} /></div>
+                <div key={fk} style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>{formatKey(fk)}</label><input style={S.input} value={formData.fields[fk] || ""} onChange={(e) => setFormData((p) => ({ ...p, fields: { ...p.fields, [fk]: e.target.value } }))} placeholder={"Enter " + lowerS(formatKey(fk)) + "..."} /></div>
               ))}
 
               {/* Temporal override for deity/magic/race */}
@@ -4030,7 +4034,7 @@ export default function FrostfallRealms({ user, onLogout }) {
                 </div>
               </>)}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={S.textarea} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={"Write about this " + CATEGORIES[createCat]?.label.toLowerCase() + "..."} rows={8} /></div>
+              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={S.textarea} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={"Write about this " + CATEGORIES[createCat]lowerS(?.label) + "..."} rows={8} /></div>
 
               {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
                 <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>
