@@ -21,8 +21,8 @@ export default function AuthGate({ children }) {
       setLoading(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
+      setUser((prev) => (prev?.id && session?.user?.id && prev.id === session.user.id) ? prev : (session?.user || null));
+});
     return () => listener?.subscription?.unsubscribe();
   }, []);
 
