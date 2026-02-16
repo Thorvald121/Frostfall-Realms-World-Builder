@@ -941,7 +941,8 @@ export default function FrostfallRealms({ user, onLogout }) {
     setAiProgress({ current: 0, total: chunks.length, entries: 0 });
     let allEntries = [];
     let errors = [];
-    let existingTitles = articles.map((a) => a.title); // Start with current codex titles
+    let existingTitles = articles.map((a) => safeText(a?.title)); // always strings
+
 
     for (let i = 0; i < chunks.length; i++) {
       setAiProgress((p) => ({ ...p, current: i + 1 }));
@@ -963,24 +964,38 @@ export default function FrostfallRealms({ user, onLogout }) {
           continue;
         }
         if (data.entries && data.entries.length > 0) {
-          // Client-side dedup: skip entries with titles that already exist
-          const newEntries = data.entries.filter((e) => {
-            const normalTitle = e.title.toLowerCase().trim();
-            return !existingTitles.some((t) => t.toLowerCase().trim() === normalTitle);
-          });
-          const staged = newEntries.map((e, j) => ({
-            ...e,
-            _stagingId: Date.now() + "-" + i + "-" + j,
-            _status: "pending",
-            id: e.title?.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "") || "entry_" + i + "_" + j,
-            fields: e.fields || {},
-            tags: e.tags || [],
-            linkedIds: (e.body?.match(/@([\w]+)/g) || []).map((m) => m.slice(1)),
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }));
-          allEntries = [...allEntries, ...staged];
-          existingTitles = [...existingTitles, ...newEntries.map((e) => e.title)];
+  // Normalize incoming entries FIRST so the rest of the UI can trust types
+  const normalizedIncoming = data.entries.map((e) => ({
+    ...e,
+    title: safeText(e?.title),
+    summary: safeText(e?.summary),
+    body: safeText(e?.body),
+    category: safeText(e?.category),
+    fields: (e && typeof e.fields === "object" && !Array.isArray(e.fields)) ? e.fields : {},
+    tags: Array.isArray(e?.tags) ? e.tags.map(safeText).filter(Boolean) : [],
+  }));
+
+  // Client-side dedup: skip entries with titles that already exist
+  const newEntries = normalizedIncoming.filter((e) => {
+    const normalTitle = lower(e.title).trim();
+    return !existingTitles.some((t) => lower(t).trim() === normalTitle);
+  });
+
+  const staged = newEntries.map((e, j) => ({
+    ...e,
+    _stagingId: Date.now() + "-" + i + "-" + j,
+    _status: "pending",
+    id:
+      lower(e.title).replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "") ||
+      "entry_" + i + "_" + j,
+    linkedIds: (safeText(e.body).match(/@([\w]+)/g) || []).map((m) => m.slice(1)),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+
+  allEntries = [...allEntries, ...staged];
+  existingTitles = [...existingTitles, ...newEntries.map((e) => e.title)];
+
           setAiStaging((prev) => [...prev, ...staged]);
           setAiProgress((p) => ({ ...p, entries: allEntries.length }));
         }
@@ -3077,10 +3092,11 @@ export default function FrostfallRealms({ user, onLogout }) {
               const scWords = scene.body ? scene.body.trim().split(/\s+/).filter(Boolean).length : 0;
               const scColor = SCENE_COLORS.find((c) => c.id === (scene.color || "none")) || SCENE_COLORS[0];
               const mentionMatches = novelMention ? articles.filter((a) => {
-                if (!novelMention.query) return true;
-                const q = novelMention.query.toLowerCase();
-                return a.title.toLowerCase().includes(q) || a.id.toLowerCase().startsWith(q);
+                const q = lower(novelMention?.query).trim();
+                if (!q) return true;
+                return lower(a?.title).includes(q) || lower(a?.id).startsWith(q);
               }).slice(0, 8) : [];
+
 
               // Focus mode — fullscreen overlay
               if (novelFocusMode) return (
