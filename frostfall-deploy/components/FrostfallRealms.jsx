@@ -3960,7 +3960,8 @@ export default function FrostfallRealms({ user, onLogout }) {
             <div style={{ marginTop: 20 }}>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Title</label>
-                <input style={{ ...S.input, ...(liveDupes.length > 0 ? { borderColor: "#e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={`Name this ${CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? ""}...`} />
+                <input style={{ ...S.input, ...(liveDupes.length > 0 ? { borderColor: "#e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={`Name this ${CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? ""}...`}
+
 
                 {liveDupes.length > 0 && <WarningBanner severity="error" icon="⚠" title="Potential Duplicates Found" style={{ marginTop: 8 }}>
                   <p style={{ margin: "0 0 8px" }}>Saving will require confirmation. Similar entries:</p>
