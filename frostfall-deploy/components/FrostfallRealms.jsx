@@ -637,6 +637,10 @@ export default function FrostfallRealms({ user, onLogout }) {
   const importFileRef = useRef(null);
   const saveTimer = useRef(null);
 
+    // === SAFE STRING HELPERS ===
+  const lower = (v) => (typeof v === "string" ? v.toLowerCase() : v == null ? "" : String(v).toLowerCase());
+  const safeText = (v) => (v == null ? "" : String(v));
+
   // === PERSISTENT STORAGE (Supabase → window.storage → localStorage fallback) ===
   useEffect(() => {
     const loadData = async () => {
@@ -1709,15 +1713,20 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [mentionTooltip, setMentionTooltip] = useState(null);
 
   // Codex articles filtered for sidebar
-  const novelCodexArticles = useMemo(() => {
+    const novelCodexArticles = useMemo(() => {
     let filtered = articles;
     if (novelCodexFilter !== "all") filtered = filtered.filter((a) => a.category === novelCodexFilter);
-    if (novelCodexSearch) {
-      const q = novelCodexSearch.toLowerCase();
-      filtered = filtered.filter((a) => a.title.toLowerCase().includes(q) || a.summary?.toLowerCase().includes(q));
+
+    const q = lower(novelCodexSearch).trim();
+    if (q) {
+      filtered = filtered.filter((a) =>
+        lower(a?.title).includes(q) || lower(a?.summary).includes(q)
+      );
     }
+
     return filtered.slice(0, 50);
   }, [articles, novelCodexFilter, novelCodexSearch]);
+
 
   const STATUS_COLORS = { draft: "#556677", revised: "#f0c040", final: "#8ec8a0" };
 
@@ -1847,7 +1856,9 @@ export default function FrostfallRealms({ user, onLogout }) {
     const dupes = findDuplicates(formData.title, articles, editingId);
     if (dupes.length > 0) { setPendingDupes(dupes); setShowDupeModal(true); return; }
     // Check integrity — gate on errors/warnings
-    const data = { ...formData, id: editingId || formData.title?.toLowerCase().replace(/[^a-z0-9]+/g, "_"), category: createCat };
+        const slug = lower(formData?.title).replace(/[^a-z0-9]+/g, "_");
+    const data = { ...formData, id: editingId || slug, category: createCat };
+
     const warnings = checkArticleIntegrity(data, articles, editingId);
     const serious = warnings.filter((w) => w.severity === "error" || w.severity === "warning");
     if (serious.length > 0) {
@@ -1857,7 +1868,8 @@ export default function FrostfallRealms({ user, onLogout }) {
     doSave();
   };
   const doSave = () => {
-    const id = editingId || formData.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
+        const id = editingId || lower(formData?.title).replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
+
     // Extract both @[Title](id) rich mentions and legacy @id mentions
     const richMentions = (formData.body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean);
     const legacyMentions = (formData.body.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
@@ -1867,7 +1879,8 @@ export default function FrostfallRealms({ user, onLogout }) {
     const a = {
       id, title: formData.title, category: createCat, summary: formData.summary,
       fields: formData.fields, body: formData.body,
-      tags: formData.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: safeText(formData.tags).split(",").map((t) => t.trim()).filter(Boolean),
+
       linkedIds: allMentions, temporal,
       portrait: formData.portrait || (editingId ? (articles.find((x) => x.id === editingId)?.portrait || null) : null),
       createdAt: editingId ? (articles.find((x) => x.id === editingId)?.createdAt || now) : now,
@@ -1932,18 +1945,30 @@ export default function FrostfallRealms({ user, onLogout }) {
   const totalIntegrityIssues = allConflicts.length + globalIntegrity.reduce((t, a) => t + a.issues.length, 0);
   const linkSugs = useMemo(() => view === "create" ? findUnlinkedMentions(formData.body + " " + formData.summary + " " + formData.title, formData.fields, articles, editingId ? (articles.find((a) => a.id === editingId)?.linkedIds || []) : []) : [], [view, formData, articles, editingId]);
   const liveDupes = useMemo(() => view === "create" ? findDuplicates(formData.title, articles, editingId) : [], [view, formData.title, articles, editingId]);
-  const liveIntegrity = useMemo(() => {
+    const liveIntegrity = useMemo(() => {
     if (view !== "create") return [];
-    const data = { ...formData, id: editingId || formData.title?.toLowerCase().replace(/[^a-z0-9]+/g, "_"), category: createCat };
+    const slug = lower(formData?.title).replace(/[^a-z0-9]+/g, "_");
+    const data = { ...formData, id: editingId || slug, category: createCat };
     return checkArticleIntegrity(data, articles, editingId);
   }, [view, formData, articles, editingId, createCat]);
 
-  const filtered = useMemo(() => {
+
+    const filtered = useMemo(() => {
     let l = articles;
     if (codexFilter !== "all") l = l.filter((a) => a.category === codexFilter);
-    if (searchQuery.trim()) { const q = searchQuery.toLowerCase(); l = l.filter((a) => a.title.toLowerCase().includes(q) || a.summary.toLowerCase().includes(q) || a.tags?.some((t) => t.includes(q))); }
+
+    const q = lower(searchQuery).trim();
+    if (q) {
+      l = l.filter((a) =>
+        lower(a?.title).includes(q) ||
+        lower(a?.summary).includes(q) ||
+        (Array.isArray(a?.tags) && a.tags.some((t) => lower(t).includes(q)))
+      );
+    }
+
     return l;
   }, [articles, codexFilter, searchQuery]);
+
 
   const recent = useMemo(() => [...articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 6), [articles]);
   const catCounts = useMemo(() => {
