@@ -1,173 +1,427 @@
 "use client";
-import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+
+import React, { useEffect, useMemo, useState } from "react";
+import ThemeSelect from "@/components/ThemeSelect";
+import { applyThemeToRoot, loadThemeKey, saveThemeKey } from "@/lib/themes";
+
+// ✅ CHANGE THIS IMPORT IF YOUR PROJECT USES A DIFFERENT SUPABASE CLIENT PATH
+// Common patterns:
+//   - import { supabase } from "@/lib/supabaseClient";
+//   - import { createClient } from "@/utils/supabase/client";
+//   - import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
 
 export default function AuthGate({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [authView, setAuthView] = useState("login"); // login | register | forgot
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  // Check session on mount
-  useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user || null);
-      setLoading(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser((prev) => (prev?.id && session?.user?.id && prev.id === session.user.id) ? prev : (session?.user || null));
-});
-    return () => listener?.subscription?.unsubscribe();
+  const supabase = useMemo(() => {
+    try {
+      return createClient();
+    } catch (e) {
+      // If createClient import/path is wrong, UI still loads and shows a helpful error.
+      return null;
+    }
   }, []);
 
-  const handleLogin = async () => {
-    setError(""); setSubmitting(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
-    setSubmitting(false);
-  };
+  // Theme state (Option A)
+  const [themeKey, setThemeKey] = useState(() => loadThemeKey());
 
-  const handleRegister = async () => {
-    setError(""); setSubmitting(true);
-    const { error } = await supabase.auth.signUp({
-      email, password,
-      options: { data: { display_name: displayName || email.split("@")[0] } },
-    });
-    if (error) setError(error.message);
-    else setSuccess("Check your email for a confirmation link!");
-    setSubmitting(false);
-  };
+  useEffect(() => {
+    applyThemeToRoot(themeKey);
+    saveThemeKey(themeKey);
+  }, [themeKey]);
 
-  const handleForgot = async () => {
-    setError(""); setSubmitting(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    if (error) setError(error.message);
-    else setSuccess("Password reset email sent!");
-    setSubmitting(false);
-  };
+  // Auth state
+  const [session, setSession] = useState(null);
+  const [authMode, setAuthMode] = useState("signin"); // "signin" | "signup"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [fatal, setFatal] = useState("");
 
-  const handleOAuth = async (provider) => {
-    setError("");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) setError(error.message);
-  };
+  // Load session + subscribe
+  useEffect(() => {
+    let unsub = null;
 
-  // If no Supabase configured, skip auth (local dev mode)
-  if (!supabase) return children({ user: null, onLogout: () => {} });
-  if (loading) return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ textAlign: "center", color: "#f0c040" }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>◈</div>
-        <p style={{ fontFamily: "'Cinzel', 'Palatino Linotype', serif", fontSize: 16, letterSpacing: 2 }}>LOADING…</p>
-      </div>
-    </div>
-  );
+    async function boot() {
+      if (!supabase) {
+        setFatal(
+          "Supabase client not initialized. Check the import in components/AuthGate.jsx (createClient path)."
+        );
+        return;
+      }
 
-  // Authenticated — render app
-  if (user) return children({ user, onLogout: handleLogout });
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        setSession(data?.session ?? null);
 
-  // Auth form styles
-  const S = {
-    input: { width: "100%", background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, padding: "11px 14px", color: "#d4c9a8", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" },
-    btn: { width: "100%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", color: "#0a0e1a", border: "none", borderRadius: 6, padding: "12px 24px", fontSize: 14, fontWeight: 700, fontFamily: "'Cinzel', serif", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" },
-    btnSecondary: { width: "100%", background: "transparent", color: "#8899aa", border: "1px solid #1e2a3a", borderRadius: 6, padding: "11px 24px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
-    link: { fontSize: 12, color: "#f0c040", cursor: "pointer", background: "none", border: "none", fontFamily: "inherit", textDecoration: "underline" },
-  };
+        const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+          setSession(newSession ?? null);
+        });
 
-  return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif" }}>
-      <div style={{ width: 400, maxWidth: "90vw" }}>
-        {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 48, color: "#f0c040", marginBottom: 8 }}>◈</div>
-          <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 28, color: "#e8dcc8", margin: "0 0 4px", letterSpacing: 3 }}>FROSTFALL REALMS</h1>
-          <p style={{ fontSize: 13, color: "#556677", letterSpacing: 1 }}>Worldbuilding Engine</p>
+        unsub = sub?.subscription;
+      } catch (err) {
+        setFatal(err?.message || "Failed to initialize authentication.");
+      }
+    }
+
+    boot();
+
+    return () => {
+      try {
+        unsub?.unsubscribe?.();
+      } catch {
+        // ignore
+      }
+    };
+  }, [supabase]);
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setMessage("");
+
+    if (!supabase) {
+      setFatal("Supabase client not initialized (bad createClient import/path).");
+      return;
+    }
+
+    const cleanEmail = (email || "").trim();
+
+    if (!cleanEmail) {
+      setMessage("Enter your email.");
+      return;
+    }
+    if (!password || password.length < 6) {
+      setMessage("Password must be at least 6 characters.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (authMode === "signup") {
+        const { error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+        });
+        if (error) throw error;
+
+        setMessage(
+          "Account created. If email confirmation is enabled, check your inbox before signing in."
+        );
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+        if (error) throw error;
+        setMessage("");
+      }
+    } catch (err) {
+      setMessage(err?.message || "Authentication failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSignOut() {
+    if (!supabase) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (err) {
+      setMessage(err?.message || "Sign out failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // If authenticated, pass through.
+  if (session) {
+    return (
+      <div style={{ minHeight: "100vh" }}>
+        {/* Top-right controls */}
+        <div
+          style={{
+            position: "fixed",
+            top: 14,
+            right: 14,
+            zIndex: 50,
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            background: "var(--topBarBg)",
+            border: "1px solid var(--border)",
+            padding: "10px 12px",
+            borderRadius: 14,
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <ThemeSelect value={themeKey} onChange={setThemeKey} compact />
+          <button
+            onClick={onSignOut}
+            disabled={busy}
+            style={{
+              background: "var(--accentBg)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "6px 10px",
+              cursor: busy ? "not-allowed" : "pointer",
+              fontFamily: "var(--uiFont)",
+              fontSize: 12,
+            }}
+          >
+            Sign out
+          </button>
         </div>
 
-        <div style={{ background: "linear-gradient(135deg, #111827 0%, #0d1117 100%)", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px" }}>
-          {/* Tabs */}
-          <div style={{ display: "flex", marginBottom: 24, borderBottom: "1px solid #1a2435" }}>
-            {[["login", "Sign In"], ["register", "Create Account"]].map(([id, label]) => (
-              <button key={id} onClick={() => { setAuthView(id); setError(""); setSuccess(""); }}
-                style={{ flex: 1, padding: "10px 0", background: "none", border: "none", borderBottom: authView === id ? "2px solid #f0c040" : "2px solid transparent", color: authView === id ? "#f0c040" : "#556677", fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: 1 }}>
-                {label}
-              </button>
-            ))}
+        {children}
+      </div>
+    );
+  }
+
+  // Auth UI
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 22,
+        background: "var(--rootBg)",
+        color: "var(--text)",
+        position: "relative",
+      }}
+    >
+      {/* Theme selector */}
+      <div style={{ position: "fixed", top: 14, right: 14, zIndex: 50 }}>
+        <ThemeSelect value={themeKey} onChange={setThemeKey} compact />
+      </div>
+
+      <div
+        className="ff-auth-grid"
+        style={{
+          width: "min(980px, 100%)",
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1fr",
+          gap: 18,
+          alignItems: "stretch",
+        }}
+      >
+        {/* Left: Brand / Info */}
+        <div
+          style={{
+            background: "var(--cardBg)",
+            border: "1px solid var(--border)",
+            borderRadius: 18,
+            padding: 22,
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--displayFont)",
+              fontSize: 28,
+              letterSpacing: 0.6,
+              marginBottom: 8,
+              color: "var(--text)",
+            }}
+          >
+            Frostfall Realms
           </div>
 
-          {error && <div style={{ background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.3)", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#e07050" }}>{error}</div>}
-          {success && <div style={{ background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.3)", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#8ec8a0" }}>{success}</div>}
+          <div style={{ color: "var(--textMuted)", lineHeight: 1.5, fontSize: 14 }}>
+            Theme-driven UI is now global. You can change themes here, and the rest of the
+            application will inherit colors from CSS tokens.
+          </div>
 
-          {authView === "forgot" ? (
-            <>
-              <p style={{ fontSize: 13, color: "#8899aa", marginBottom: 16, lineHeight: 1.5 }}>Enter your email and we'll send a password reset link.</p>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Email</label>
-                <input style={S.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
-              </div>
-              <button style={{ ...S.btn, opacity: submitting ? 0.6 : 1 }} onClick={handleForgot} disabled={submitting}>Send Reset Link</button>
-              <div style={{ textAlign: "center", marginTop: 16 }}><button style={S.link} onClick={() => setAuthView("login")}>← Back to Sign In</button></div>
-            </>
-          ) : (
-            <>
-              {authView === "register" && (
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Display Name</label>
-                  <input style={S.input} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your worldbuilder name" />
-                </div>
-              )}
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Email</label>
-                <input style={S.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" onKeyDown={(e) => e.key === "Enter" && (authView === "login" ? handleLogin() : handleRegister())} />
-              </div>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Password</label>
-                <input style={S.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={(e) => e.key === "Enter" && (authView === "login" ? handleLogin() : handleRegister())} />
-              </div>
-              <button style={{ ...S.btn, opacity: submitting ? 0.6 : 1 }} onClick={authView === "login" ? handleLogin : handleRegister} disabled={submitting}>
-                {authView === "login" ? "Sign In" : "Create Account"}
-              </button>
+          <div
+            style={{
+              marginTop: 18,
+              padding: 14,
+              borderRadius: 16,
+              border: "1px solid var(--border)",
+              background: "color-mix(in srgb, var(--surface) 70%, transparent)",
+            }}
+          >
+            <div style={{ fontFamily: "var(--uiFont)", fontWeight: 600, marginBottom: 6 }}>
+              Theme notes
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: "var(--textMuted)", lineHeight: 1.6 }}>
+              <li>Dark Arcane + Midnight Blue are tuned for readability.</li>
+              <li>Parchment Light keeps ink-on-paper contrast consistent.</li>
+              <li>Frostfall Ice + Emberforge add two more usable palettes.</li>
+            </ul>
+          </div>
 
-              {authView === "login" && (
-                <div style={{ textAlign: "center", marginTop: 12 }}>
-                  <button style={S.link} onClick={() => { setAuthView("forgot"); setError(""); setSuccess(""); }}>Forgot password?</button>
-                </div>
-              )}
-
-              <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
-                <div style={{ flex: 1, height: 1, background: "#1e2a3a" }} />
-                <span style={{ fontSize: 10, color: "#445566", letterSpacing: 1 }}>OR</span>
-                <div style={{ flex: 1, height: 1, background: "#1e2a3a" }} />
+          {fatal ? (
+            <div
+              style={{
+                marginTop: 18,
+                color: "var(--text)",
+                background: "rgba(220, 38, 38, 0.15)",
+                border: "1px solid rgba(220, 38, 38, 0.35)",
+                padding: 12,
+                borderRadius: 14,
+                lineHeight: 1.45,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Configuration issue</div>
+              <div style={{ color: "var(--textMuted)" }}>{fatal}</div>
+              <div style={{ marginTop: 10, color: "var(--textMuted)" }}>
+                Fix: update the Supabase import at the top of <code>components/AuthGate.jsx</code>.
               </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <button style={S.btnSecondary} onClick={() => handleOAuth("google")}>
-                  <span>🔵</span> Continue with Google
-                </button>
-                <button style={S.btnSecondary} onClick={() => handleOAuth("github")}>
-                  <span>⚫</span> Continue with GitHub
-                </button>
-              </div>
-            </>
-          )}
+            </div>
+          ) : null}
         </div>
 
-        <p style={{ textAlign: "center", fontSize: 10, color: "#333d4d", marginTop: 24, letterSpacing: 1 }}>FROSTFALL REALMS © {new Date().getFullYear()}</p>
+        {/* Right: Auth Card */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 18,
+            padding: 22,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+          }}
+        >
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("signin");
+                setMessage("");
+              }}
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: "1px solid var(--border)",
+                cursor: "pointer",
+                background: authMode === "signin" ? "var(--accentBg)" : "var(--inputBg)",
+                color: "var(--text)",
+                fontFamily: "var(--uiFont)",
+                fontWeight: 650,
+              }}
+            >
+              Sign in
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("signup");
+                setMessage("");
+              }}
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: "1px solid var(--border)",
+                cursor: "pointer",
+                background: authMode === "signup" ? "var(--accentBg)" : "var(--inputBg)",
+                color: "var(--text)",
+                fontFamily: "var(--uiFont)",
+                fontWeight: 650,
+              }}
+            >
+              Create account
+            </button>
+          </div>
+
+          <div style={{ marginBottom: 10, color: "var(--textMuted)", fontSize: 13 }}>
+            {authMode === "signup"
+              ? "Create an account to access your worlds and archives."
+              : "Welcome back. Sign in to continue."}
+          </div>
+
+          <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, marginTop: 10 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 13, color: "var(--textMuted)" }}>Email</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                autoComplete="email"
+                placeholder="you@domain.com"
+                style={{
+                  padding: "11px 12px",
+                  fontSize: 14,
+                  fontFamily: "var(--uiFont)",
+                }}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 13, color: "var(--textMuted)" }}>Password</span>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                placeholder="••••••••"
+                style={{
+                  padding: "11px 12px",
+                  fontSize: 14,
+                  fontFamily: "var(--uiFont)",
+                }}
+              />
+            </label>
+
+            {message ? (
+              <div
+                style={{
+                  background: "color-mix(in srgb, var(--accentBg) 35%, transparent)",
+                  border: "1px solid var(--border)",
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  color: "var(--textMuted)",
+                  lineHeight: 1.4,
+                  fontSize: 13,
+                }}
+              >
+                {message}
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={busy || !!fatal}
+              style={{
+                marginTop: 2,
+                background: "var(--accent)",
+                color: "black",
+                border: "none",
+                borderRadius: 14,
+                padding: "11px 12px",
+                fontFamily: "var(--uiFont)",
+                fontSize: 14,
+                fontWeight: 800,
+                cursor: busy || !!fatal ? "not-allowed" : "pointer",
+                opacity: busy || !!fatal ? 0.7 : 1,
+              }}
+            >
+              {busy ? "Working…" : authMode === "signup" ? "Create account" : "Sign in"}
+            </button>
+
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--textDim)", lineHeight: 1.5 }}>
+              Password-based auth shown here for simplicity. If your project uses magic links,
+              OAuth, or email confirmation settings, this UI still works — Supabase behavior will
+              follow your project settings.
+            </div>
+          </form>
+        </div>
       </div>
+
+      {/* Mobile layout fallback */}
+      <style>{`
+        @media (max-width: 880px) {
+          .ff-auth-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </div>
   );
 }
