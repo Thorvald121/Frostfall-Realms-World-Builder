@@ -54,11 +54,11 @@ const ERAS = [
 const SWIM_LANE_ORDER = ["deity", "magic", "race", "character", "event", "location", "organization", "item", "language", "flora_fauna", "laws_customs"];
 
 const THEMES = {
-  dark_arcane: { name: "Dark Arcane", desc: "The original — deep blacks, gold accents", rootBg: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", sidebarBg: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", border: "#1e2a3a", surface: "#111827", surfaceHover: "rgba(17,24,39,0.85)", text: "#d4c9a8", textMuted: "#8899aa", textDim: "#556677", accent: "#f0c040", accentBg: "rgba(240,192,64,0.12)", inputBg: "#0d1117", topBarBg: "rgba(10,14,26,0.6)", cardBg: "rgba(17,24,39,0.6)" },
-  midnight_blue: { name: "Midnight Blue", desc: "Cool blues and silver — oceanic depths", rootBg: "linear-gradient(170deg, #0a1628 0%, #0f1f3a 40%, #0a1425 100%)", sidebarBg: "linear-gradient(180deg, #0c1424 0%, #0a1020 100%)", border: "#1a2d4a", surface: "#0f1f3a", surfaceHover: "rgba(15,31,58,0.85)", text: "#c8d8e8", textMuted: "#7899bb", textDim: "#4a6888", accent: "#5ea8d0", accentBg: "rgba(94,168,208,0.12)", inputBg: "#0a1628", topBarBg: "rgba(10,22,40,0.6)", cardBg: "rgba(15,31,58,0.6)" },
-  parchment: { name: "Parchment Light", desc: "Warm cream and ink — like aged paper", rootBg: "linear-gradient(170deg, #f5f0e8 0%, #ece4d4 40%, #f0ead8 100%)", sidebarBg: "linear-gradient(180deg, #e8e0d0 0%, #ddd4c4 100%)", border: "#c8b898", surface: "#f5f0e8", surfaceHover: "rgba(220,210,190,0.5)", text: "#3a2f20", textMuted: "#6b5d48", textDim: "#9a8a70", accent: "#8b6914", accentBg: "rgba(139,105,20,0.12)", inputBg: "#faf6f0", topBarBg: "rgba(245,240,232,0.85)", cardBg: "rgba(236,228,212,0.6)" },
-  frostfall_ice: { name: "Frostfall Ice", desc: "Glacier blues, cold steel accents", rootBg: "linear-gradient(170deg, #06121f 0%, #0a1b2d 45%, #07101b 100%)", sidebarBg: "linear-gradient(180deg, #071628 0%, #05101e 100%)", border: "#1c3450", surface: "#0a1b2d", surfaceHover: "rgba(10,27,45,0.88)", text: "#d7e6f6", textMuted: "#9fb9d6", textDim: "#6e8aa7", accent: "#7dd3fc", accentBg: "rgba(125,211,252,0.14)", inputBg: "#06121f", topBarBg: "rgba(6,18,31,0.62)", cardBg: "rgba(10,27,45,0.62)" },
-  emberforge: { name: "Emberforge", desc: "Charcoal + ember orange, forge-lit UI", rootBg: "linear-gradient(170deg, #120a0a 0%, #1a1010 40%, #0e0a0a 100%)", sidebarBg: "linear-gradient(180deg, #140c0c 0%, #0f0a0a 100%)", border: "#3a2622", surface: "#1a1010", surfaceHover: "rgba(26,16,16,0.88)", text: "#f1e2d0", textMuted: "#c8ab8a", textDim: "#8a6b52", accent: "#fb923c", accentBg: "rgba(251,146,60,0.14)", inputBg: "#120a0a", topBarBg: "rgba(18,10,10,0.62)", cardBg: "rgba(26,16,16,0.62)" },
+  dark_arcane: { name: "Dark Arcane", desc: "The original — deep blacks, gold accents", rootBg: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", sidebarBg: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", border: "#1e2a3a", surface: "#111827", surfaceHover: "rgba(17,24,39,0.85)", text: "#e2d9be", textMuted: "#a8b4c2", textDim: "#7a8da0", accent: "#f0c040", accentBg: "rgba(240,192,64,0.12)", inputBg: "#0d1117", topBarBg: "rgba(10,14,26,0.95)", cardBg: "rgba(17,24,39,0.6)" },
+  midnight_blue: { name: "Midnight Blue", desc: "Cool blues and silver — oceanic depths", rootBg: "linear-gradient(170deg, #0a1628 0%, #0f1f3a 40%, #0a1425 100%)", sidebarBg: "linear-gradient(180deg, #0c1424 0%, #0a1020 100%)", border: "#1a2d4a", surface: "#0f1f3a", surfaceHover: "rgba(15,31,58,0.85)", text: "#d8e6f4", textMuted: "#99b4d0", textDim: "#7494b8", accent: "#5ea8d0", accentBg: "rgba(94,168,208,0.12)", inputBg: "#0a1628", topBarBg: "rgba(10,22,40,0.95)", cardBg: "rgba(15,31,58,0.6)" },
+  parchment: { name: "Parchment Light", desc: "Warm cream and ink — like aged paper", rootBg: "linear-gradient(170deg, #f5f0e8 0%, #ece4d4 40%, #f0ead8 100%)", sidebarBg: "linear-gradient(180deg, #e8e0d0 0%, #ddd4c4 100%)", border: "#c8b898", surface: "#f5f0e8", surfaceHover: "rgba(220,210,190,0.5)", text: "#2a2010", textMuted: "#50442e", textDim: "#70624c", accent: "#8b6914", accentBg: "rgba(139,105,20,0.12)", inputBg: "#faf6f0", topBarBg: "rgba(245,240,232,0.96)", cardBg: "rgba(236,228,212,0.6)" },
+  frostfall_ice: { name: "Frostfall Ice", desc: "Glacier blues, cold steel accents", rootBg: "linear-gradient(170deg, #06121f 0%, #0a1b2d 45%, #07101b 100%)", sidebarBg: "linear-gradient(180deg, #071628 0%, #05101e 100%)", border: "#1c3450", surface: "#0a1b2d", surfaceHover: "rgba(10,27,45,0.88)", text: "#e2edf8", textMuted: "#b4cde2", textDim: "#8aabca", accent: "#7dd3fc", accentBg: "rgba(125,211,252,0.14)", inputBg: "#06121f", topBarBg: "rgba(6,18,31,0.95)", cardBg: "rgba(10,27,45,0.62)" },
+  emberforge: { name: "Emberforge", desc: "Charcoal + ember orange, forge-lit UI", rootBg: "linear-gradient(170deg, #120a0a 0%, #1a1010 40%, #0e0a0a 100%)", sidebarBg: "linear-gradient(180deg, #140c0c 0%, #0f0a0a 100%)", border: "#3a2622", surface: "#1a1010", surfaceHover: "rgba(26,16,16,0.88)", text: "#f4eadc", textMuted: "#d4bfa4", textDim: "#aa8e74", accent: "#fb923c", accentBg: "rgba(251,146,60,0.14)", inputBg: "#120a0a", topBarBg: "rgba(18,10,10,0.95)", cardBg: "rgba(26,16,16,0.62)" },
 };
 const FONT_SIZES = { compact: 0.88, default: 1.0, large: 1.14 };
 const EDITOR_FONTS = {
@@ -638,7 +638,7 @@ const S = {
   root: { fontFamily: "'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", color: "#d4c9a8", minHeight: "100vh", display: "flex", overflow: "hidden", height: "100vh" },
   sidebar: { width: 260, minWidth: 260, background: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", borderRight: "1px solid #1e2a3a", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
   navItem: (a) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px", cursor: "pointer", background: a ? "linear-gradient(90deg, rgba(240,192,64,0.12) 0%, transparent 100%)" : "transparent", borderLeft: a ? "2px solid #f0c040" : "2px solid transparent", color: a ? "#f0c040" : "#8899aa", fontSize: 13, fontWeight: a ? 600 : 400, transition: "all 0.2s", letterSpacing: 0.5 }),
-  topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 28px", borderBottom: "1px solid #1a2435", background: "rgba(10,14,26,0.6)", backdropFilter: "blur(10px)" },
+  topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 28px", borderBottom: "1px solid #1a2435", background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)", position: "relative", zIndex: 50, flexShrink: 0 },
   searchBox: { background: "#111827", border: "1px solid #1e2a3a", borderRadius: 6, padding: "7px 14px 7px 34px", color: "#d4c9a8", fontSize: 13, width: 320, outline: "none", fontFamily: "inherit" },
   content: { flex: 1, overflowY: "auto", padding: "0 28px 40px" },
   statCard: { flex: "1 1 100px", background: "linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(15,20,32,0.9) 100%)", border: "1px solid #1e2a3a", borderRadius: 8, padding: "16px 18px", position: "relative", overflow: "hidden" },
@@ -2240,7 +2240,7 @@ const handleCreateWorld = async () => {
               <span style={{ fontSize: 24 }}>🛡</span>
               <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Lore Integrity Warning</h3>
             </div>
-            <p style={{ fontSize: 13, color: "#8899aa", marginBottom: 16, lineHeight: 1.5 }}>
+            <p style={{ fontSize: 13, color: theme.textMuted, marginBottom: 16, lineHeight: 1.5 }}>
               This entry has {integrityGate.warnings.length} integrity issue{integrityGate.warnings.length !== 1 ? "s" : ""} that may conflict with existing canon:
             </p>
             <div style={{ maxHeight: 200, overflowY: "auto", marginBottom: 20 }}>
@@ -2249,7 +2249,7 @@ const handleCreateWorld = async () => {
                   <span style={{ fontSize: 12, flexShrink: 0 }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
                   <div>
                     <div style={{ fontSize: 12, color: w.severity === "error" ? "#e07050" : "#f0c040", lineHeight: 1.4 }}>{w.message}</div>
-                    {w.suggestion && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 3 }}>{w.suggestion}</div>}
+                    {w.suggestion && <div style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}>{w.suggestion}</div>}
                   </div>
                 </div>
               ))}
@@ -2272,7 +2272,7 @@ const handleCreateWorld = async () => {
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <span style={{ fontSize: 36 }}>♥</span>
               <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: "#f0c040", margin: "8px 0 4px", letterSpacing: 1 }}>Support Frostfall Realms</h3>
-              <p style={{ fontSize: 12, color: "#8899aa", lineHeight: 1.6, margin: 0 }}>If you enjoy this worldbuilding engine, consider supporting its development.</p>
+              <p style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.6, margin: 0 }}>If you enjoy this worldbuilding engine, consider supporting its development.</p>
             </div>
             <Ornament width={420} />
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
@@ -2286,14 +2286,14 @@ const handleCreateWorld = async () => {
                   onMouseLeave={(e) => { e.currentTarget.style.background = p.color + "12"; e.currentTarget.style.transform = "none"; }}>
                   <span style={{ fontSize: 24, width: 36, textAlign: "center" }}>{p.icon}</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#d4c9a8" }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: "#6b7b8d", marginTop: 2 }}>{p.desc}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>{p.desc}</div>
                   </div>
                   <span style={{ fontSize: 11, color: p.color, fontWeight: 600 }}>→</span>
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 10, color: "#445566", textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>Links will be configured when the platform is deployed. Thank you for your support!</p>
+            <p style={{ fontSize: 10, color: theme.textDim, textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>Links will be configured when the platform is deployed. Thank you for your support!</p>
             <div style={{ textAlign: "center", marginTop: 12 }}><button style={S.btnS} onClick={() => setShowDonate(false)}>Close</button></div>
           </div>
         </div>
@@ -2303,7 +2303,7 @@ const handleCreateWorld = async () => {
       <div style={{ ...S.sidebar, background: theme.sidebarBg, borderRight: "1px solid " + theme.border }}>
         <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid #1a2435" }}>
           <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: "#f0c040", letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
-          <p style={{ fontSize: 10, color: "#6b7b8d", letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
+          <p style={{ fontSize: 10, color: theme.textDim, letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
           <Ornament width={228} />
         </div>
         {/* User info bar */}
@@ -2312,10 +2312,10 @@ const handleCreateWorld = async () => {
             <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#0a0e1a" }}>
               {(user.user_metadata?.display_name || user.email || "U")[0].toUpperCase()}
             </div>
-            <span style={{ flex: 1, fontSize: 11, color: "#8899aa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ flex: 1, fontSize: 11, color: theme.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {user.user_metadata?.display_name || user.email?.split("@")[0]}
             </span>
-            <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
+            <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#556677"; }}>⏻</button>
           </div>
         )}
@@ -2324,8 +2324,8 @@ const handleCreateWorld = async () => {
           <div style={{ padding: "8px 16px", borderBottom: "1px solid #1a2435" }}>
             <div onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
               <span style={{ fontSize: 14, color: "#f0c040" }}>🌍</span>
-              <span style={{ flex: 1, fontSize: 12, color: "#d4c9a8", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>
-              <span style={{ fontSize: 10, color: "#556677", transition: "transform 0.2s", transform: worldSwitcherOpen ? "rotate(180deg)" : "none" }}>▾</span>
+              <span style={{ flex: 1, fontSize: 12, color: theme.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>
+              <span style={{ fontSize: 10, color: theme.textDim, transition: "transform 0.2s", transform: worldSwitcherOpen ? "rotate(180deg)" : "none" }}>▾</span>
             </div>
             {worldSwitcherOpen && (
               <div style={{ marginTop: 4, background: "rgba(17,24,39,0.5)", borderRadius: 6, border: "1px solid #1e2a3a", overflow: "hidden" }}>
@@ -2364,7 +2364,7 @@ const handleCreateWorld = async () => {
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? "#f0c040" : saveStatus === "error" ? "#e07050" : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px rgba(240,192,64,0.4)" : "none" }} />
-            <span style={{ fontSize: 9, color: "#556677", letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
+            <span style={{ fontSize: 9, color: theme.textDim, letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
           </div>
         </div>
       </div>
@@ -2373,27 +2373,30 @@ const handleCreateWorld = async () => {
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg }}>
           <div style={{ position: "relative" }}>
-            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#445566", fontSize: 14 }}>⌕</span>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }}>⌕</span>
             <input style={S.searchBox} placeholder="Search the codex..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
           </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", position: "relative" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {mainCats.map(([k, c]) => (
               <div key={k} onClick={() => goCreate(k)} style={{ fontSize: 11, color: c.color, cursor: "pointer", padding: "5px 10px", border: "1px solid " + c.color + "30", borderRadius: 6, transition: "all 0.2s", letterSpacing: 0.5 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "15"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ {c.label}</div>
             ))}
-            <div style={{ position: "relative" }}>
-              <div onClick={() => setShowMoreCats(!showMoreCats)} style={{ fontSize: 11, color: "#8899aa", cursor: "pointer", padding: "5px 10px", border: "1px solid #1e2a3a", borderRadius: 6, transition: "all 0.2s" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ More ▾</div>
-              {showMoreCats && <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 8, padding: 4, minWidth: 160, zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
-                {extraCats.map(([k, c]) => (
-                  <div key={k} onClick={() => { setShowMoreCats(false); goCreate(k); }} style={{ fontSize: 12, color: c.color, padding: "8px 12px", cursor: "pointer", borderRadius: 4, display: "flex", alignItems: "center", gap: 8 }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "15"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                    <span>{c.icon}</span> {c.label}
-                  </div>
-                ))}
-              </div>}
-            </div>
+            <div onClick={(e) => { e.stopPropagation(); setShowMoreCats(!showMoreCats); }} style={{ fontSize: 11, color: theme.textMuted, cursor: "pointer", padding: "5px 10px", border: "1px solid " + theme.border, borderRadius: 6, transition: "all 0.2s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = theme.accentBg; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ More ▾</div>
           </div>
+          {/* More+ dropdown — fixed position so it floats above all content */}
+          {showMoreCats && (<>
+            <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoreCats(false)} />
+            <div style={{ position: "fixed", top: 54, right: 30, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 6, minWidth: 200, zIndex: 901, boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)" }}>
+              <div style={{ padding: "6px 12px 8px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>Create New Entry</div>
+              {extraCats.map(([k, c]) => (
+                <div key={k} onClick={() => { setShowMoreCats(false); goCreate(k); }} style={{ fontSize: 12, color: c.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                  <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{c.icon}</span> <span>{c.label}</span>
+                </div>
+              ))}
+            </div>
+          </>)}
         </div>
 
         <div style={{ ...S.content, opacity: fadeIn ? 1 : 0, transition: "opacity 0.3s ease" }}>
@@ -2402,8 +2405,8 @@ const handleCreateWorld = async () => {
           {!activeWorld && dataLoaded && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", textAlign: "center", padding: 40 }}>
               <div style={{ fontSize: 64, marginBottom: 20 }}>🌍</div>
-              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 28, fontWeight: 700, color: "#e8dcc8", margin: 0, letterSpacing: 2 }}>Welcome to Frostfall Realms</h1>
-              <p style={{ fontSize: 14, color: "#6b7b8d", marginTop: 8, maxWidth: 460, lineHeight: 1.7 }}>
+              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 28, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 2 }}>Welcome to Frostfall Realms</h1>
+              <p style={{ fontSize: 14, color: theme.textDim, marginTop: 8, maxWidth: 460, lineHeight: 1.7 }}>
                 Create your first world to begin building your codex. Every world has its own articles, timeline, and lore — you can create as many as you need.
               </p>
               <Ornament width={300} />
@@ -2413,11 +2416,11 @@ const handleCreateWorld = async () => {
                 <div style={{ marginTop: 24, background: "rgba(17,24,39,0.6)", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
                   <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
                   <div style={{ marginBottom: 14 }}>
-                    <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
+                    <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
                     <input style={S.input} placeholder="e.g. Aelvarin, Middle-earth, Eberron" value={worldForm.name} onChange={(e) => setWorldForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
                   </div>
                   <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>Description (optional)</label>
+                    <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>Description (optional)</label>
                     <textarea style={{ ...S.textarea, minHeight: 60 }} placeholder="A brief description of your world…" value={worldForm.description} onChange={(e) => setWorldForm((f) => ({ ...f, description: e.target.value }))} />
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
@@ -2435,11 +2438,11 @@ const handleCreateWorld = async () => {
               <div style={{ background: "#111827", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
                 <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
+                  <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
                   <input style={S.input} placeholder="e.g. Aelvarin, Middle-earth, Eberron" value={worldForm.name} onChange={(e) => setWorldForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
                 </div>
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ fontSize: 11, color: "#8899aa", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>Description (optional)</label>
+                  <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>Description (optional)</label>
                   <textarea style={{ ...S.textarea, minHeight: 60 }} placeholder="A brief description of your world…" value={worldForm.description} onChange={(e) => setWorldForm((f) => ({ ...f, description: e.target.value }))} />
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
@@ -2453,13 +2456,13 @@ const handleCreateWorld = async () => {
           {/* === DASHBOARD === */}
           {view === "dashboard" && activeWorld && (<div>
             <div style={{ marginTop: 28, marginBottom: 8 }}>
-              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: "#e8dcc8", margin: 0, letterSpacing: 2 }}>The Archives of {activeWorld?.name || "Your World"}</h1>
-              <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 4, fontStyle: "italic" }}>"Creation requires sacrifice. To give form costs essence."</p>
+              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 2 }}>The Archives of {activeWorld?.name || "Your World"}</h1>
+              <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4, fontStyle: "italic" }}>"Creation requires sacrifice. To give form costs essence."</p>
             </div>
             <Ornament width={300} />
             <div style={{ display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" }}>
               {[{ n: stats.total, l: "Total Articles", c: "#f0c040" }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
-                <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: "#e8dcc8", fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
+                <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
               ))}
             </div>
 
@@ -2469,14 +2472,14 @@ const handleCreateWorld = async () => {
                 {allConflicts.slice(0, 3).map((c) => (
                   <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
                     <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : "#f0c040", marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: "#d4c9a8", fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: "#6b7b8d", fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
                     <span style={S.catBadge(c.severity === "error" ? "#e07050" : "#f0c040")}>{c.severity}</span>
                   </div>
                 ))}
                 {globalIntegrity.slice(0, Math.max(0, 4 - allConflicts.length)).map(({ article: a, issues }) => (
                   <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(a.id)}>
                     <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: "#d4c9a8", fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: "#6b7b8d" }}>{issues[0].message}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: theme.textDim }}>{issues[0].message}</div></div>
                     <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : "#f0c040")}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
                   </div>
                 ))}
@@ -2503,7 +2506,7 @@ const handleCreateWorld = async () => {
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#c8bda0" }}>{a.title}</span>
                 {ac.length > 0 && <span style={{ fontSize: 12, color: "#e07050" }}>⚠ {ac.length}</span>}
                 <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
-                <span style={{ fontSize: 11, color: "#556677", minWidth: 60, textAlign: "right" }}>{timeAgo(a.updatedAt)}</span>
+                <span style={{ fontSize: 11, color: theme.textDim, minWidth: 60, textAlign: "right" }}>{timeAgo(a.updatedAt)}</span>
               </div>
             ); })}
           </div>)}
@@ -2512,11 +2515,11 @@ const handleCreateWorld = async () => {
           {view === "integrity" && (<div>
             <div style={{ marginTop: 24, marginBottom: 20 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e07050", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>🛡 Lore Integrity Report</h2>
-              <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6 }}>Full integrity scan across the codex — temporal conflicts, broken references, contradictions, and missing data.</p>
+              <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>Full integrity scan across the codex — temporal conflicts, broken references, contradictions, and missing data.</p>
             </div>
             <Ornament width={300} />
             {totalIntegrityIssues === 0 ? (
-              <div style={{ textAlign: "center", padding: 60, color: "#8ec8a0" }}><div style={{ fontSize: 40, marginBottom: 12 }}>✓</div><p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Canon Conflicts Detected</p><p style={{ fontSize: 12, color: "#556677" }}>All articles passed integrity checks.</p></div>
+              <div style={{ textAlign: "center", padding: 60, color: "#8ec8a0" }}><div style={{ fontSize: 40, marginBottom: 12 }}>✓</div><p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Canon Conflicts Detected</p><p style={{ fontSize: 12, color: theme.textDim }}>All articles passed integrity checks.</p></div>
             ) : (<div style={{ marginTop: 20 }}>
               <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
                 {[
@@ -2524,25 +2527,25 @@ const handleCreateWorld = async () => {
                   { n: allConflicts.filter((c) => c.severity === "warning").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "warning").length, 0), l: "Warnings", c: "#f0c040" },
                   { n: new Set([...allConflicts.map((c) => c.sourceId), ...globalIntegrity.map((a) => a.article.id)]).size, l: "Articles Affected", c: "#7ec8e3" },
                 ].map((s, i) => (
-                  <div key={i} style={{ ...S.statCard, flex: "0 0 auto", padding: "14px 24px" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: s.c, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
+                  <div key={i} style={{ ...S.statCard, flex: "0 0 auto", padding: "14px 24px" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: s.c, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
                 ))}
               </div>
 
               {/* Cross-article temporal conflicts */}
               {allConflicts.length > 0 && (<>
-                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e8dcc8", margin: "24px 0 12px", letterSpacing: 1 }}>⏱ Temporal Conflicts</h3>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "24px 0 12px", letterSpacing: 1 }}>⏱ Temporal Conflicts</h3>
                 {allConflicts.map((c) => (
                   <div key={c.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid " + (c.severity === "error" ? "rgba(224,112,80,0.25)" : "rgba(240,192,64,0.2)"), borderLeft: "3px solid " + (c.severity === "error" ? "#e07050" : "#f0c040"), borderRadius: 6, padding: "16px 20px", marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                       <span style={{ fontSize: 18, color: c.severity === "error" ? "#e07050" : "#f0c040" }}>{c.severity === "error" ? "✕" : "⚠"}</span>
                       <div style={{ flex: 1 }}>
                         <span style={S.catBadge(c.severity === "error" ? "#e07050" : "#f0c040")}>{c.severity} · Temporal Conflict</span>
-                        <p style={{ fontSize: 13, color: "#d4c9a8", margin: "8px 0", lineHeight: 1.6 }}>{c.message}</p>
-                        <p style={{ fontSize: 12, color: "#8899aa", margin: 0, fontStyle: "italic" }}>💡 {c.suggestion}</p>
+                        <p style={{ fontSize: 13, color: theme.text, margin: "8px 0", lineHeight: 1.6 }}>{c.message}</p>
+                        <p style={{ fontSize: 12, color: theme.textMuted, margin: 0, fontStyle: "italic" }}>💡 {c.suggestion}</p>
                         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                           <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "4px 12px", background: "rgba(126,200,227,0.1)", borderRadius: 12 }} onClick={() => navigate(c.sourceId)}>View "{c.sourceTitle}" →</span>
                           <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", padding: "4px 12px", background: "rgba(240,192,64,0.1)", borderRadius: 12 }} onClick={() => navigate(c.targetId)}>View "{c.targetTitle}" →</span>
-                          <span style={{ fontSize: 11, color: "#556677", cursor: "pointer", padding: "4px 12px", background: "rgba(85,102,119,0.1)", borderRadius: 12 }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
+                          <span style={{ fontSize: 11, color: theme.textDim, cursor: "pointer", padding: "4px 12px", background: "rgba(85,102,119,0.1)", borderRadius: 12 }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
                         </div>
                       </div>
                     </div>
@@ -2552,7 +2555,7 @@ const handleCreateWorld = async () => {
 
               {/* Per-article integrity issues */}
               {globalIntegrity.length > 0 && (<>
-                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e8dcc8", margin: "24px 0 12px", letterSpacing: 1 }}>📋 Article Integrity Issues</h3>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "24px 0 12px", letterSpacing: 1 }}>📋 Article Integrity Issues</h3>
                 {globalIntegrity.map(({ article: a, issues }) => (
                   <div key={a.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: "14px 18px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }}
                     onClick={() => navigate(a.id)}
@@ -2560,14 +2563,14 @@ const handleCreateWorld = async () => {
                     onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; e.currentTarget.style.borderColor = "rgba(224,112,80,0.15)"; }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                       <span style={{ color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#d4c9a8" }}>{a.title}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{a.title}</span>
                       <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
                       <span style={{ ...S.catBadge("#e07050"), marginLeft: "auto" }}>{issues.length} issue{issues.length !== 1 ? "s" : ""}</span>
                     </div>
                     {issues.map((w, i) => (
                       <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0 5px 28px", fontSize: 12, alignItems: "center" }}>
                         <span style={{ color: w.severity === "error" ? "#e07050" : "#f0c040" }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
-                        <span style={{ color: "#8899aa", flex: 1 }}>{w.message}</span>
+                        <span style={{ color: theme.textMuted, flex: 1 }}>{w.message}</span>
                       </div>
                     ))}
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
@@ -2584,14 +2587,14 @@ const handleCreateWorld = async () => {
           {view === "archives" && (<div>
             <div style={{ marginTop: 24, marginBottom: 20 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#f0c040", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>📦 Archives</h2>
-              <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6 }}>Entries moved here can be restored to the codex or permanently deleted.</p>
+              <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>Entries moved here can be restored to the codex or permanently deleted.</p>
             </div>
             <Ornament width={300} />
             {archived.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 60, color: "#556677" }}>
+              <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
                 <p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>The Archives Are Empty</p>
-                <p style={{ fontSize: 13, color: "#445566", marginTop: 4 }}>Archived entries will appear here.</p>
+                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4 }}>Archived entries will appear here.</p>
               </div>
             ) : (<div style={{ marginTop: 20 }}>
               {archived.map((a) => (
@@ -2599,10 +2602,10 @@ const handleCreateWorld = async () => {
                   <div style={{ fontSize: 20, color: CATEGORIES[a.category]?.color, opacity: 0.6 }}>{CATEGORIES[a.category]?.icon}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#8899aa" }}>{a.title}</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: theme.textMuted }}>{a.title}</span>
                       <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
                     </div>
-                    <p style={{ fontSize: 11, color: "#556677", margin: 0 }}>Archived {timeAgo(a.archivedAt)}</p>
+                    <p style={{ fontSize: 11, color: theme.textDim, margin: 0 }}>Archived {timeAgo(a.archivedAt)}</p>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => restoreFromArchive(a)} style={{ fontSize: 11, color: "#8ec8a0", background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.2)", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
@@ -2620,11 +2623,11 @@ const handleCreateWorld = async () => {
             {/* Timeline Header */}
             <div style={{ padding: "20px 28px 12px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <div>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e8dcc8", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⏳ Timeline of {activeWorld?.name || "Your World"}</h2>
-                <p style={{ fontSize: 12, color: "#6b7b8d", marginTop: 4 }}>{tlData.items.length} temporal entries across {Object.keys(tlData.lanes).length} categories</p>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⏳ Timeline of {activeWorld?.name || "Your World"}</h2>
+                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{tlData.items.length} temporal entries across {Object.keys(tlData.lanes).length} categories</p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: "#556677", letterSpacing: 0.5 }}>ZOOM</span>
+                <span style={{ fontSize: 11, color: theme.textDim, letterSpacing: 0.5 }}>ZOOM</span>
                 <button onClick={() => setTlZoom((z) => Math.max(0, z - 1))} style={{ ...S.btnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom <= 0}>−</button>
                 <div style={{ width: 80, height: 4, background: "#1e2a3a", borderRadius: 2, position: "relative" }}>
                   <div style={{ position: "absolute", left: `${(tlZoom / 6) * 100}%`, top: -4, width: 12, height: 12, background: "#f0c040", borderRadius: "50%", transform: "translateX(-50%)", boxShadow: "0 0 8px rgba(240,192,64,0.4)" }} />
@@ -2639,7 +2642,7 @@ const handleCreateWorld = async () => {
               <div ref={tlLabelRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlRef.current) tlRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ width: 160, minWidth: 160, borderRight: "1px solid #1a2435", background: "rgba(10,14,26,0.6)", flexShrink: 0, overflowY: "auto" }}>
                 {/* Era header spacer */}
                 <div style={{ height: 52, borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontSize: 10, color: "#445566", letterSpacing: 2, textTransform: "uppercase" }}>Categories</span>
+                  <span style={{ fontSize: 10, color: theme.textDim, letterSpacing: 2, textTransform: "uppercase" }}>Categories</span>
                 </div>
                 {/* Tick row spacer */}
                 <div style={{ height: 28, borderBottom: "1px solid #151d2e" }} />
@@ -2652,7 +2655,7 @@ const handleCreateWorld = async () => {
                       <span style={{ fontSize: 16, color: c.color }}>{c.icon}</span>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: c.color, letterSpacing: 0.5 }}>{categoryPluralLabel(cat)}</div>
-                        <div style={{ fontSize: 10, color: "#556677" }}>{tlData.lanes[cat].length} entries</div>
+                        <div style={{ fontSize: 10, color: theme.textDim }}>{tlData.lanes[cat].length} entries</div>
                       </div>
                     </div>
                   );
@@ -2682,7 +2685,7 @@ const handleCreateWorld = async () => {
                     {tlTicks.ticks.map((y) => (
                       <div key={y} style={{ position: "absolute", left: yearToX(y), top: 0, height: "100%" }}>
                         <div style={{ width: 1, height: "100%", background: "#1a2435" }} />
-                        <span style={{ position: "absolute", top: 6, left: 4, fontSize: 9, color: "#556677", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{y < 0 ? `${Math.abs(y)} BA` : `Year ${y.toLocaleString()}`}</span>
+                        <span style={{ position: "absolute", top: 6, left: 4, fontSize: 9, color: theme.textDim, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{y < 0 ? `${Math.abs(y)} BA` : `Year ${y.toLocaleString()}`}</span>
                       </div>
                     ))}
                   </div>
@@ -2757,7 +2760,7 @@ const handleCreateWorld = async () => {
                                 onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.3)"; e.currentTarget.style.boxShadow = "0 0 12px " + c.color + "60"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; if (!isSelected) e.currentTarget.style.boxShadow = "0 0 6px " + c.color + "20"; }}
                               />
-                              <div className="tl-tip" style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: "#d4c9a8", whiteSpace: "nowrap", background: "rgba(10,14,26,0.95)", padding: "2px 8px", borderRadius: 4, border: "1px solid " + c.color + "40", zIndex: 20 }}>{a.title}{isDead ? " †" : ""}</div>
+                              <div className="tl-tip" style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: theme.text, whiteSpace: "nowrap", background: "rgba(10,14,26,0.95)", padding: "2px 8px", borderRadius: 4, border: "1px solid " + c.color + "40", zIndex: 20 }}>{a.title}{isDead ? " †" : ""}</div>
                             </div>
                           );
                         })}
@@ -2780,15 +2783,15 @@ const handleCreateWorld = async () => {
                       <span style={S.catBadge(CATEGORIES[tlSelected.category]?.color)}>
                         {CATEGORIES[tlSelected.category]?.icon} {CATEGORIES[tlSelected.category]?.label}
                       </span>
-                      <span onClick={tlClosePanel} style={{ fontSize: 16, color: "#556677", cursor: "pointer", padding: "4px 8px", borderRadius: 4 }}
+                      <span onClick={tlClosePanel} style={{ fontSize: 16, color: theme.textDim, cursor: "pointer", padding: "4px 8px", borderRadius: 4 }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = "#d4c9a8"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#556677"; }}>✕</span>
                     </div>
-                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e8dcc8", margin: "0 0 6px", letterSpacing: 0.5 }}>{tlSelected.title}</h3>
-                    <p style={{ fontSize: 12, color: "#8899aa", fontStyle: "italic", lineHeight: 1.5, margin: "0 0 16px" }}>{tlSelected.summary}</p>
+                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>{tlSelected.title}</h3>
+                    <p style={{ fontSize: 12, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.5, margin: "0 0 16px" }}>{tlSelected.summary}</p>
                     <Ornament width={280} />
 
                     {/* Temporal badge */}
-                    <div style={{ fontSize: 11, color: "#556677", margin: "14px 0", padding: "6px 10px", background: "rgba(85,102,119,0.08)", borderRadius: 6, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 11, color: theme.textDim, margin: "14px 0", padding: "6px 10px", background: "rgba(85,102,119,0.08)", borderRadius: 6, display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <span>⏳ {tlSelected.temporal?.type}</span>
                       {tlSelected.temporal?.active_start != null && <span>From: Year {tlSelected.temporal.active_start}</span>}
                       {tlSelected.temporal?.active_end != null && <span>To: Year {tlSelected.temporal.active_end}</span>}
@@ -2800,7 +2803,7 @@ const handleCreateWorld = async () => {
                       <div style={{ marginBottom: 16 }}>
                         {Object.entries(tlSelected.fields).slice(0, 4).map(([k, v]) => (
                           <div key={k} style={{ display: "flex", padding: "5px 0", borderBottom: "1px solid #111827" }}>
-                            <div style={{ width: 100, fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{formatKey(k)}</div>
+                            <div style={{ width: 100, fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{formatKey(k)}</div>
                             <div style={{ flex: 1, fontSize: 12, color: "#c8bda0", lineHeight: 1.4 }}>{v}</div>
                           </div>
                         ))}
@@ -2816,7 +2819,7 @@ const handleCreateWorld = async () => {
 
                     {/* Body preview */}
                     {tlSelected.body && (
-                      <div style={{ fontSize: 12, color: "#8899aa", lineHeight: 1.7, marginTop: 12, maxHeight: 200, overflow: "hidden", position: "relative" }}>
+                      <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.7, marginTop: 12, maxHeight: 200, overflow: "hidden", position: "relative" }}>
                         <RenderBody text={tlSelected.body.split("\n")[0]} articles={articles} onNavigate={(id) => { tlClosePanel(); navigate(id); }} />
                         {tlSelected.body.split("\n").length > 1 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 40, background: "linear-gradient(transparent, rgba(10,14,26,0.95))" }} />}
                       </div>
@@ -2843,8 +2846,8 @@ const handleCreateWorld = async () => {
             {/* Map Header */}
             <div style={{ padding: "16px 28px 12px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <div>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>🗺 Map of {activeWorld?.name || "Your World"}</h2>
-                <p style={{ fontSize: 12, color: "#6b7b8d", marginTop: 4 }}>{mapData.pins.length} pin{mapData.pins.length !== 1 ? "s" : ""} · {mapData.territories.length} territor{mapData.territories.length !== 1 ? "ies" : "y"}</p>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🗺 Map of {activeWorld?.name || "Your World"}</h2>
+                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{mapData.pins.length} pin{mapData.pins.length !== 1 ? "s" : ""} · {mapData.territories.length} territor{mapData.territories.length !== 1 ? "ies" : "y"}</p>
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {/* Tool palette */}
@@ -2862,7 +2865,7 @@ const handleCreateWorld = async () => {
                 <div style={{ width: 1, height: 24, background: "#1e2a3a", margin: "0 4px" }} />
                 <button onClick={() => mapFileRef.current?.click()} style={{ ...S.btnS, fontSize: 11, padding: "6px 12px" }}>📷 Upload Map</button>
                 <input ref={mapFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleMapImageUpload} />
-                <span style={{ fontSize: 11, color: "#556677" }}>{Math.round(mapZoom * 100)}%</span>
+                <span style={{ fontSize: 11, color: theme.textDim }}>{Math.round(mapZoom * 100)}%</span>
                 <button onClick={() => setMapZoom((z) => Math.min(5, z + 0.2))} style={{ ...S.btnS, padding: "4px 8px", fontSize: 14 }}>+</button>
                 <button onClick={() => setMapZoom((z) => Math.max(0.2, z - 0.2))} style={{ ...S.btnS, padding: "4px 8px", fontSize: 14 }}>−</button>
                 <button onClick={() => { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }} style={{ ...S.btnS, padding: "4px 8px", fontSize: 10 }}>FIT</button>
@@ -2886,7 +2889,7 @@ const handleCreateWorld = async () => {
                 {!mapData.image ? (
                   <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
                     <div style={{ fontSize: 56, opacity: 0.3 }}>🗺</div>
-                    <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#445566" }}>Upload a Map Image</p>
+                    <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.textDim }}>Upload a Map Image</p>
                     <p style={{ fontSize: 12, color: "#334455", maxWidth: 340, textAlign: "center", lineHeight: 1.6 }}>Upload a PNG, JPG, or WebP image of your world map. You can then place pins at locations and draw territory borders.</p>
                     <button onClick={() => mapFileRef.current?.click()} style={{ ...S.btnP, fontSize: 13 }}>Choose Image</button>
                   </div>
@@ -2940,17 +2943,17 @@ const handleCreateWorld = async () => {
               {mapEditPanel && (
                 <div style={{ width: 280, borderLeft: "1px solid #1a2435", padding: "16px 14px", overflowY: "auto", flexShrink: 0, background: "#0d1117" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e8dcc8", margin: 0 }}>
+                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: 0 }}>
                       {mapEditPanel.points ? "Territory" : "Pin"} Properties
                     </h3>
-                    <span onClick={() => { setMapEditPanel(null); setMapSelected(null); }} style={{ cursor: "pointer", color: "#556677", fontSize: 14 }}>✕</span>
+                    <span onClick={() => { setMapEditPanel(null); setMapSelected(null); }} style={{ cursor: "pointer", color: theme.textDim, fontSize: 14 }}>✕</span>
                   </div>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Label</label>
+                    <label style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Label</label>
                     <input style={S.input} value={mapEditPanel.label || ""} onChange={(e) => updateMapItem(mapEditPanel.id, { label: e.target.value })} />
                   </div>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Color</label>
+                    <label style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Color</label>
                     <div style={{ display: "flex", gap: 6 }}>
                       {["#f0c040", "#e07050", "#7ec8e3", "#8ec8a0", "#c084fc", "#d4a060", "#e0c878", "#a088d0"].map((c) => (
                         <div key={c} onClick={() => updateMapItem(mapEditPanel.id, { color: c, ...(mapEditPanel.points ? { fill: c + "25" } : {}) })}
@@ -2959,7 +2962,7 @@ const handleCreateWorld = async () => {
                     </div>
                   </div>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Link to Codex Article</label>
+                    <label style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Link to Codex Article</label>
                     <select style={{ ...S.input, padding: "8px 10px" }} value={mapEditPanel.linkedArticleId || ""}
                       onChange={(e) => {
                         const val = e.target.value || null;
@@ -2985,8 +2988,8 @@ const handleCreateWorld = async () => {
                     return linked ? (
                       <div onClick={() => { setActiveArticle(linked); setView("article"); }} style={{ padding: "10px 12px", background: "rgba(240,192,64,0.06)", border: "1px solid rgba(240,192,64,0.15)", borderRadius: 6, cursor: "pointer", marginBottom: 12, transition: "all 0.2s" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.06)"; }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#d4c9a8" }}>{CATEGORIES[linked.category]?.icon} {linked.title}</div>
-                        <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 3 }}>{linked.summary?.slice(0, 80)}{linked.summary?.length > 80 ? "…" : ""}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{CATEGORIES[linked.category]?.icon} {linked.title}</div>
+                        <div style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}>{linked.summary?.slice(0, 80)}{linked.summary?.length > 80 ? "…" : ""}</div>
                         <div style={{ fontSize: 9, color: "#f0c040", marginTop: 4 }}>Click to view article →</div>
                       </div>
                     ) : null;
@@ -3009,8 +3012,8 @@ const handleCreateWorld = async () => {
             {/* Manuscript Selector */}
             {novelView === "select" && (
               <div style={{ padding: "40px 28px", overflowY: "auto", flex: 1 }}>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>✒ Manuscripts</h2>
-                <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6, lineHeight: 1.6, maxWidth: 520 }}>Write your novels with full access to your codex. Organize by Acts, Chapters, and Scenes.</p>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, color: theme.text, margin: 0, letterSpacing: 1 }}>✒ Manuscripts</h2>
+                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6, lineHeight: 1.6, maxWidth: 520 }}>Write your novels with full access to your codex. Organize by Acts, Chapters, and Scenes.</p>
                 <Ornament width={300} />
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 24 }}>
                   {manuscripts.map((ms) => {
@@ -3023,9 +3026,9 @@ const handleCreateWorld = async () => {
                         onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; e.currentTarget.style.transform = "none"; }}>
                         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #f0c040, #e07050)", borderRadius: "10px 10px 0 0" }} />
                         <div style={{ fontSize: 28, marginBottom: 10 }}>📖</div>
-                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: "#e8dcc8", fontWeight: 600, letterSpacing: 0.5 }}>{ms.title}</div>
-                        {ms.description && <div style={{ fontSize: 11, color: "#6b7b8d", marginTop: 4, lineHeight: 1.4 }}>{ms.description.slice(0, 80)}</div>}
-                        <div style={{ display: "flex", gap: 8, marginTop: 12, fontSize: 10, color: "#556677", flexWrap: "wrap" }}>
+                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, fontWeight: 600, letterSpacing: 0.5 }}>{ms.title}</div>
+                        {ms.description && <div style={{ fontSize: 11, color: theme.textDim, marginTop: 4, lineHeight: 1.4 }}>{ms.description.slice(0, 80)}</div>}
+                        <div style={{ display: "flex", gap: 8, marginTop: 12, fontSize: 10, color: theme.textDim, flexWrap: "wrap" }}>
                           <span style={{ background: "rgba(240,192,64,0.08)", padding: "2px 8px", borderRadius: 8 }}>{ms.acts.length} act{ms.acts.length !== 1 ? "s" : ""}</span>
                           <span style={{ background: "rgba(126,200,227,0.08)", padding: "2px 8px", borderRadius: 8 }}>{chCount} ch</span>
                           <span style={{ background: "rgba(142,200,160,0.08)", padding: "2px 8px", borderRadius: 8 }}>{scCount} scenes</span>
@@ -3037,7 +3040,7 @@ const handleCreateWorld = async () => {
                   <div onClick={() => setShowMsCreate(true)} style={{ width: 240, padding: "20px 18px", background: "transparent", border: "2px dashed #1e2a3a", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 140, transition: "all 0.2s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; }}>
                     <div style={{ fontSize: 32, color: "#334455" }}>+</div>
-                    <div style={{ fontSize: 12, color: "#556677", marginTop: 6 }}>New Manuscript</div>
+                    <div style={{ fontSize: 12, color: theme.textDim, marginTop: 6 }}>New Manuscript</div>
                   </div>
                 </div>
                 {showMsCreate && (
@@ -3059,9 +3062,9 @@ const handleCreateWorld = async () => {
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 <div style={{ padding: "14px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span onClick={() => { setNovelView("select"); setActiveMs(null); }} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Manuscripts</span>
-                    <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>{activeMs.title}</h2>
-                    <span style={{ fontSize: 11, color: "#556677" }}>{msWordCount.total.toLocaleString()} words</span>
+                    <span onClick={() => { setNovelView("select"); setActiveMs(null); }} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Manuscripts</span>
+                    <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeMs.title}</h2>
+                    <span style={{ fontSize: 11, color: theme.textDim }}>{msWordCount.total.toLocaleString()} words</span>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => setNovelView("corkboard")} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>🗂 Corkboard</button>
@@ -3081,8 +3084,8 @@ const handleCreateWorld = async () => {
                               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                               <span style={{ fontSize: 14 }}>{fmt.icon}</span>
                               <div>
-                                <div style={{ fontSize: 11, color: "#d4c9a8", fontWeight: 500 }}>{fmt.label}</div>
-                                <div style={{ fontSize: 9, color: "#556677" }}>{fmt.desc}</div>
+                                <div style={{ fontSize: 11, color: theme.text, fontWeight: 500 }}>{fmt.label}</div>
+                                <div style={{ fontSize: 9, color: theme.textDim }}>{fmt.desc}</div>
                               </div>
                             </div>
                           ))}
@@ -3099,12 +3102,12 @@ const handleCreateWorld = async () => {
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}
                         onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(act.id) ? n.delete(act.id) : n.add(act.id); return n; })}>
                         <div style={{ width: 4, height: 28, background: act.color, borderRadius: 2 }} />
-                        <span style={{ fontSize: 10, color: "#556677", transform: novelOutlineCollapsed.has(act.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
+                        <span style={{ fontSize: 10, color: theme.textDim, transform: novelOutlineCollapsed.has(act.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
                         <input style={{ background: "none", border: "none", fontFamily: "'Cinzel', serif", fontSize: 16, color: act.color, fontWeight: 700, letterSpacing: 1, outline: "none", flex: 1, cursor: "text", minWidth: 0 }}
                           value={act.title} onClick={(e) => e.stopPropagation()} onChange={(e) => updateAct(act.id, { title: e.target.value })} />
-                        <span style={{ fontSize: 10, color: "#556677" }}>{(msWordCount.acts[act.id] || 0).toLocaleString()} words</span>
+                        <span style={{ fontSize: 10, color: theme.textDim }}>{(msWordCount.acts[act.id] || 0).toLocaleString()} words</span>
                         <button onClick={(e) => { e.stopPropagation(); addChapter(act.id); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px" }}>+ Ch</button>
-                        {activeMs.acts.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteAct(act.id); }} style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕</button>}
+                        {activeMs.acts.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteAct(act.id); }} style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕</button>}
                       </div>
                       {!novelOutlineCollapsed.has(act.id) && (
                         <div style={{ marginLeft: 20 }}>
@@ -3112,19 +3115,19 @@ const handleCreateWorld = async () => {
                             <div key={ch.id} style={{ marginBottom: 10, background: "rgba(17,24,39,0.4)", border: "1px solid #1a2435", borderRadius: 8, overflow: "hidden" }}>
                               <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #111827" }}>
                                 <span onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(ch.id) ? n.delete(ch.id) : n.add(ch.id); return n; })}
-                                  style={{ fontSize: 10, color: "#556677", cursor: "pointer", transform: novelOutlineCollapsed.has(ch.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
-                                <input style={{ background: "none", border: "none", fontSize: 13, color: "#d4c9a8", fontWeight: 600, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit" }}
+                                  style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", transform: novelOutlineCollapsed.has(ch.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
+                                <input style={{ background: "none", border: "none", fontSize: 13, color: theme.text, fontWeight: 600, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit" }}
                                   value={ch.title} onChange={(e) => updateChapter(act.id, ch.id, { title: e.target.value })} />
                                 <select value={ch.status} onChange={(e) => updateChapter(act.id, ch.id, { status: e.target.value })}
                                   style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 4, fontSize: 9, color: STATUS_COLORS[ch.status], padding: "2px 6px", cursor: "pointer", outline: "none", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
                                   <option value="draft">Draft</option><option value="revised">Revised</option><option value="final">Final</option>
                                 </select>
-                                <span style={{ fontSize: 10, color: "#556677", minWidth: 50, textAlign: "right" }}>{chapterWordCount(ch).toLocaleString()} w</span>
+                                <span style={{ fontSize: 10, color: theme.textDim, minWidth: 50, textAlign: "right" }}>{chapterWordCount(ch).toLocaleString()} w</span>
                                 <button onClick={() => addScene(act.id, ch.id)} style={{ ...S.btnS, fontSize: 8, padding: "2px 8px" }}>+ Scene</button>
-                                {act.chapters.length > 1 && <button onClick={() => deleteChapter(act.id, ch.id)} style={{ background: "none", border: "none", color: "#445566", cursor: "pointer", fontSize: 11 }}>✕</button>}
+                                {act.chapters.length > 1 && <button onClick={() => deleteChapter(act.id, ch.id)} style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 11 }}>✕</button>}
                               </div>
                               <div style={{ padding: "0 14px" }}>
-                                <input style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: "#6b7b8d", padding: "6px 0", outline: "none", fontStyle: "italic", fontFamily: "inherit", boxSizing: "border-box" }}
+                                <input style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: theme.textDim, padding: "6px 0", outline: "none", fontStyle: "italic", fontFamily: "inherit", boxSizing: "border-box" }}
                                   placeholder="Chapter synopsis..." value={ch.synopsis || ""} onChange={(e) => updateChapter(act.id, ch.id, { synopsis: e.target.value })} />
                               </div>
                               {!novelOutlineCollapsed.has(ch.id) && (
@@ -3137,11 +3140,11 @@ const handleCreateWorld = async () => {
                                         style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: "rgba(240,192,64,0.02)", borderLeft: scColor.color !== "transparent" ? "3px solid " + scColor.color : "3px solid transparent" }}
                                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.02)"; }}>
                                         <span style={{ fontSize: 10, color: "#f0c040" }}>▸</span>
-                                        <input style={{ background: "none", border: "none", fontSize: 12, color: "#8899aa", outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit", cursor: "pointer" }}
+                                        <input style={{ background: "none", border: "none", fontSize: 12, color: theme.textMuted, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit", cursor: "pointer" }}
                                           value={sc.title} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); updateScene(act.id, ch.id, sc.id, { title: e.target.value }); }} />
                                         {sc.povCharacter && <span style={{ fontSize: 9, color: "#c084fc", background: "rgba(192,132,252,0.1)", padding: "1px 6px", borderRadius: 8 }}>{sc.povCharacter}</span>}
                                         {sc.label && <span style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#556677", background: (scColor.color !== "transparent" ? scColor.color : "#556677") + "18", padding: "1px 6px", borderRadius: 8 }}>{sc.label || scColor.label}</span>}
-                                        <span style={{ fontSize: 9, color: "#445566" }}>{scWords > 0 ? scWords.toLocaleString() + " w" : "empty"}</span>
+                                        <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + " w" : "empty"}</span>
                                         {sc.notes && <span style={{ fontSize: 9, color: "#f0c040" }} title="Has notes">📝</span>}
                                         {sc.snapshots?.length > 0 && <span style={{ fontSize: 9, color: "#7ec8e3" }} title={sc.snapshots.length + " snapshot(s)"}>📸{sc.snapshots.length}</span>}
                                         {ch.scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(act.id, ch.id, sc.id); }} style={{ background: "none", border: "none", color: "#334455", cursor: "pointer", fontSize: 10 }}>✕</button>}
@@ -3164,8 +3167,8 @@ const handleCreateWorld = async () => {
             {novelView === "corkboard" && activeMs && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 <div style={{ padding: "14px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-                  <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Outline</span>
-                  <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>🗂 Corkboard</h2>
+                  <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Outline</span>
+                  <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.text, margin: 0, letterSpacing: 1 }}>🗂 Corkboard</h2>
                   <div style={{ flex: 1 }} />
                   {/* Chapter filter */}
                   <select value={corkboardChapter ? corkboardChapter.actId + "|" + corkboardChapter.chId : "all"}
@@ -3173,7 +3176,7 @@ const handleCreateWorld = async () => {
                       if (e.target.value === "all") setCorkboardChapter(null);
                       else { const [a, c] = e.target.value.split("|"); setCorkboardChapter({ actId: a, chId: c }); }
                     }}
-                    style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, fontSize: 11, color: "#d4c9a8", padding: "4px 10px", outline: "none" }}>
+                    style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, fontSize: 11, color: theme.text, padding: "4px 10px", outline: "none" }}>
                     <option value="all">All Chapters</option>
                     {activeMs.acts.map((a) => a.chapters.map((c) => (
                       <option key={c.id} value={a.id + "|" + c.id}>{a.title} › {c.title}</option>
@@ -3188,8 +3191,8 @@ const handleCreateWorld = async () => {
                           <div style={{ width: 3, height: 16, background: act.color, borderRadius: 2 }} />
                           <span style={{ fontSize: 13, color: act.color, fontWeight: 700, fontFamily: "'Cinzel', serif" }}>{act.title}</span>
                           <span style={{ color: "#334455" }}>›</span>
-                          <span style={{ fontSize: 13, color: "#d4c9a8", fontWeight: 600 }}>{ch.title}</span>
-                          <span style={{ fontSize: 10, color: "#556677" }}>{chapterWordCount(ch).toLocaleString()} words</span>
+                          <span style={{ fontSize: 13, color: theme.text, fontWeight: 600 }}>{ch.title}</span>
+                          <span style={{ fontSize: 10, color: theme.textDim }}>{chapterWordCount(ch).toLocaleString()} words</span>
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
                           {ch.scenes.map((sc, si) => {
@@ -3210,14 +3213,14 @@ const handleCreateWorld = async () => {
                                 }}
                                 onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
-                                <div style={{ fontSize: 13, color: "#d4c9a8", fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>{sc.title}</div>
+                                <div style={{ fontSize: 13, color: theme.text, fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>{sc.title}</div>
                                 {sc.povCharacter && <div style={{ fontSize: 9, color: "#c084fc", marginBottom: 4 }}>POV: {sc.povCharacter}</div>}
                                 {sc.label && <div style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", marginBottom: 4 }}>{sc.label}</div>}
-                                <div style={{ fontSize: 10, color: "#6b7b8d", lineHeight: 1.4, overflow: "hidden", maxHeight: 52 }}>
-                                  {sc.body ? sc.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1").slice(0, 120) + (sc.body.length > 120 ? "..." : "") : <span style={{ fontStyle: "italic", color: "#445566" }}>Empty scene</span>}
+                                <div style={{ fontSize: 10, color: theme.textDim, lineHeight: 1.4, overflow: "hidden", maxHeight: 52 }}>
+                                  {sc.body ? sc.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1").slice(0, 120) + (sc.body.length > 120 ? "..." : "") : <span style={{ fontStyle: "italic", color: theme.textDim }}>Empty scene</span>}
                                 </div>
                                 <div style={{ position: "absolute", bottom: 10, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                  <span style={{ fontSize: 9, color: "#445566" }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}</span>
+                                  <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}</span>
                                   <div style={{ display: "flex", gap: 4 }}>
                                     {sc.notes && <span style={{ fontSize: 9 }} title="Has notes">📝</span>}
                                     {sc.snapshots?.length > 0 && <span style={{ fontSize: 9 }}>📸</span>}
@@ -3230,7 +3233,7 @@ const handleCreateWorld = async () => {
                             style={{ width: 200, minHeight: 140, border: "2px dashed #1e2a3a", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}
                             onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; }}>
-                            <span style={{ color: "#445566", fontSize: 24 }}>+</span>
+                            <span style={{ color: theme.textDim, fontSize: 24 }}>+</span>
                           </div>
                         </div>
                       </div>
@@ -3245,7 +3248,7 @@ const handleCreateWorld = async () => {
               const scene = getActiveScene();
               const act = activeMs.acts.find((a) => a.id === novelActiveScene?.actId);
               const ch = act?.chapters.find((c) => c.id === novelActiveScene?.chId);
-              if (!scene || !act || !ch) return <div style={{ padding: 40, color: "#556677" }}>No scene selected.</div>;
+              if (!scene || !act || !ch) return <div style={{ padding: 40, color: theme.textDim }}>No scene selected.</div>;
               const scWords = scene.body ? scene.body.trim().split(/\s+/).filter(Boolean).length : 0;
               const scColor = SCENE_COLORS.find((c) => c.id === (scene.color || "none")) || SCENE_COLORS[0];
               const mentionMatches = novelMention ? articles.filter((a) => {
@@ -3259,12 +3262,12 @@ const handleCreateWorld = async () => {
                 <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#0a0e1a", display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ position: "absolute", top: 16, right: 20, display: "flex", gap: 10, opacity: 0.3, transition: "opacity 0.3s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}>
-                    <span style={{ fontSize: 11, color: "#556677" }}>{scWords.toLocaleString()} words</span>
+                    <span style={{ fontSize: 11, color: theme.textDim }}>{scWords.toLocaleString()} words</span>
                     {novelGoal.daily > 0 && <span style={{ fontSize: 11, color: goalProgress >= 100 ? "#8ec8a0" : "#f0c040" }}>{sessionWords}/{novelGoal.daily} today</span>}
-                    <button onClick={() => setNovelFocusMode(false)} style={{ background: "none", border: "1px solid #1e2a3a", color: "#6b7b8d", borderRadius: 6, padding: "3px 12px", cursor: "pointer", fontSize: 10 }}>Exit Focus</button>
+                    <button onClick={() => setNovelFocusMode(false)} style={{ background: "none", border: "1px solid #1e2a3a", color: theme.textDim, borderRadius: 6, padding: "3px 12px", cursor: "pointer", fontSize: 10 }}>Exit Focus</button>
                   </div>
                   <div style={{ position: "absolute", top: 16, left: 20, opacity: 0.15 }}>
-                    <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: "#556677" }}>{act.title} › {ch.title} › {scene.title}</span>
+                    <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: theme.textDim }}>{act.title} › {ch.title} › {scene.title}</span>
                   </div>
                   {/* Typewriter progress bar */}
                   {novelGoal.daily > 0 && <div style={{ position: "absolute", top: 0, left: 0, height: 2, background: goalProgress >= 100 ? "#8ec8a0" : "#f0c040", width: goalProgress + "%", transition: "width 0.5s", borderRadius: 1 }} />}
@@ -3296,15 +3299,15 @@ const handleCreateWorld = async () => {
                   {/* @mention autocomplete in focus mode */}
                   {novelMention && mentionMatches.length > 0 && (
                     <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: "#111827", border: "1px solid rgba(240,192,64,0.3)", borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 10000, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
-                      <div style={{ padding: "4px 10px 6px", fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
+                      <div style={{ padding: "4px 10px 6px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
                       {mentionMatches.map((a, idx) => (
                         <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
-                          style={{ padding: "8px 12px", fontSize: 12, color: "#d4c9a8", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent" }}
+                          style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent" }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? "rgba(240,192,64,0.08)" : "transparent"; }}>
                           <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
                           <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{a.title}</div></div>
-                          <span style={{ fontSize: 9, color: "#445566" }}>{CATEGORIES[a.category]?.label}</span>
+                          <span style={{ fontSize: 9, color: theme.textDim }}>{CATEGORIES[a.category]?.label}</span>
                         </div>
                       ))}
                     </div>
@@ -3312,7 +3315,7 @@ const handleCreateWorld = async () => {
                   {mentionTooltip && mentionTooltip.article && (
                     <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 10001, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color, fontFamily: "'Cinzel', serif" }}>{CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}</div>
-                      <div style={{ fontSize: 11, color: "#8899aa", lineHeight: 1.5, marginTop: 4 }}>{mentionTooltip.article.summary?.slice(0, 120) || "No summary."}</div>
+                      <div style={{ fontSize: 11, color: theme.textMuted, lineHeight: 1.5, marginTop: 4 }}>{mentionTooltip.article.summary?.slice(0, 120) || "No summary."}</div>
                     </div>
                   )}
                 </div>
@@ -3323,13 +3326,13 @@ const handleCreateWorld = async () => {
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   {/* Writing toolbar */}
                   <div style={{ padding: "8px 20px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-                    <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: "#556677", fontSize: 11 }}>← Outline</span>
+                    <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Outline</span>
                     <div style={{ width: 1, height: 16, background: "#1e2a3a" }} />
                     <span style={{ fontSize: 11, color: act.color, fontWeight: 600 }}>{act.title}</span>
                     <span style={{ color: "#334455" }}>›</span>
-                    <span style={{ fontSize: 11, color: "#d4c9a8", fontWeight: 600 }}>{ch.title}</span>
+                    <span style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>{ch.title}</span>
                     <span style={{ color: "#334455" }}>›</span>
-                    <span style={{ fontSize: 11, color: "#8899aa" }}>{scene.title}</span>
+                    <span style={{ fontSize: 11, color: theme.textMuted }}>{scene.title}</span>
                     <div style={{ flex: 1 }} />
 
                     {/* Scene color tag */}
@@ -3351,10 +3354,10 @@ const handleCreateWorld = async () => {
                         <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: 16, zIndex: 200, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                             <span style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: theme.text, letterSpacing: 0.5 }}>Editor Settings</span>
-                            <span onClick={() => setNovelEditorSettings(false)} style={{ cursor: "pointer", color: "#556677", fontSize: 14 }}>✕</span>
+                            <span onClick={() => setNovelEditorSettings(false)} style={{ cursor: "pointer", color: theme.textDim, fontSize: 14 }}>✕</span>
                           </div>
                           {/* Editor Font */}
-                          <label style={{ display: "block", fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Font</label>
+                          <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Font</label>
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
                             {Object.entries(EDITOR_FONTS).map(([fid, fam]) => (
                               <div key={fid} onClick={() => setSettings((p) => ({ ...p, editorFont: fid }))}
@@ -3367,7 +3370,7 @@ const handleCreateWorld = async () => {
                             ))}
                           </div>
                           {/* Font Size */}
-                          <label style={{ display: "block", fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Size</label>
+                          <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Size</label>
                           <div style={{ display: "flex", gap: 4 }}>
                             {[{ id: "compact", label: "Compact" }, { id: "default", label: "Default" }, { id: "large", label: "Large" }].map((s) => (
                               <button key={s.id} onClick={() => setSettings((p) => ({ ...p, fontSize: s.id }))}
@@ -3386,7 +3389,7 @@ const handleCreateWorld = async () => {
                     <div style={{ padding: "6px 20px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(17,24,39,0.3)" }}>
                       {novelShowGoalSet ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 10, color: "#6b7b8d" }}>Daily word goal:</span>
+                          <span style={{ fontSize: 10, color: theme.textDim }}>Daily word goal:</span>
                           <input type="number" style={{ ...S.input, width: 80, padding: "3px 8px", fontSize: 11 }} placeholder="e.g. 1000" value={novelGoalInput}
                             onChange={(e) => setNovelGoalInput(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); } }} />
                           <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px" }}>Set</button>
@@ -3394,14 +3397,14 @@ const handleCreateWorld = async () => {
                         </div>
                       ) : (
                         <>
-                          <span style={{ fontSize: 10, color: "#6b7b8d" }}>Session:</span>
+                          <span style={{ fontSize: 10, color: theme.textDim }}>Session:</span>
                           <span style={{ fontSize: 11, color: sessionWords > 0 ? "#8ec8a0" : "#556677", fontWeight: 600 }}>+{sessionWords.toLocaleString()}</span>
                           <div style={{ flex: 1, height: 4, background: "#111827", borderRadius: 2, maxWidth: 200, overflow: "hidden" }}>
                             <div style={{ height: "100%", width: goalProgress + "%", background: goalProgress >= 100 ? "#8ec8a0" : goalProgress > 50 ? "#f0c040" : "#e07050", borderRadius: 2, transition: "width 0.5s" }} />
                           </div>
                           <span style={{ fontSize: 10, color: goalProgress >= 100 ? "#8ec8a0" : "#556677" }}>{goalProgress}% of {novelGoal.daily.toLocaleString()}</span>
                           {goalProgress >= 100 && <span style={{ fontSize: 10, color: "#8ec8a0" }}>🎉 Goal reached!</span>}
-                          <span onClick={() => { setNovelGoalInput(String(novelGoal.daily)); setNovelShowGoalSet(true); }} style={{ fontSize: 9, color: "#445566", cursor: "pointer" }}>✎</span>
+                          <span onClick={() => { setNovelGoalInput(String(novelGoal.daily)); setNovelShowGoalSet(true); }} style={{ fontSize: 9, color: theme.textDim, cursor: "pointer" }}>✎</span>
                         </>
                       )}
                     </div>
@@ -3424,7 +3427,7 @@ const handleCreateWorld = async () => {
                                     style={{ padding: "5px 14px 5px 26px", fontSize: 11, color: s.id === scene.id ? "#f0c040" : "#6b7b8d", cursor: "pointer", background: s.id === scene.id ? "rgba(240,192,64,0.06)" : "transparent", borderLeft: s.id === scene.id ? "2px solid #f0c040" : sColor.color !== "transparent" ? "2px solid " + sColor.color + "60" : "2px solid transparent", transition: "all 0.15s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                                     onMouseEnter={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
                                     onMouseLeave={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "transparent"; }}>
-                                    <span style={{ fontSize: 9, color: "#445566" }}>{c.title.replace(/Chapter\s*/i, "Ch")} · </span>{s.title}
+                                    <span style={{ fontSize: 9, color: theme.textDim }}>{c.title.replace(/Chapter\s*/i, "Ch")} · </span>{s.title}
                                   </div>
                                 );
                               })}
@@ -3434,7 +3437,7 @@ const handleCreateWorld = async () => {
                       ))}
                       {/* Goal set button in nav */}
                       <div style={{ padding: "12px 14px", borderTop: "1px solid #1a2435", marginTop: 8 }}>
-                        <span onClick={() => setNovelShowGoalSet(true)} style={{ fontSize: 10, color: "#556677", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>🎯 {novelGoal.daily > 0 ? novelGoal.daily.toLocaleString() + " word goal" : "Set word goal"}</span>
+                        <span onClick={() => setNovelShowGoalSet(true)} style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>🎯 {novelGoal.daily > 0 ? novelGoal.daily.toLocaleString() + " word goal" : "Set word goal"}</span>
                       </div>
                     </div>
 
@@ -3445,7 +3448,7 @@ const handleCreateWorld = async () => {
                         <input style={{ background: "none", border: "none", fontSize: 10, color: "#c084fc", outline: "none", width: 100, fontFamily: "inherit" }}
                           placeholder="POV character..." value={scene.povCharacter || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { povCharacter: e.target.value })} />
                         <div style={{ width: 1, height: 12, background: "#1a2435" }} />
-                        <input style={{ background: "none", border: "none", fontSize: 10, color: "#6b7b8d", outline: "none", flex: 1, fontFamily: "inherit" }}
+                        <input style={{ background: "none", border: "none", fontSize: 10, color: theme.textDim, outline: "none", flex: 1, fontFamily: "inherit" }}
                           placeholder="Scene label / notes tag..." value={scene.label || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { label: e.target.value })} />
                         <div style={{ width: 1, height: 12, background: "#1a2435" }} />
                         <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} title="Save snapshot of current text"
@@ -3464,7 +3467,7 @@ const handleCreateWorld = async () => {
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                             <span style={{ fontSize: 11, color: "#7ec8e3", fontWeight: 600 }}>📸 Snapshots</span>
                             <div style={{ flex: 1 }} />
-                            <span onClick={() => setNovelSnapshotView(null)} style={{ fontSize: 10, color: "#556677", cursor: "pointer" }}>✕</span>
+                            <span onClick={() => setNovelSnapshotView(null)} style={{ fontSize: 10, color: theme.textDim, cursor: "pointer" }}>✕</span>
                           </div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                             {scene.snapshots.map((snap, si) => (
@@ -3476,7 +3479,7 @@ const handleCreateWorld = async () => {
                           </div>
                           {scene.snapshots[novelSnapshotView] && (
                             <div>
-                              <div style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.6, maxHeight: 80, overflow: "hidden", padding: 8, background: "rgba(10,14,26,0.5)", borderRadius: 6, fontFamily: "'Georgia', serif" }}>
+                              <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.6, maxHeight: 80, overflow: "hidden", padding: 8, background: "rgba(10,14,26,0.5)", borderRadius: 6, fontFamily: "'Georgia', serif" }}>
                                 {scene.snapshots[novelSnapshotView].body.slice(0, 300) || "(empty)"}...
                               </div>
                               <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, novelSnapshotView); setNovelSnapshotView(null); }}
@@ -3506,7 +3509,7 @@ const handleCreateWorld = async () => {
                         data-placeholder={"Begin writing " + scene.title + "...\nType @ to reference codex entries — they'll appear as clickable links."}
                         style={{
                           flex: 1, width: "100%", background: "#0d1117", border: "none",
-                          color: "#d4c9a8", caretColor: "#f0c040",
+                          color: theme.text, caretColor: "#f0c040",
                           fontSize: 15, fontFamily: editorFontFamily,
                           lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none",
                           boxSizing: "border-box", letterSpacing: 0.3, overflowY: "auto",
@@ -3517,21 +3520,21 @@ const handleCreateWorld = async () => {
                       {/* @mention autocomplete */}
                       {novelMention && mentionMatches.length > 0 && (
                         <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: "#111827", border: "1px solid rgba(240,192,64,0.3)", borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(240,192,64,0.1)" }}>
-                          <div style={{ padding: "4px 10px 6px", fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
+                          <div style={{ padding: "4px 10px 6px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
                           {mentionMatches.map((a, idx) => (
                             <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
-                              style={{ padding: "8px 12px", fontSize: 12, color: "#d4c9a8", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent", transition: "background 0.1s" }}
+                              style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent", transition: "background 0.1s" }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? "rgba(240,192,64,0.08)" : "transparent"; }}>
                               <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color || "#888" }}>{CATEGORIES[a.category]?.icon || "?"}</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
-                                {a.summary && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.summary.slice(0, 60)}</div>}
+                                {a.summary && <div style={{ fontSize: 10, color: theme.textDim, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.summary.slice(0, 60)}</div>}
                               </div>
-                              <span style={{ fontSize: 9, color: "#445566", flexShrink: 0 }}>{CATEGORIES[a.category]?.label}</span>
+                              <span style={{ fontSize: 9, color: theme.textDim, flexShrink: 0 }}>{CATEGORIES[a.category]?.label}</span>
                             </div>
                           ))}
-                          <div style={{ padding: "6px 10px 4px", fontSize: 9, color: "#445566", borderTop: "1px solid #1a2435", marginTop: 4 }}>Tab/Enter to insert · Esc to close</div>
+                          <div style={{ padding: "6px 10px 4px", fontSize: 9, color: theme.textDim, borderTop: "1px solid #1a2435", marginTop: 4 }}>Tab/Enter to insert · Esc to close</div>
                         </div>
                       )}
 
@@ -3544,12 +3547,12 @@ const handleCreateWorld = async () => {
                               <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color || "#e8dcc8", fontFamily: "'Cinzel', serif" }}>
                                 {CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}
                               </div>
-                              <div style={{ fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 0.5 }}>{CATEGORIES[mentionTooltip.article.category]?.label}</div>
+                              <div style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5 }}>{CATEGORIES[mentionTooltip.article.category]?.label}</div>
                             </div>
                           </div>
-                          <div style={{ fontSize: 11, color: "#8899aa", lineHeight: 1.5 }}>{mentionTooltip.article.summary?.slice(0, 150) || "No summary."}{mentionTooltip.article.summary?.length > 150 ? "…" : ""}</div>
+                          <div style={{ fontSize: 11, color: theme.textMuted, lineHeight: 1.5 }}>{mentionTooltip.article.summary?.slice(0, 150) || "No summary."}{mentionTooltip.article.summary?.length > 150 ? "…" : ""}</div>
                           {Object.entries(mentionTooltip.article.fields || {}).filter(([_, v]) => v).slice(0, 3).map(([k, v]) => (
-                            <div key={k} style={{ fontSize: 10, color: "#556677", marginTop: 3 }}><strong style={{ color: "#6b7b8d" }}>{formatKey(k)}:</strong> {String(v).slice(0, 50)}</div>
+                            <div key={k} style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}><strong style={{ color: theme.textDim }}>{formatKey(k)}:</strong> {String(v).slice(0, 50)}</div>
                           ))}
                           <div style={{ fontSize: 9, color: "#f0c040", marginTop: 6 }}>Click mention to open article</div>
                         </div>
@@ -3575,13 +3578,13 @@ const handleCreateWorld = async () => {
 
                       {/* Footer bar */}
                       <div style={{ padding: "8px 20px", borderTop: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "#0a0e1a" }}>
-                        <span style={{ fontSize: 10, color: "#556677" }}>Scene: <strong style={{ color: "#8899aa" }}>{scWords.toLocaleString()}</strong> words</span>
-                        <span style={{ fontSize: 10, color: "#556677" }}>Chapter: <strong style={{ color: "#8899aa" }}>{chapterWordCount(ch).toLocaleString()}</strong></span>
-                        <span style={{ fontSize: 10, color: "#556677" }}>Total: <strong style={{ color: "#8899aa" }}>{msWordCount.total.toLocaleString()}</strong></span>
+                        <span style={{ fontSize: 10, color: theme.textDim }}>Scene: <strong style={{ color: theme.textMuted }}>{scWords.toLocaleString()}</strong> words</span>
+                        <span style={{ fontSize: 10, color: theme.textDim }}>Chapter: <strong style={{ color: theme.textMuted }}>{chapterWordCount(ch).toLocaleString()}</strong></span>
+                        <span style={{ fontSize: 10, color: theme.textDim }}>Total: <strong style={{ color: theme.textMuted }}>{msWordCount.total.toLocaleString()}</strong></span>
                         <div style={{ flex: 1 }} />
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_COLORS[ch.status] }} />
-                          <span style={{ fontSize: 9, color: "#556677", textTransform: "uppercase", letterSpacing: 0.5 }}>{ch.status}</span>
+                          <span style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5 }}>{ch.status}</span>
                         </div>
                         <span style={{ fontSize: 9, color: "#334455" }}>@ codex · ⊡ focus · ◫ split</span>
                       </div>
@@ -3603,7 +3606,7 @@ const handleCreateWorld = async () => {
                             </span>
                           ))}
                           <div style={{ flex: 1 }} />
-                          <span onClick={() => setNovelSplitPane(null)} style={{ cursor: "pointer", color: "#445566", fontSize: 12 }}>✕</span>
+                          <span onClick={() => setNovelSplitPane(null)} style={{ cursor: "pointer", color: theme.textDim, fontSize: 12 }}>✕</span>
                         </div>
 
                         {/* NOTES PANE */}
@@ -3611,14 +3614,14 @@ const handleCreateWorld = async () => {
                           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                             <div style={{ padding: "10px 14px 6px", flexShrink: 0 }}>
                               <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#f0c040", letterSpacing: 0.5 }}>Scene Notes</span>
-                              <div style={{ fontSize: 10, color: "#445566", marginTop: 2 }}>Private notes — won't appear in exports</div>
+                              <div style={{ fontSize: 10, color: theme.textDim, marginTop: 2 }}>Private notes — won't appear in exports</div>
                             </div>
                             <textarea
                               value={scene.notes || ""}
                               onChange={(e) => updateScene(act.id, ch.id, scene.id, { notes: e.target.value })}
                               placeholder={"Research notes for " + scene.title + "...\n\nCharacter motivations, plot threads, setting details, reminders..."}
                               style={{
-                                flex: 1, background: "transparent", border: "none", color: "#8899aa",
+                                flex: 1, background: "transparent", border: "none", color: theme.textMuted,
                                 fontSize: 13, fontFamily: "'Georgia', serif", lineHeight: 1.7,
                                 padding: "8px 14px", outline: "none", resize: "none", overflowY: "auto",
                               }}
@@ -3647,23 +3650,23 @@ const handleCreateWorld = async () => {
                                     style={{ padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "background 0.15s" }}
                                     onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                                     <span style={{ color: CATEGORIES[a.category]?.color, fontSize: 12 }}>{CATEGORIES[a.category]?.icon}</span>
-                                    <span style={{ fontSize: 12, color: "#d4c9a8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
+                                    <span style={{ fontSize: 12, color: theme.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
                                     <button onClick={(e) => { e.stopPropagation(); insertMentionFromSidebar(a); }}
-                                      style={{ background: "none", border: "none", color: "#556677", cursor: "pointer", fontSize: 10, padding: "2px 4px" }} title="Insert @mention">@+</button>
+                                      style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 10, padding: "2px 4px" }} title="Insert @mention">@+</button>
                                   </div>
                                   {novelCodexExpanded === a.id && (
                                     <div style={{ padding: "4px 10px 12px 30px" }}>
                                       {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid #1e2a3a" }} />}
-                                      <p style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
+                                      <p style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
                                       {Object.entries(a.fields || {}).filter(([_, v]) => v).slice(0, 5).map(([k, v]) => (
-                                        <div key={k} style={{ fontSize: 10, color: "#556677", marginBottom: 2 }}><strong style={{ color: "#6b7b8d" }}>{formatKey(k)}:</strong> {String(v).slice(0, 60)}</div>
+                                        <div key={k} style={{ fontSize: 10, color: theme.textDim, marginBottom: 2 }}><strong style={{ color: theme.textDim }}>{formatKey(k)}:</strong> {String(v).slice(0, 60)}</div>
                                       ))}
                                       <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", marginTop: 6 }}>Open full article →</div>
                                     </div>
                                   )}
                                 </div>
                               ))}
-                              {novelCodexArticles.length === 0 && <p style={{ fontSize: 11, color: "#445566", textAlign: "center", padding: 20 }}>No matching articles.</p>}
+                              {novelCodexArticles.length === 0 && <p style={{ fontSize: 11, color: theme.textDim, textAlign: "center", padding: 20 }}>No matching articles.</p>}
                             </div>
                           </div>
                         )}
@@ -3676,7 +3679,7 @@ const handleCreateWorld = async () => {
                               <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px", color: "#7ec8e3", borderColor: "rgba(126,200,227,0.3)" }}>📸 Save</button>
                             </div>
                             {(!scene.snapshots || scene.snapshots.length === 0) ? (
-                              <div style={{ textAlign: "center", padding: "30px 10px", color: "#445566" }}>
+                              <div style={{ textAlign: "center", padding: "30px 10px", color: theme.textDim }}>
                                 <div style={{ fontSize: 28, marginBottom: 8 }}>📸</div>
                                 <p style={{ fontSize: 12 }}>No snapshots yet.</p>
                                 <p style={{ fontSize: 10, color: "#334455" }}>Save a snapshot to create a restorable version of this scene.</p>
@@ -3688,9 +3691,9 @@ const handleCreateWorld = async () => {
                                     <span style={{ fontSize: 11, color: "#7ec8e3" }}>
                                       {new Date(snap.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                                     </span>
-                                    <span style={{ fontSize: 10, color: "#556677" }}>{snap.wordCount} words</span>
+                                    <span style={{ fontSize: 10, color: theme.textDim }}>{snap.wordCount} words</span>
                                   </div>
-                                  <div style={{ fontSize: 11, color: "#6b7b8d", lineHeight: 1.5, maxHeight: 60, overflow: "hidden", marginBottom: 6 }}>
+                                  <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.5, maxHeight: 60, overflow: "hidden", marginBottom: 6 }}>
                                     {snap.body.slice(0, 150) || "(empty)"}...
                                   </div>
                                   <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, si); }}
@@ -3991,8 +3994,8 @@ const handleCreateWorld = async () => {
           {/* === AI DOCUMENT IMPORT === */}
           {view === "ai_import" && (<div>
             <div style={{ marginTop: 24, marginBottom: 20 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e8dcc8", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>🧠 AI Document Import</h2>
-              <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6, lineHeight: 1.6 }}>Upload a lore document and AI will parse it into structured codex entries for your review.</p>
+              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>🧠 AI Document Import</h2>
+              <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6, lineHeight: 1.6 }}>Upload a lore document and AI will parse it into structured codex entries for your review.</p>
             </div>
             <Ornament width={300} />
 
@@ -4008,10 +4011,10 @@ const handleCreateWorld = async () => {
                   <div style={{ fontSize: 36, marginBottom: 12, animation: "pulse 1.5s ease-in-out infinite" }}>🧠</div>
                   <style>{`@keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
                   <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#f0c040", margin: "0 0 6px" }}>Analyzing Document…</p>
-                  <p style={{ fontSize: 12, color: "#6b7b8d", marginBottom: 10 }}>AI is reading "{aiSourceName}" and extracting lore entries</p>
+                  <p style={{ fontSize: 12, color: theme.textDim, marginBottom: 10 }}>AI is reading "{aiSourceName}" and extracting lore entries</p>
                   {aiProgress.total > 0 && (
                     <div style={{ width: "80%", maxWidth: 300, margin: "0 auto" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#556677", marginBottom: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: theme.textDim, marginBottom: 4 }}>
                         <span>Chunk {aiProgress.current} of {aiProgress.total}</span>
                         <span>{aiProgress.entries} entries found</span>
                       </div>
@@ -4022,15 +4025,15 @@ const handleCreateWorld = async () => {
                   )}
                 </>) : (<>
                   <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
-                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#d4c9a8", margin: "0 0 6px" }}>Drop or Click to Upload</p>
-                  <p style={{ fontSize: 12, color: "#6b7b8d" }}>Supports .txt, .md, and .docx files with lore, worldbuilding notes, language docs, bestiary entries, etc.</p>
+                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.text, margin: "0 0 6px" }}>Drop or Click to Upload</p>
+                  <p style={{ fontSize: 12, color: theme.textDim }}>Supports .txt, .md, and .docx files with lore, worldbuilding notes, language docs, bestiary entries, etc.</p>
                 </>)}
               </div>
 
               {aiParseError && <WarningBanner severity="error" icon="✕" title="Parse Error" style={{ marginTop: 16 }}>{aiParseError}</WarningBanner>}
 
               <div style={{ marginTop: 28 }}>
-                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#d4c9a8", marginBottom: 12, letterSpacing: 0.5 }}>◈ How It Works</p>
+                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, marginBottom: 12, letterSpacing: 0.5 }}>◈ How It Works</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {[
                     { step: "1", title: "Upload", desc: "Upload a .txt, .md, or .docx document containing your lore, canon data, language specs, creature descriptions, or cultural notes." },
@@ -4040,7 +4043,7 @@ const handleCreateWorld = async () => {
                   ].map((s) => (
                     <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                       <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(240,192,64,0.12)", border: "1px solid rgba(240,192,64,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#f0c040", flexShrink: 0 }}>{s.step}</div>
-                      <div><div style={{ fontSize: 13, fontWeight: 600, color: "#d4c9a8" }}>{s.title}</div><div style={{ fontSize: 12, color: "#6b7b8d", marginTop: 2, lineHeight: 1.5 }}>{s.desc}</div></div>
+                      <div><div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{s.title}</div><div style={{ fontSize: 12, color: theme.textDim, marginTop: 2, lineHeight: 1.5 }}>{s.desc}</div></div>
                     </div>
                   ))}
                 </div>
@@ -4062,15 +4065,15 @@ const handleCreateWorld = async () => {
             <div style={{ marginTop: 24, marginBottom: 20 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
-                  <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e8dcc8", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>📋 Staging Area</h2>
-                  <p style={{ fontSize: 13, color: "#6b7b8d", marginTop: 6 }}>{aiStaging.length} entries parsed{aiSourceName ? " from \"" + aiSourceName + "\"" : ""}</p>
+                  <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>📋 Staging Area</h2>
+                  <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>{aiStaging.length} entries parsed{aiSourceName ? " from \"" + aiSourceName + "\"" : ""}</p>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={stagingApproveAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>✓ Approve All Pending</button>
                   <button onClick={stagingRejectAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>✕ Reject All Pending</button>
                   <button onClick={stagingCommit} disabled={!aiStaging.some((e) => e._status === "approved" || e._status === "edited")} style={{ ...S.btnP, fontSize: 11, padding: "8px 16px", opacity: aiStaging.some((e) => e._status === "approved" || e._status === "edited") ? 1 : 0.4 }}>Commit to Codex</button>
                   <button onClick={stagingDeleteRejected} disabled={!aiStaging.some((e) => e._status === "rejected")} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.2)", opacity: aiStaging.some((e) => e._status === "rejected") ? 1 : 0.3 }}>🗑 Remove Rejected</button>
-                  {aiStaging.length > 0 && <button onClick={stagingClearAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#556677" }}>Clear All</button>}
+                  {aiStaging.length > 0 && <button onClick={stagingClearAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: theme.textDim }}>Clear All</button>}
                 </div>
               </div>
             </div>
@@ -4085,16 +4088,16 @@ const handleCreateWorld = async () => {
               ].map((s, i) => (
                 <div key={i} style={{ padding: "8px 18px", background: s.c + "0c", border: "1px solid " + s.c + "25", borderRadius: 6, display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 18, fontWeight: 700, color: s.c, fontFamily: "'Cinzel', serif" }}>{s.n}</span>
-                  <span style={{ fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1 }}>{s.l}</span>
+                  <span style={{ fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1 }}>{s.l}</span>
                 </div>
               ))}
             </div>
 
             {aiStaging.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 60, color: "#556677" }}>
+              <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
                 <p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Entries in Staging</p>
-                <p style={{ fontSize: 13, color: "#445566", marginTop: 4 }}>Use AI Document Import to parse a lore document.</p>
+                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4 }}>Use AI Document Import to parse a lore document.</p>
                 <button onClick={() => setView("ai_import")} style={{ ...S.btnP, marginTop: 16, fontSize: 12 }}>Go to AI Import</button>
               </div>
             ) : (
@@ -4107,19 +4110,19 @@ const handleCreateWorld = async () => {
                       <span style={{ fontSize: 20, color: c.color, marginTop: 2 }}>{c.icon}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: "#d4c9a8" }}>{entry.title}</span>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{entry.title}</span>
                           <span style={S.catBadge(c.color)}>{c.label}</span>
                           <span style={{ ...S.catBadge(stColor), textTransform: "capitalize" }}>{entry._status === "edited" ? "✎ edited" : entry._status}</span>
                         </div>
-                        <p style={{ fontSize: 12, color: "#8899aa", margin: "0 0 8px", lineHeight: 1.5 }}>{entry.summary}</p>
+                        <p style={{ fontSize: 12, color: theme.textMuted, margin: "0 0 8px", lineHeight: 1.5 }}>{entry.summary}</p>
                         {entry.fields && Object.keys(entry.fields).length > 0 && (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
                             {Object.entries(entry.fields).slice(0, 4).map(([k, v]) => v ? (
-                              <span key={k} style={{ fontSize: 10, color: "#6b7b8d", background: "rgba(85,102,119,0.1)", padding: "2px 8px", borderRadius: 8 }}>{formatKey(k)}: {typeof v === "string" ? v.slice(0, 40) : v}{typeof v === "string" && v.length > 40 ? "…" : ""}</span>
+                              <span key={k} style={{ fontSize: 10, color: theme.textDim, background: "rgba(85,102,119,0.1)", padding: "2px 8px", borderRadius: 8 }}>{formatKey(k)}: {typeof v === "string" ? v.slice(0, 40) : v}{typeof v === "string" && v.length > 40 ? "…" : ""}</span>
                             ) : null)}
                           </div>
                         )}
-                        {entry.body && <p style={{ fontSize: 11, color: "#6b7b8d", margin: 0, lineHeight: 1.5 }}>{entry.body.slice(0, 200)}{entry.body.length > 200 ? "…" : ""}</p>}
+                        {entry.body && <p style={{ fontSize: 11, color: theme.textDim, margin: 0, lineHeight: 1.5 }}>{entry.body.slice(0, 200)}{entry.body.length > 200 ? "…" : ""}</p>}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
                         {entry._status !== "approved" && entry._status !== "edited" && (
@@ -4141,26 +4144,36 @@ const handleCreateWorld = async () => {
 
           {/* === CODEX === */}
           {view === "codex" && (<div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 24, marginBottom: 20 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "The Full Codex" : (CATEGORIES[codexFilter]?.label || "") + "s"}</h2>
-              <Ornament width={160} /><span style={{ fontSize: 12, color: "#556677" }}>{filtered.length} entries</span>
-              <div style={{ marginLeft: "auto" }}>
-                <select value={codexSort} onChange={(e) => setCodexSort(e.target.value)}
-                  style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, padding: "5px 10px", color: "#8899aa", fontSize: 11, cursor: "pointer", outline: "none", fontFamily: "inherit" }}>
-                  <option value="recent">Most Recent</option>
-                  <option value="alpha_asc">A → Z</option>
-                  <option value="alpha_desc">Z → A</option>
-                  <option value="oldest">Oldest First</option>
-                  <option value="words">Most Words</option>
-                  <option value="era">By Time Period</option>
-                  <option value="category">By Category</option>
-                </select>
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 24, marginBottom: 16 }}>
+              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "The Full Codex" : (CATEGORIES[codexFilter]?.label || "") + "s"}</h2>
+              <Ornament width={120} /><span style={{ fontSize: 12, color: theme.textMuted }}>{filtered.length} entries</span>
             </div>
-            <div style={{ display: "flex", gap: 5, marginBottom: 20, flexWrap: "wrap" }}>
-              {[{ key: "all", label: "All", color: "#f0c040" }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((f) => (
-                <div key={f.key} onClick={() => setCodexFilter(f.key)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, cursor: "pointer", letterSpacing: 0.5, fontWeight: codexFilter === f.key ? 600 : 400, background: codexFilter === f.key ? f.color + "20" : "transparent", color: codexFilter === f.key ? f.color : "#556677", border: "1px solid " + (codexFilter === f.key ? f.color + "40" : "#1e2a3a") }}>{f.label}</div>
+            {/* Category filter pills */}
+            <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
+              {[{ key: "all", label: "All", color: theme.accent }, ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((f) => (
+                <div key={f.key} onClick={() => setCodexFilter(f.key)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, cursor: "pointer", letterSpacing: 0.5, fontWeight: codexFilter === f.key ? 600 : 400, background: codexFilter === f.key ? f.color + "20" : "transparent", color: codexFilter === f.key ? f.color : theme.textDim, border: "1px solid " + (codexFilter === f.key ? f.color + "40" : theme.border), transition: "all 0.15s" }}>{f.label}</div>
               ))}
+            </div>
+            {/* Sort options bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, padding: "8px 14px", background: theme.cardBg, border: "1px solid " + theme.border, borderRadius: 8 }}>
+              <span style={{ fontSize: 10, color: theme.textMuted, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", flexShrink: 0 }}>Sort</span>
+              <div style={{ width: 1, height: 16, background: theme.border, flexShrink: 0 }} />
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {[
+                  { id: "recent", label: "Most Recent" },
+                  { id: "alpha_asc", label: "A → Z" },
+                  { id: "alpha_desc", label: "Z → A" },
+                  { id: "oldest", label: "Oldest" },
+                  { id: "words", label: "Word Count" },
+                  { id: "era", label: "Time Period" },
+                  { id: "category", label: "Category" },
+                ].map((s) => (
+                  <button key={s.id} onClick={() => setCodexSort(s.id)}
+                    style={{ padding: "5px 14px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: codexSort === s.id ? 600 : 400, letterSpacing: 0.3, border: "1px solid " + (codexSort === s.id ? theme.accent + "50" : "transparent"), background: codexSort === s.id ? theme.accentBg : "transparent", color: codexSort === s.id ? theme.accent : theme.textMuted, transition: "all 0.15s" }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
             {filtered.map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); return (
               <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: "rgba(17,24,39,0.6)", border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? "rgba(240,192,64,0.2)" : "#1a2435"), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
@@ -4172,7 +4185,7 @@ const handleCreateWorld = async () => {
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "#d4c9a8" }}>{a.title}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{a.title}</span>
                     <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
                     {ac.length > 0 && <span style={{ ...S.catBadge("#e07050"), gap: 3 }}>⚠ {ac.length} conflict{ac.length > 1 ? "s" : ""}</span>}
                     {aiErrors.length > 0 && <span style={{ ...S.catBadge("#e07050"), gap: 3 }}>🛡 {aiErrors.length} error{aiErrors.length > 1 ? "s" : ""}</span>}
@@ -4181,25 +4194,25 @@ const handleCreateWorld = async () => {
                   <p style={{ fontSize: 12, color: "#7a8a9a", margin: 0, lineHeight: 1.5 }}>{a.summary}</p>
                   <div style={{ marginTop: 6 }}>{a.tags?.slice(0, 5).map((t) => <span key={t} style={S.tag}>#{t}</span>)}</div>
                 </div>
-                <span style={{ fontSize: 11, color: "#445566", whiteSpace: "nowrap" }}>{timeAgo(a.updatedAt)}</span>
+                <span style={{ fontSize: 11, color: theme.textDim, whiteSpace: "nowrap" }}>{timeAgo(a.updatedAt)}</span>
               </div>
             ); })}
-            {filtered.length === 0 && <div style={{ textAlign: "center", padding: 60, color: "#445566" }}><div style={{ fontSize: 32, marginBottom: 12 }}>⌕</div><p>No entries found.</p></div>}
+            {filtered.length === 0 && <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}><div style={{ fontSize: 32, marginBottom: 12 }}>⌕</div><p>No entries found.</p></div>}
           </div>)}
 
           {/* === ARTICLE VIEW === */}
           {view === "article" && activeArticle && (
             <div style={{ display: "flex", gap: 0, overflow: "hidden", margin: "0 -28px", height: "calc(100vh - 56px)" }}>
               <div style={{ flex: 1, overflowY: "auto", padding: "0 28px 40px" }}>
-                <div style={{ fontSize: 11, color: "#556677", marginTop: 20, marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ cursor: "pointer", color: "#6b7b8d" }} onClick={goDash}>Dashboard</span><span>›</span>
-                  <span style={{ cursor: "pointer", color: "#6b7b8d" }} onClick={() => goCodex(activeArticle.category)}>{categoryPluralLabel(activeArticle.category)}</span><span>›</span>
+                <div style={{ fontSize: 11, color: theme.textDim, marginTop: 20, marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ cursor: "pointer", color: theme.textDim }} onClick={goDash}>Dashboard</span><span>›</span>
+                  <span style={{ cursor: "pointer", color: theme.textDim }} onClick={() => goCodex(activeArticle.category)}>{categoryPluralLabel(activeArticle.category)}</span><span>›</span>
                   <span style={{ color: CATEGORIES[activeArticle.category]?.color }}>{activeArticle.title}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
                   <span style={{ fontSize: 28, color: CATEGORIES[activeArticle.category]?.color }}>{CATEGORIES[activeArticle.category]?.icon}</span>
                   <div style={{ flex: 1 }}>
-                    <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, fontWeight: 700, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>{activeArticle.title}</h1>
+                    <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeArticle.title}</h1>
                     <span style={{ ...S.catBadge(CATEGORIES[activeArticle.category]?.color), marginTop: 6 }}>{CATEGORIES[activeArticle.category]?.label}</span>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -4209,7 +4222,7 @@ const handleCreateWorld = async () => {
                       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.1)"; }}>🗑 Delete</button>
                   </div>
                 </div>
-                <p style={{ fontSize: 14, color: "#8899aa", fontStyle: "italic", lineHeight: 1.6, margin: "8px 0 16px" }}>{activeArticle.summary}</p>
+                <p style={{ fontSize: 14, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.6, margin: "8px 0 16px" }}>{activeArticle.summary}</p>
 
                 {/* Portrait */}
                 {activeArticle.portrait && (
@@ -4217,7 +4230,7 @@ const handleCreateWorld = async () => {
                     <div style={{ width: 180, borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[activeArticle.category]?.color || "#f0c040") + "40", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
                       <img src={activeArticle.portrait} alt={activeArticle.title} style={{ width: "100%", height: "auto", display: "block" }} />
                     </div>
-                    <p style={{ fontSize: 9, color: "#445566", textAlign: "center", marginTop: 6, textTransform: "uppercase", letterSpacing: 1 }}>Portrait</p>
+                    <p style={{ fontSize: 9, color: theme.textDim, textAlign: "center", marginTop: 6, textTransform: "uppercase", letterSpacing: 1 }}>Portrait</p>
                   </div>
                 )}
                 <Ornament width={260} />
@@ -4225,10 +4238,10 @@ const handleCreateWorld = async () => {
                 {conflictsFor(activeArticle.id).map((c) => (
                   <WarningBanner key={c.id} severity={c.severity} icon={c.severity === "error" ? "✕" : "⚠"} title="Canon Conflict Detected" style={{ marginTop: 16 }}>
                     <p style={{ margin: "0 0 6px" }}>{c.message}</p>
-                    <p style={{ margin: 0, color: "#6b7b8d", fontStyle: "italic" }}>💡 {c.suggestion}</p>
+                    <p style={{ margin: 0, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</p>
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                       <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", textDecoration: "underline" }} onClick={() => navigate(c.targetId)}>View {c.targetTitle}</span>
-                      <span style={{ fontSize: 11, color: "#556677", cursor: "pointer" }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
+                      <span style={{ fontSize: 11, color: theme.textDim, cursor: "pointer" }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
                     </div>
                   </WarningBanner>
                 ))}
@@ -4257,13 +4270,13 @@ const handleCreateWorld = async () => {
                                   </span>
                                 </div>
                               ) : (
-                                w.suggestion && <div style={{ fontSize: 10, color: "#6b7b8d", marginTop: 1 }}>💡 {w.suggestion}</div>
+                                w.suggestion && <div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>💡 {w.suggestion}</div>
                               )}
                             </div>
                           </div>
                           {expandedWarning === wKey && w.fuzzyMatches && (
                             <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                              <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
+                              <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
                               {w.fuzzyMatches.map((fm) => (
                                 <div key={fm.article.id}
                                   onClick={() => {
@@ -4283,7 +4296,7 @@ const handleCreateWorld = async () => {
                                   <span style={{ fontSize: 14, color: CATEGORIES[fm.article.category]?.color }}>{CATEGORIES[fm.article.category]?.icon}</span>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 12, color: "#c8bda0", fontWeight: 500 }}>{fm.article.title}</div>
-                                    <div style={{ fontSize: 10, color: "#556677" }}>{CATEGORIES[fm.article.category]?.label} · match score: {fm.score}</div>
+                                    <div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[fm.article.category]?.label} · match score: {fm.score}</div>
                                   </div>
                                   <span style={{ fontSize: 10, color: "#8ec8a0", fontWeight: 600 }}>✓ Fix</span>
                                 </div>
@@ -4313,7 +4326,7 @@ const handleCreateWorld = async () => {
                   <div style={{ marginTop: 20, marginBottom: 24, background: "rgba(17,24,39,0.4)", border: "1px solid #151d2e", borderRadius: 8, padding: "12px 18px", overflow: "hidden" }}>
                     {Object.entries(activeArticle.fields).filter(([_, v]) => v).map(([k, v]) => (
                       <div key={k} style={{ display: "flex", flexWrap: "wrap", borderBottom: "1px solid #111827", padding: "8px 0", gap: "4px 12px" }}>
-                        <div style={{ width: 160, minWidth: 160, fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, paddingTop: 2 }}>{formatKey(k)}</div>
+                        <div style={{ width: 160, minWidth: 160, fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, paddingTop: 2 }}>{formatKey(k)}</div>
                         <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: "#c8bda0", lineHeight: 1.5, wordWrap: "break-word", overflowWrap: "break-word" }}>{v}</div>
                       </div>
                     ))}
@@ -4321,7 +4334,7 @@ const handleCreateWorld = async () => {
                 )}
 
                 {activeArticle.temporal && (
-                  <div style={{ fontSize: 11, color: "#556677", marginBottom: 16, padding: "6px 12px", background: "rgba(85,102,119,0.08)", borderRadius: 6, display: "inline-flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 16, padding: "6px 12px", background: "rgba(85,102,119,0.08)", borderRadius: 6, display: "inline-flex", gap: 12, flexWrap: "wrap" }}>
                     <span>⏳ {activeArticle.temporal.type}</span>
                     {activeArticle.temporal.active_start != null && <span>Active from: Year {activeArticle.temporal.active_start}</span>}
                     {activeArticle.temporal.active_end != null && <span>Until: Year {activeArticle.temporal.active_end}</span>}
@@ -4334,23 +4347,23 @@ const handleCreateWorld = async () => {
                 </div>
                 {activeArticle.tags?.length > 0 && (
                   <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid #151d2e" }}>
-                    <span style={{ fontSize: 10, color: "#556677", marginRight: 8, textTransform: "uppercase", letterSpacing: 1 }}>Tags:</span>
+                    <span style={{ fontSize: 10, color: theme.textDim, marginRight: 8, textTransform: "uppercase", letterSpacing: 1 }}>Tags:</span>
                     {activeArticle.tags.map((t) => <span key={t} style={{ ...S.tag, fontSize: 11, padding: "3px 10px" }}>#{t}</span>)}
                   </div>
                 )}
-                <div style={{ marginTop: 16, fontSize: 11, color: "#445566" }}>Created {new Date(activeArticle.createdAt).toLocaleDateString()} · Updated {timeAgo(activeArticle.updatedAt)}</div>
+                <div style={{ marginTop: 16, fontSize: 11, color: theme.textDim }}>Created {new Date(activeArticle.createdAt).toLocaleDateString()} · Updated {timeAgo(activeArticle.updatedAt)}</div>
               </div>
 
               {/* SIDEBAR */}
               <div style={{ width: 280, minWidth: 280, borderLeft: "1px solid #1a2435", overflowY: "auto", padding: "20px 18px", background: "rgba(10,14,26,0.4)" }}>
-                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#8899aa", letterSpacing: 1, textTransform: "uppercase", marginTop: 0, marginBottom: 12 }}>Related Articles</p>
-                {activeArticle.linkedIds?.map((lid) => { const lk = articles.find((a) => a.id === lid); if (!lk) return <div key={lid} style={{ ...S.relItem, opacity: 0.5, cursor: "default" }}><span style={{ fontSize: 12, color: "#445566" }}>✦</span><span style={{ fontStyle: "italic" }}>{lid.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} (unwritten)</span></div>;
-                  return <div key={lid} style={S.relItem} onClick={() => navigate(lid)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.8)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}><span style={{ fontSize: 14, color: CATEGORIES[lk.category]?.color }}>{CATEGORIES[lk.category]?.icon}</span><div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{lk.title}</div><div style={{ fontSize: 10, color: "#556677", marginTop: 1 }}>{CATEGORIES[lk.category]?.label}</div></div></div>;
+                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginTop: 0, marginBottom: 12 }}>Related Articles</p>
+                {activeArticle.linkedIds?.map((lid) => { const lk = articles.find((a) => a.id === lid); if (!lk) return <div key={lid} style={{ ...S.relItem, opacity: 0.5, cursor: "default" }}><span style={{ fontSize: 12, color: theme.textDim }}>✦</span><span style={{ fontStyle: "italic" }}>{lid.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} (unwritten)</span></div>;
+                  return <div key={lid} style={S.relItem} onClick={() => navigate(lid)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.8)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}><span style={{ fontSize: 14, color: CATEGORIES[lk.category]?.color }}>{CATEGORIES[lk.category]?.icon}</span><div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{lk.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[lk.category]?.label}</div></div></div>;
                 })}
 
                 {(() => { const sugs = findUnlinkedMentions(activeArticle.body, activeArticle.fields, articles, activeArticle.linkedIds || []); if (!sugs.length) return null; return (<>
                   <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#7ec8e3", letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 8 }}>💡 Suggested Links</p>
-                  <p style={{ fontSize: 10, color: "#556677", margin: "0 0 8px" }}>Names found in text that may refer to codex entries. Click ✓ to link in-place.</p>
+                  <p style={{ fontSize: 10, color: theme.textDim, margin: "0 0 8px" }}>Names found in text that may refer to codex entries. Click ✓ to link in-place.</p>
                   {sugs.map((s) => <div key={s.article.id} style={{ ...S.relItem, borderLeft: "2px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.4)" : s.confidence === "strong" ? "rgba(126,200,227,0.3)" : "rgba(240,192,64,0.2)"), display: "flex", alignItems: "center" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
                     <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => navigate(s.article.id)}>
@@ -4416,14 +4429,14 @@ const handleCreateWorld = async () => {
                 </>); })()}
 
                 {(() => { const br = articles.filter((a) => a.id !== activeArticle.id && a.linkedIds?.includes(activeArticle.id)); if (!br.length) return null; return (<>
-                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#8899aa", letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 12 }}>Referenced By</p>
+                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 12 }}>Referenced By</p>
                   {br.map((r) => <div key={r.id} style={S.relItem} onClick={() => navigate(r.id)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.8)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
                     <span style={{ fontSize: 14, color: CATEGORIES[r.category]?.color }}>{CATEGORIES[r.category]?.icon}</span>
-                    <div><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{r.title}</div><div style={{ fontSize: 10, color: "#556677", marginTop: 1 }}>{CATEGORIES[r.category]?.label}</div></div>
+                    <div><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{r.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[r.category]?.label}</div></div>
                   </div>)}
                 </>); })()}
 
-                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#8899aa", letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 12 }}>Tags</p>
+                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 12 }}>Tags</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{activeArticle.tags?.map((t) => <span key={t} style={{ ...S.tag, cursor: "pointer", fontSize: 11, padding: "3px 10px" }} onClick={() => { setSearchQuery(t); goCodex("all"); }}>#{t}</span>)}</div>
               </div>
             </div>
@@ -4433,28 +4446,28 @@ const handleCreateWorld = async () => {
           {view === "create" && createCat && (<div style={{ maxWidth: 680, marginTop: 24 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
               <span style={{ fontSize: 24, color: CATEGORIES[createCat]?.color }}>{CATEGORIES[createCat]?.icon}</span>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: "#e8dcc8", margin: 0 }}>{editingId ? "Edit" : "New"} {CATEGORIES[createCat]?.label}</h2>
-              {editingId && <span style={{ fontSize: 11, color: "#556677", background: "rgba(85,102,119,0.15)", padding: "3px 10px", borderRadius: 10 }}>Editing: {editingId}</span>}
+              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0 }}>{editingId ? "Edit" : "New"} {CATEGORIES[createCat]?.label}</h2>
+              {editingId && <span style={{ fontSize: 11, color: theme.textDim, background: "rgba(85,102,119,0.15)", padding: "3px 10px", borderRadius: 10 }}>Editing: {editingId}</span>}
             </div>
             <Ornament width={260} />
             <div style={{ marginTop: 20 }}>
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Title</label>
+                <label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Title</label>
                 <input style={{ ...S.input, ...(liveDupes.length > 0 ? { borderColor: "#e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={`Name this ${safeText(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} />
                 {liveDupes.length > 0 && <WarningBanner severity="error" icon="⚠" title="Potential Duplicates Found" style={{ marginTop: 8 }}>
                   <p style={{ margin: "0 0 8px" }}>Saving will require confirmation. Similar entries:</p>
                   {liveDupes.map((d) => <div key={d.article.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
                     <span style={{ color: CATEGORIES[d.article.category]?.color }}>{CATEGORIES[d.article.category]?.icon}</span>
-                    <span style={{ color: "#d4c9a8", fontWeight: 500, cursor: "pointer" }} onClick={() => navigate(d.article.id)}>{d.article.title}</span>
+                    <span style={{ color: theme.text, fontWeight: 500, cursor: "pointer" }} onClick={() => navigate(d.article.id)}>{d.article.title}</span>
                     <span style={{ color: "#e07050", fontSize: 11 }}>({Math.round(d.score * 100)}%)</span>
                   </div>)}
                 </WarningBanner>}
               </div>
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Summary</label><input style={S.input} value={formData.summary} onChange={(e) => setFormData((p) => ({ ...p, summary: e.target.value }))} placeholder="A brief description..." /></div>
+              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Summary</label><input style={S.input} value={formData.summary} onChange={(e) => setFormData((p) => ({ ...p, summary: e.target.value }))} placeholder="A brief description..." /></div>
 
               {/* Portrait Upload */}
               <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Portrait / Image <span style={{ fontWeight: 400, color: "#445566" }}>— optional</span></label>
+                <label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Portrait / Image <span style={{ fontWeight: 400, color: theme.textDim }}>— optional</span></label>
                 <input ref={portraitFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
@@ -4483,38 +4496,38 @@ const handleCreateWorld = async () => {
                     }}
                       onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.5)"; e.currentTarget.style.background = "rgba(240,192,64,0.04)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.2)"; e.currentTarget.style.background = "rgba(17,24,39,0.4)"; }}>
-                      <span style={{ fontSize: 24, color: "#445566", marginBottom: 4 }}>📷</span>
-                      <span style={{ fontSize: 10, color: "#556677" }}>Add Image</span>
+                      <span style={{ fontSize: 24, color: theme.textDim, marginBottom: 4 }}>📷</span>
+                      <span style={{ fontSize: 10, color: theme.textDim }}>Add Image</span>
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: "#445566", lineHeight: 1.5, paddingTop: 4 }}>
+                  <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.5, paddingTop: 4 }}>
                     Upload a portrait, depiction, map, or symbol for this entry.<br />
                     Supports JPG, PNG, GIF, WebP. Max 2MB.
                   </div>
                 </div>
               </div>
 
-              <p style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, color: "#d4c9a8", marginTop: 24, marginBottom: 16, letterSpacing: 1 }}>◈ Template Fields</p>
+              <p style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, color: theme.text, marginTop: 24, marginBottom: 16, letterSpacing: 1 }}>◈ Template Fields</p>
               {TEMPLATE_FIELDS[createCat]?.map((fk) => (
-                <div key={fk} style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>{formatKey(fk)}</label><input style={S.input} value={formData.fields[fk] || ""} onChange={(e) => setFormData((p) => ({ ...p, fields: { ...p.fields, [fk]: e.target.value } }))} placeholder={`Enter ${lower(formatKey(fk))}...`} /></div>
+                <div key={fk} style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>{formatKey(fk)}</label><input style={S.input} value={formData.fields[fk] || ""} onChange={(e) => setFormData((p) => ({ ...p, fields: { ...p.fields, [fk]: e.target.value } }))} placeholder={`Enter ${lower(formatKey(fk))}...`} /></div>
               ))}
 
               {/* Temporal override for deity/magic/race */}
               {(createCat === "deity" || createCat === "magic" || createCat === "race") && (<>
-                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, color: "#d4c9a8", marginTop: 24, marginBottom: 16, letterSpacing: 1 }}>⏳ Temporal Data <span style={{ fontWeight: 400, fontSize: 11, color: "#556677" }}>— for conflict detection</span></p>
+                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, color: theme.text, marginTop: 24, marginBottom: 16, letterSpacing: 1 }}>⏳ Temporal Data <span style={{ fontWeight: 400, fontSize: 11, color: theme.textDim }}>— for conflict detection</span></p>
                 <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Type</label>
+                    <label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Type</label>
                     <select style={{ ...S.input, cursor: "pointer" }} value={formData.temporal?.type || ""} onChange={(e) => setFormData((p) => ({ ...p, temporal: { ...(p.temporal || {}), type: e.target.value } }))}>
                       <option value="">None</option><option value="immortal">Immortal</option><option value="race">Race</option><option value="concept">Concept</option><option value="mortal">Mortal</option>
                     </select>
                   </div>
-                  <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Active From (Year)</label><input style={S.input} type="number" value={formData.temporal?.active_start ?? ""} onChange={(e) => setFormData((p) => ({ ...p, temporal: { ...(p.temporal || {}), active_start: e.target.value ? parseInt(e.target.value) : null } }))} /></div>
-                  <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Active Until (Year)</label><input style={S.input} type="number" value={formData.temporal?.active_end ?? ""} onChange={(e) => setFormData((p) => ({ ...p, temporal: { ...(p.temporal || {}), active_end: e.target.value ? parseInt(e.target.value) : null } }))} /></div>
+                  <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Active From (Year)</label><input style={S.input} type="number" value={formData.temporal?.active_start ?? ""} onChange={(e) => setFormData((p) => ({ ...p, temporal: { ...(p.temporal || {}), active_start: e.target.value ? parseInt(e.target.value) : null } }))} /></div>
+                  <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Active Until (Year)</label><input style={S.input} type="number" value={formData.temporal?.active_end ?? ""} onChange={(e) => setFormData((p) => ({ ...p, temporal: { ...(p.temporal || {}), active_end: e.target.value ? parseInt(e.target.value) : null } }))} /></div>
                 </div>
               </>)}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={{ ...S.textarea, fontFamily: editorFontFamily, fontSize: 13 }} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} rows={8} /></div>
+              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: theme.textDim }}>— type @ to link codex entries</span></label><textarea style={{ ...S.textarea, fontFamily: editorFontFamily, fontSize: 13 }} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} rows={8} /></div>
 
               {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
                 <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>
@@ -4557,7 +4570,7 @@ const handleCreateWorld = async () => {
                     {/* Inline suggestion dropdown */}
                     {expandedWarning === warnKey && w.fuzzyMatches && (
                       <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                        <div style={{ fontSize: 10, color: "#6b7b8d", marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
+                        <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
                         {w.fuzzyMatches.map((fm) => (
                           <div key={fm.article.id}
                             onClick={() => resolveRef(w, fm.article)}
@@ -4567,7 +4580,7 @@ const handleCreateWorld = async () => {
                             <span style={{ fontSize: 14, color: CATEGORIES[fm.article.category]?.color }}>{CATEGORIES[fm.article.category]?.icon}</span>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 12, color: "#c8bda0", fontWeight: 500 }}>{fm.article.title}</div>
-                              <div style={{ fontSize: 10, color: "#556677" }}>{CATEGORIES[fm.article.category]?.label} · match score: {fm.score}</div>
+                              <div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[fm.article.category]?.label} · match score: {fm.score}</div>
                             </div>
                             <span style={{ fontSize: 10, color: "#8ec8a0", fontWeight: 600 }}>✓ Apply</span>
                           </div>
@@ -4592,7 +4605,7 @@ const handleCreateWorld = async () => {
                 ))}
               </WarningBanner>}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Tags <span style={{ fontWeight: 400, color: "#445566" }}>— comma separated</span></label><input style={S.input} value={formData.tags} onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))} placeholder="war, second-age, dragons..." /></div>
+              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Tags <span style={{ fontWeight: 400, color: theme.textDim }}>— comma separated</span></label><input style={S.input} value={formData.tags} onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))} placeholder="war, second-age, dragons..." /></div>
               <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
                 <button style={S.btnP} onClick={attemptSave}>{editingId ? "Save Changes" : "Create Entry"}</button>
                 <button style={S.btnS} onClick={() => editingId ? navigate(editingId) : goDash()}>Cancel</button>
