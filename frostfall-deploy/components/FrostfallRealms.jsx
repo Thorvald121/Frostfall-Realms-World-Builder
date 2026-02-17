@@ -22,6 +22,28 @@ const CATEGORIES = {
   laws_customs: { label: "Laws & Customs", icon: "📜", color: "#c8a878" },
 };
 
+const categoryPluralLabel = (cat) => {
+  const base = CATEGORIES?.[cat]?.label ?? "";
+  // Irregular / preferred plurals
+  const special = {
+    deity: "Deities",
+    race: "Races / Species",
+    character: "Characters",
+    event: "Historical Events",
+    location: "Locations",
+    organization: "Organizations",
+    item: "Items / Artifacts",
+    magic: "Magic / Lore",
+    language: "Languages",
+    flora_fauna: "Flora & Fauna",
+    laws_customs: "Laws & Customs",
+  };
+  if (special[cat]) return special[cat];
+  const t = String(base || "").trim();
+  if (!t) return "";
+  return /s$/i.test(t) ? t : t + "s";
+};
+
 const ERAS = [
   { id: "primordial", label: "Primordial Era", start: -10000, end: 0, color: "#c084fc", bg: "rgba(192,132,252,0.06)" },
   { id: "first_age", label: "First Age — Awakening", start: 0, end: 1000, color: "#f0c040", bg: "rgba(240,192,64,0.06)" },
@@ -2023,7 +2045,7 @@ const handleCreateWorld = async () => {
     { id: "codex", icon: "📖", label: "Full Codex", action: () => goCodex("all") },
     { divider: true },
     ...Object.entries(CATEGORIES).map(([k, c]) => ({
-      id: k, icon: c.icon, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : c.label + "s",
+      id: k, icon: c.icon, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : categoryPluralLabel(k),
       action: () => goCodex(k), count: catCounts[k] || undefined,
     })),
     { divider: true },
@@ -2291,7 +2313,7 @@ const handleCreateWorld = async () => {
             </div>
             <Ornament width={300} />
             <div style={{ display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" }}>
-              {[{ n: stats.total, l: "Total Articles", c: "#f0c040" }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: v.label + "s", c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
+              {[{ n: stats.total, l: "Total Articles", c: "#f0c040" }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
                 <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: "#e8dcc8", fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
               ))}
             </div>
@@ -2480,7 +2502,7 @@ const handleCreateWorld = async () => {
                     <div key={cat} style={{ height: h, minHeight: 50, borderBottom: "1px solid #151d2e", display: "flex", alignItems: "center", gap: 8, padding: "0 16px" }}>
                       <span style={{ fontSize: 16, color: c.color }}>{c.icon}</span>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: c.color, letterSpacing: 0.5 }}>{c.label}s</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: c.color, letterSpacing: 0.5 }}>{categoryPluralLabel(cat)}</div>
                         <div style={{ fontSize: 10, color: "#556677" }}>{tlData.lanes[cat].length} entries</div>
                       </div>
                     </div>
@@ -3671,7 +3693,7 @@ const handleCreateWorld = async () => {
               <div style={{ flex: 1, overflowY: "auto", padding: "0 28px 40px" }}>
                 <div style={{ fontSize: 11, color: "#556677", marginTop: 20, marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ cursor: "pointer", color: "#6b7b8d" }} onClick={goDash}>Dashboard</span><span>›</span>
-                  <span style={{ cursor: "pointer", color: "#6b7b8d" }} onClick={() => goCodex(activeArticle.category)}>{CATEGORIES[activeArticle.category]?.label}s</span><span>›</span>
+                  <span style={{ cursor: "pointer", color: "#6b7b8d" }} onClick={() => goCodex(activeArticle.category)}>{categoryPluralLabel(activeArticle.category)}</span><span>›</span>
                   <span style={{ color: CATEGORIES[activeArticle.category]?.color }}>{activeArticle.title}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
