@@ -53,6 +53,25 @@ const ERAS = [
 
 const SWIM_LANE_ORDER = ["deity", "magic", "race", "character", "event", "location", "organization", "item", "language", "flora_fauna", "laws_customs"];
 
+const THEMES = {
+  dark_arcane: { name: "Dark Arcane", desc: "The original — deep blacks, gold accents", rootBg: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", sidebarBg: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", border: "#1e2a3a", surface: "#111827", surfaceHover: "rgba(17,24,39,0.85)", text: "#d4c9a8", textMuted: "#8899aa", textDim: "#556677", accent: "#f0c040", accentBg: "rgba(240,192,64,0.12)", inputBg: "#0d1117", topBarBg: "rgba(10,14,26,0.6)", cardBg: "rgba(17,24,39,0.6)" },
+  midnight_blue: { name: "Midnight Blue", desc: "Cool blues and silver — oceanic depths", rootBg: "linear-gradient(170deg, #0a1628 0%, #0f1f3a 40%, #0a1425 100%)", sidebarBg: "linear-gradient(180deg, #0c1424 0%, #0a1020 100%)", border: "#1a2d4a", surface: "#0f1f3a", surfaceHover: "rgba(15,31,58,0.85)", text: "#c8d8e8", textMuted: "#7899bb", textDim: "#4a6888", accent: "#5ea8d0", accentBg: "rgba(94,168,208,0.12)", inputBg: "#0a1628", topBarBg: "rgba(10,22,40,0.6)", cardBg: "rgba(15,31,58,0.6)" },
+  parchment: { name: "Parchment Light", desc: "Warm cream and ink — like aged paper", rootBg: "linear-gradient(170deg, #f5f0e8 0%, #ece4d4 40%, #f0ead8 100%)", sidebarBg: "linear-gradient(180deg, #e8e0d0 0%, #ddd4c4 100%)", border: "#c8b898", surface: "#f5f0e8", surfaceHover: "rgba(220,210,190,0.5)", text: "#3a2f20", textMuted: "#6b5d48", textDim: "#9a8a70", accent: "#8b6914", accentBg: "rgba(139,105,20,0.12)", inputBg: "#faf6f0", topBarBg: "rgba(245,240,232,0.85)", cardBg: "rgba(236,228,212,0.6)" },
+};
+const FONT_SIZES = { compact: 0.88, default: 1.0, large: 1.14 };
+const EDITOR_FONTS = {
+  georgia: "'Georgia', serif",
+  times: "'Times New Roman', Times, serif",
+  palatino: "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
+  system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  mono: "'Fira Code', 'Consolas', monospace",
+};
+const DEFAULT_SETTINGS = {
+  theme: "dark_arcane", fontSize: "default", editorFont: "georgia",
+  disabledCategories: [], integritySensitivity: "balanced", eraLabel: "Year",
+  authorName: "", avatarUrl: "",
+};
+
 const SEED_ARTICLES = [];
 
 // === INTEGRITY ENGINES ===
@@ -93,7 +112,7 @@ function detectConflicts(articles) {
       if (tt.type === "immortal" && !tt.active_end && !tt.faded) return;
       if (tt.active_end != null && st.active_start > tt.active_end) {
         conflicts.push({
-          id: source.id + "->" + refId + "-post", type: "temporal", severity: "error",
+          id: source.id + "->" + refId + "-post", type: "temporal", severity: "info", dismissable: true,
           sourceId: source.id, sourceTitle: source.title,
           targetId: refId, targetTitle: target.title,
           message: target.title + " is referenced in \"" + source.title + "\" (Year " + st.active_start + "+) but " + (tt.death_year ? "died in Year " + tt.death_year : "ceased to be active after Year " + tt.active_end) + ".",
@@ -112,7 +131,7 @@ function detectConflicts(articles) {
           const match = words.some((w) => w.length > 3 && kfL.includes(w));
           if (match && !conflicts.find((c) => c.sourceId === source.id && c.targetId === target.id)) {
             conflicts.push({
-              id: source.id + "->" + target.id + "-kf", type: "temporal", severity: "warning",
+              id: source.id + "->" + target.id + "-kf", type: "temporal", severity: "info", dismissable: true,
               sourceId: source.id, sourceTitle: source.title,
               targetId: target.id, targetTitle: target.title,
               message: "\"" + source.title + "\" lists a figure matching \"" + target.title + "\" in Key Figures, but they died in Year " + tt.death_year + " — " + (st.active_start - tt.death_year) + " years before.",
@@ -244,7 +263,7 @@ function checkArticleIntegrity(data, articles, excludeId = null) {
     }
   });
 
-  // 2. Temporal conflicts — referencing entities that weren't alive/active at this time
+  // 2. Temporal context notes — mentioning historical entities in prose is ALWAYS valid storytelling
   if (temporal && temporal.active_start != null) {
     allRefs.forEach((ref) => {
       const target = entityMap[ref.id];
@@ -252,17 +271,19 @@ function checkArticleIntegrity(data, articles, excludeId = null) {
       const tt = target.temporal;
       if (tt.type === "immortal" && !tt.active_end) return;
       if (tt.active_end != null && temporal.active_start > tt.active_end) {
+        const discrepancy = temporal.active_start - tt.active_end;
         warnings.push({
-          type: "temporal", severity: "error",
-          message: "References \"" + target.title + "\" (ended Year " + tt.active_end + ") but this entry starts in Year " + temporal.active_start + ".",
-          suggestion: "This is a " + (temporal.active_start - tt.active_end) + "-year discrepancy. Was this intentional (legacy/historical reference)?",
+          type: "temporal", severity: "info", refId: ref.id, dismissable: true,
+          message: "📅 \"" + target.title + "\" ended in Year " + tt.active_end + " — " + discrepancy + " year" + (discrepancy !== 1 ? "s" : "") + " before this entry (Year " + temporal.active_start + ").",
+          suggestion: "Timeline note: this is a historical reference in your text. Dismiss if intentional.",
         });
       }
       if (tt.death_year && temporal.active_start > tt.death_year) {
+        const deathGap = temporal.active_start - tt.death_year;
         warnings.push({
-          type: "temporal", severity: "warning",
-          message: "\"" + target.title + "\" died in Year " + tt.death_year + ", which is before this entry's time period (Year " + temporal.active_start + ").",
-          suggestion: "Verify this is intentional — perhaps a posthumous mention or historical record.",
+          type: "temporal", severity: "info", refId: ref.id, dismissable: true,
+          message: "📅 \"" + target.title + "\" died in Year " + tt.death_year + " (" + deathGap + " year" + (deathGap !== 1 ? "s" : "") + " before this entry).",
+          suggestion: "Timeline note: likely a posthumous or historical mention. Dismiss if intentional.",
         });
       }
     });
@@ -363,7 +384,7 @@ function checkSceneIntegrity(sceneBody, articles) {
     events.forEach((event) => {
       if (event.temporal.active_start > mortal.temporal.death_year) {
         warnings.push({
-          severity: "warning",
+          severity: "info", dismissable: true,
           message: "\"" + mortal.title + "\" (died Year " + mortal.temporal.death_year + ") referenced alongside \"" + event.title + "\" (Year " + event.temporal.active_start + ").",
           ref: mortal.id,
         });
@@ -657,6 +678,20 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [showWorldCreate, setShowWorldCreate] = useState(false);
   const [worldForm, setWorldForm] = useState({ name: "", description: "" });
   const [worldSwitcherOpen, setWorldSwitcherOpen] = useState(false);
+
+  // === SETTINGS ===
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [settingsTab, setSettingsTab] = useState("appearance"); // appearance | world | account
+  const theme = THEMES[settings.theme] || THEMES.dark_arcane;
+  const fontScale = FONT_SIZES[settings.fontSize] || 1.0;
+  const editorFontFamily = EDITOR_FONTS[settings.editorFont] || EDITOR_FONTS.georgia;
+
+  const [codexSort, setCodexSort] = useState("recent");
+  const [dismissedTemporals, setDismissedTemporals] = useState(new Set());
+  const [novelSaveStatus, setNovelSaveStatus] = useState("saved");
+
+  const bodyTextareaRef = useRef(null);
+
   const tlRef = useRef(null);
   const tlLabelRef = useRef(null);
   const tlSyncing = useRef(false);
@@ -695,6 +730,16 @@ export default function FrostfallRealms({ user, onLogout }) {
         } catch (e) { setSaveStatus("idle"); }
       }
       setDataLoaded(true);
+      // Load settings
+      try {
+        if (typeof window !== "undefined" && window.storage) {
+          const sr = await window.storage.get("frostfall-settings-v1");
+          if (sr?.value) setSettings((prev) => ({ ...prev, ...JSON.parse(sr.value) }));
+        } else {
+          const ls = localStorage.getItem("frostfall-settings-v1");
+          if (ls) setSettings((prev) => ({ ...prev, ...JSON.parse(ls) }));
+        }
+      } catch (_) {}
     };
     loadData();
   }, [user?.id]);
@@ -747,6 +792,26 @@ const handleCreateWorld = async () => {
     }, 1200);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [articles, archived, dataLoaded, user, activeWorld]);
+
+  // Save settings whenever they change
+  useEffect(() => {
+    if (!dataLoaded) return;
+    const json = JSON.stringify(settings);
+    try {
+      if (typeof window !== "undefined" && window.storage) { window.storage.set("frostfall-settings-v1", json); }
+      else { localStorage.setItem("frostfall-settings-v1", json); }
+    } catch (_) {}
+  }, [settings, dataLoaded]);
+
+  // Save settings whenever they change
+  useEffect(() => {
+    if (!dataLoaded) return;
+    const json = JSON.stringify(settings);
+    try {
+      if (typeof window !== "undefined" && window.storage) { window.storage.set("frostfall-settings-v1", json); }
+      else { localStorage.setItem("frostfall-settings-v1", json); }
+    } catch (_) {}
+  }, [settings, dataLoaded]);
 
   // === EXPORT ===
   const exportWorld = () => {
@@ -1943,16 +2008,23 @@ const handleCreateWorld = async () => {
   const allConflicts = useMemo(() => detectConflicts(articles), [articles]);
   const conflictsFor = useCallback((id) => allConflicts.filter((c) => c.sourceId === id && !dismissedConflicts.has(c.id)), [allConflicts, dismissedConflicts]);
 
+  // Filter integrity warnings based on sensitivity setting
+  const filterBySensitivity = useCallback((warnings) => {
+    if (settings.integritySensitivity === "strict") return warnings;
+    if (settings.integritySensitivity === "relaxed") return warnings.filter((w) => w.severity === "error" || w.type === "duplicate");
+    return warnings; // balanced = default
+  }, [settings.integritySensitivity]);
+
   // Global integrity scan — counts all articles with issues (broken refs, temporal, orphans, missing fields, contradictions)
   const globalIntegrity = useMemo(() => {
     const articlesWithIssues = [];
     articles.forEach((a) => {
-      const issues = checkArticleIntegrity(a, articles, a.id);
+      const issues = filterBySensitivity(checkArticleIntegrity(a, articles, a.id));
       const serious = issues.filter((w) => w.severity === "error" || w.severity === "warning");
       if (serious.length > 0) articlesWithIssues.push({ article: a, issues: serious });
     });
     return articlesWithIssues;
-  }, [articles]);
+  }, [articles, filterBySensitivity]);
 
   const totalIntegrityIssues = allConflicts.length + globalIntegrity.reduce((t, a) => t + a.issues.length, 0);
   const linkSugs = useMemo(() => view === "create" ? findUnlinkedMentions(formData.body + " " + formData.summary + " " + formData.title, formData.fields, articles, editingId ? (articles.find((a) => a.id === editingId)?.linkedIds || []) : []) : [], [view, formData, articles, editingId]);
@@ -2044,7 +2116,7 @@ const handleCreateWorld = async () => {
     { id: "dashboard", icon: "◈", label: "Dashboard", action: goDash },
     { id: "codex", icon: "📖", label: "Full Codex", action: () => goCodex("all") },
     { divider: true },
-    ...Object.entries(CATEGORIES).map(([k, c]) => ({
+    ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
       id: k, icon: c.icon, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : categoryPluralLabel(k),
       action: () => goCodex(k), count: catCounts[k] || undefined,
     })),
@@ -2058,6 +2130,7 @@ const handleCreateWorld = async () => {
     { id: "ai_import", icon: "🧠", label: "AI Document Import", action: () => setView("ai_import") },
     { id: "staging", icon: "📋", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length > 0 ? aiStaging.filter((e) => e._status === "pending").length : undefined },
     { divider: true },
+    { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
     { id: "support", icon: "♥", label: "Support", action: () => setShowDonate(true) },
   ];
 
@@ -2071,6 +2144,7 @@ const handleCreateWorld = async () => {
     if (item.id === "archives" && view === "archives") return true;
     if (item.id === "ai_import" && view === "ai_import") return true;
     if (item.id === "staging" && view === "staging") return true;
+    if (item.id === "settings" && view === "settings") return true;
     if (view === "codex" && codexFilter === item.id) return true;
     if ((view === "article" || view === "create") && (activeArticle?.category === item.id || createCat === item.id)) return true;
     return false;
@@ -2082,7 +2156,7 @@ const handleCreateWorld = async () => {
   const extraCats = Object.entries(CATEGORIES).slice(4);
 
   return (
-    <div style={S.root}>
+    <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: Math.round(13 * fontScale) }}>
       <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
       {showDupeModal && <DuplicateModal duplicates={pendingDupes} onOverride={doSave} onCancel={() => { setShowDupeModal(false); setPendingDupes([]); }} onNavigate={navigate} />}
       {showDeleteModal && <DeleteModal article={showDeleteModal} onArchive={() => doArchive(showDeleteModal)} onPermanent={() => doPermanentDelete(showDeleteModal)} onCancel={() => setShowDeleteModal(null)} />}
@@ -2155,7 +2229,7 @@ const handleCreateWorld = async () => {
       )}
 
       {/* SIDEBAR */}
-      <div style={S.sidebar}>
+      <div style={{ ...S.sidebar, background: theme.sidebarBg, borderRight: "1px solid " + theme.border }}>
         <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid #1a2435" }}>
           <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: "#f0c040", letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
           <p style={{ fontSize: 10, color: "#6b7b8d", letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
@@ -2226,7 +2300,7 @@ const handleCreateWorld = async () => {
 
       {/* MAIN */}
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <div style={S.topBar}>
+        <div style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg }}>
           <div style={{ position: "relative" }}>
             <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#445566", fontSize: 14 }}>⌕</span>
             <input style={S.searchBox} placeholder="Search the codex..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
@@ -3115,7 +3189,7 @@ const handleCreateWorld = async () => {
                       style={{
                         flex: 1, width: "100%", background: "transparent", border: "none",
                         color: "#c8bda0", caretColor: "#f0c040",
-                        fontSize: 18, fontFamily: "'Georgia', 'Times New Roman', serif",
+                        fontSize: Math.round(18 * fontScale), fontFamily: editorFontFamily,
                         lineHeight: 2.2, padding: "0 20px", outline: "none", resize: "none",
                         letterSpacing: 0.4, overflowY: "auto", whiteSpace: "pre-wrap", wordWrap: "break-word",
                       }}
@@ -3301,7 +3375,7 @@ const handleCreateWorld = async () => {
                         style={{
                           flex: 1, width: "100%", background: "#0d1117", border: "none",
                           color: "#d4c9a8", caretColor: "#f0c040",
-                          fontSize: 15, fontFamily: "'Georgia', 'Times New Roman', serif",
+                          fontSize: Math.round(15 * fontScale), fontFamily: editorFontFamily,
                           lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none",
                           boxSizing: "border-box", letterSpacing: 0.3, overflowY: "auto",
                           whiteSpace: "pre-wrap", wordWrap: "break-word", minHeight: 200,
@@ -3503,6 +3577,249 @@ const handleCreateWorld = async () => {
 
           </div>)}
 
+          {/* === SETTINGS === */}
+          {view === "settings" && (<div>
+            <div style={{ marginTop: 24, marginBottom: 20 }}>
+              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⚙ Settings</h2>
+              <p style={{ fontSize: 13, color: theme.textMuted, marginTop: 6 }}>Configure your Frostfall Realms experience.</p>
+            </div>
+            <Ornament width={300} />
+
+            {/* Settings tabs */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 28, marginTop: 20 }}>
+              {[
+                { id: "appearance", icon: "🎨", label: "Appearance" },
+                { id: "world", icon: "🌍", label: "World Settings" },
+                { id: "account", icon: "👤", label: "Account" },
+              ].map((tab) => (
+                <button key={tab.id} onClick={() => setSettingsTab(tab.id)}
+                  style={{ background: settingsTab === tab.id ? theme.accentBg : "transparent", border: "1px solid " + (settingsTab === tab.id ? theme.accent + "40" : theme.border), borderRadius: 8, padding: "10px 20px", color: settingsTab === tab.id ? theme.accent : theme.textMuted, fontSize: 13, fontWeight: settingsTab === tab.id ? 600 : 400, cursor: "pointer", fontFamily: "'Cinzel', serif", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 8, transition: "all 0.2s" }}>
+                  <span>{tab.icon}</span> {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* === APPEARANCE TAB === */}
+            {settingsTab === "appearance" && (
+              <div style={{ maxWidth: 640 }}>
+                {/* Theme Selection */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Theme</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Choose the visual atmosphere for your workspace.</p>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    {Object.entries(THEMES).map(([tid, t]) => (
+                      <div key={tid} onClick={() => setSettings((p) => ({ ...p, theme: tid }))}
+                        style={{ width: 180, padding: "16px 18px", borderRadius: 10, cursor: "pointer", border: "2px solid " + (settings.theme === tid ? theme.accent : theme.border), background: t.cardBg, transition: "all 0.2s" }}>
+                        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 4, background: t.rootBg, border: "1px solid " + t.border }} />
+                          <div style={{ width: 20, height: 20, borderRadius: 4, background: t.accent }} />
+                          <div style={{ width: 20, height: 20, borderRadius: 4, background: t.surface, border: "1px solid " + t.border }} />
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: settings.theme === tid ? theme.accent : theme.text, fontFamily: "'Cinzel', serif" }}>{t.name}</div>
+                        <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>{t.desc}</div>
+                        {settings.theme === tid && <div style={{ fontSize: 10, color: theme.accent, marginTop: 8, fontWeight: 600 }}>✓ Active</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Font Size */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Font Size</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Scale text across the entire interface.</p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[{ id: "compact", label: "Compact", sample: "Aa" }, { id: "default", label: "Default", sample: "Aa" }, { id: "large", label: "Large", sample: "Aa" }].map((sz) => (
+                      <button key={sz.id} onClick={() => setSettings((p) => ({ ...p, fontSize: sz.id }))}
+                        style={{ flex: 1, padding: "14px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.fontSize === sz.id ? theme.accent + "50" : theme.border), background: settings.fontSize === sz.id ? theme.accentBg : "transparent", color: settings.fontSize === sz.id ? theme.accent : theme.textMuted, textAlign: "center", fontFamily: "inherit", transition: "all 0.2s" }}>
+                        <div style={{ fontSize: Math.round(20 * FONT_SIZES[sz.id]), fontFamily: "'Cinzel', serif", marginBottom: 4 }}>{sz.sample}</div>
+                        <div style={{ fontSize: 11 }}>{sz.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Editor Font */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Editor Font</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Font family used in the novel editor and article body.</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {Object.entries(EDITOR_FONTS).map(([fid, fam]) => (
+                      <div key={fid} onClick={() => setSettings((p) => ({ ...p, editorFont: fid }))}
+                        style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.editorFont === fid ? theme.accent + "50" : theme.border), background: settings.editorFont === fid ? theme.accentBg : "transparent", transition: "all 0.2s" }}>
+                        <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid " + (settings.editorFont === fid ? theme.accent : theme.border), display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {settings.editorFont === fid && <div style={{ width: 10, height: 10, borderRadius: "50%", background: theme.accent }} />}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, color: settings.editorFont === fid ? theme.accent : theme.text, fontWeight: 500, textTransform: "capitalize" }}>{fid === "system" ? "System Sans-Serif" : fid === "mono" ? "Monospace" : fid.charAt(0).toUpperCase() + fid.slice(1)}</div>
+                          <div style={{ fontSize: 14, color: theme.textMuted, fontFamily: fam, marginTop: 2 }}>The quick brown fox jumps over the lazy dog.</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* === WORLD SETTINGS TAB === */}
+            {settingsTab === "world" && (
+              <div style={{ maxWidth: 640 }}>
+                {/* Module Toggles */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Category Modules</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Toggle categories on or off to simplify your sidebar. Disabled categories are hidden from navigation but their data is preserved.</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {Object.entries(CATEGORIES).map(([cid, cat]) => {
+                      const isDisabled = settings.disabledCategories.includes(cid);
+                      const count = articles.filter((a) => a.category === cid).length;
+                      return (
+                        <div key={cid} onClick={() => setSettings((p) => ({ ...p, disabledCategories: isDisabled ? p.disabledCategories.filter((c) => c !== cid) : [...p.disabledCategories, cid] }))}
+                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (isDisabled ? theme.border : cat.color + "40"), background: isDisabled ? "transparent" : cat.color + "08", opacity: isDisabled ? 0.5 : 1, transition: "all 0.2s" }}>
+                          <div style={{ width: 36, height: 20, borderRadius: 10, background: isDisabled ? theme.border : cat.color, position: "relative", transition: "all 0.2s", flexShrink: 0 }}>
+                            <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: isDisabled ? 2 : 18, transition: "all 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
+                          </div>
+                          <span style={{ fontSize: 16 }}>{cat.icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 500, color: isDisabled ? theme.textDim : theme.text }}>{cat.label}</div>
+                            {count > 0 && <div style={{ fontSize: 10, color: theme.textDim }}>{count} entries</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Integrity Sensitivity */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Integrity Engine Sensitivity</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Controls how aggressively the Truth Engine flags potential issues.</p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[
+                      { id: "strict", label: "Strict", desc: "Flag everything — temporal notes, orphans, all warnings", icon: "🔒" },
+                      { id: "balanced", label: "Balanced", desc: "Flag errors and warnings, timeline notes as info only", icon: "⚖" },
+                      { id: "relaxed", label: "Relaxed", desc: "Only flag hard errors — duplicate names, broken links", icon: "🔓" },
+                    ].map((lvl) => (
+                      <div key={lvl.id} onClick={() => setSettings((p) => ({ ...p, integritySensitivity: lvl.id }))}
+                        style={{ flex: 1, padding: "14px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.integritySensitivity === lvl.id ? theme.accent + "50" : theme.border), background: settings.integritySensitivity === lvl.id ? theme.accentBg : "transparent", transition: "all 0.2s", textAlign: "center" }}>
+                        <div style={{ fontSize: 20, marginBottom: 6 }}>{lvl.icon}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: settings.integritySensitivity === lvl.id ? theme.accent : theme.text, fontFamily: "'Cinzel', serif" }}>{lvl.label}</div>
+                        <div style={{ fontSize: 10, color: theme.textDim, marginTop: 4, lineHeight: 1.4 }}>{lvl.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Era Label */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Time Period Label</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Customize how years are displayed across the platform. Default is "Year" (e.g., Year 2800).</p>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input value={settings.eraLabel} onChange={(e) => setSettings((p) => ({ ...p, eraLabel: e.target.value }))}
+                      style={{ ...S.input, width: 180, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }}
+                      placeholder="Year" />
+                    <span style={{ fontSize: 12, color: theme.textDim }}>Preview: <span style={{ color: theme.accent }}>{settings.eraLabel || "Year"} 2800</span></span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                    {["Year", "Age", "Cycle", "Era", "Turn", "AR", "AE"].map((preset) => (
+                      <button key={preset} onClick={() => setSettings((p) => ({ ...p, eraLabel: preset }))}
+                        style={{ background: settings.eraLabel === preset ? theme.accentBg : "transparent", border: "1px solid " + (settings.eraLabel === preset ? theme.accent + "40" : theme.border), borderRadius: 6, padding: "4px 12px", fontSize: 11, color: settings.eraLabel === preset ? theme.accent : theme.textMuted, cursor: "pointer", fontFamily: "inherit" }}>
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* === ACCOUNT TAB === */}
+            {settingsTab === "account" && (
+              <div style={{ maxWidth: 640 }}>
+                {/* Author Profile */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Author Profile</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Your identity as it appears on exported manuscripts and shared content.</p>
+                  <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+                    {/* Avatar */}
+                    <div style={{ flexShrink: 0 }}>
+                      <div style={{ width: 80, height: 80, borderRadius: "50%", border: "2px solid " + theme.border, background: theme.surface, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", marginBottom: 8 }}>
+                        {settings.avatarUrl ? (
+                          <img src={settings.avatarUrl} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <span style={{ fontSize: 28, color: theme.textDim }}>👤</span>
+                        )}
+                      </div>
+                      <input type="text" placeholder="Image URL..." value={settings.avatarUrl} onChange={(e) => setSettings((p) => ({ ...p, avatarUrl: e.target.value }))}
+                        style={{ ...S.input, fontSize: 10, padding: "5px 8px", width: 80, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }} />
+                    </div>
+                    {/* Name + info */}
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Author / Display Name</label>
+                      <input value={settings.authorName} onChange={(e) => setSettings((p) => ({ ...p, authorName: e.target.value }))}
+                        style={{ ...S.input, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }}
+                        placeholder="Enter your author name..." />
+                      <div style={{ fontSize: 11, color: theme.textDim, marginTop: 8 }}>This name will appear on manuscript title pages when you export and in collaboration features.</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Data Export */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Data Export</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Download a complete backup of your world data as JSON. Includes all articles, archived entries, and metadata.</p>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => {
+                      const data = { exportFormat: "frostfall-realms-v2", exportedAt: new Date().toISOString(), worldName: activeWorld?.name, worldDescription: activeWorld?.description, settings, articles, archived, manuscripts, stats: { articles: articles.length, archived: archived.length, categories: Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, articles.filter((a) => a.category === k).length])) } };
+                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "frostfall").replace(/\s+/g, "_").toLowerCase() + "_backup_" + new Date().toISOString().slice(0, 10) + ".json"; a.click(); URL.revokeObjectURL(url);
+                    }} style={{ ...S.btnP, fontSize: 12, padding: "10px 20px" }}>
+                      📥 Export World Data (JSON)
+                    </button>
+                    <button onClick={() => {
+                      const data = { exportFormat: "frostfall-realms-v2", exportedAt: new Date().toISOString(), worldName: activeWorld?.name, articles, archived };
+                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "frostfall").replace(/\s+/g, "_").toLowerCase() + "_articles_" + new Date().toISOString().slice(0, 10) + ".json"; a.click(); URL.revokeObjectURL(url);
+                    }} style={{ ...S.btnS, fontSize: 12, color: theme.textMuted, borderColor: theme.border }}>
+                      📋 Export Articles Only
+                    </button>
+                  </div>
+                  <div style={{ marginTop: 12, padding: "10px 14px", background: theme.surface, border: "1px solid " + theme.border, borderRadius: 6, fontSize: 11, color: theme.textDim, lineHeight: 1.5 }}>
+                    <strong style={{ color: theme.textMuted }}>Export includes:</strong> {articles.length} articles, {archived.length} archived, {manuscripts.length} manuscript{manuscripts.length !== 1 ? "s" : ""}, all settings and metadata.
+                  </div>
+                </div>
+
+                {/* Reset / Danger Zone */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: "#e07050", margin: "0 0 6px", letterSpacing: 0.5 }}>Danger Zone</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Irreversible actions. Please export your data before proceeding.</p>
+                  <div style={{ padding: "16px 20px", border: "1px solid rgba(224,112,80,0.3)", borderRadius: 8, background: "rgba(224,112,80,0.04)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#e07050" }}>Reset Settings to Default</div>
+                        <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>Revert all appearance, world, and account settings. Does not delete articles.</div>
+                      </div>
+                      <button onClick={() => setShowConfirm({ title: "Reset Settings?", message: "This will reset all settings to their defaults. Your articles and manuscripts will not be affected.", onConfirm: () => { setSettings(DEFAULT_SETTINGS); setShowConfirm(null); } })}
+                        style={{ ...S.btnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
+                        Reset Settings
+                      </button>
+                    </div>
+                    <div style={{ height: 1, background: "rgba(224,112,80,0.15)", margin: "12px 0" }} />
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#e07050" }}>Delete All World Data</div>
+                        <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>Permanently delete all articles, manuscripts, and settings. This cannot be undone.</div>
+                      </div>
+                      <button onClick={() => setShowConfirm({ title: "Delete Everything?", message: "This will permanently delete ALL " + articles.length + " articles, " + archived.length + " archived entries, and " + manuscripts.length + " manuscripts. This CANNOT be undone. Please export first.", onConfirm: () => { setArticles([]); setArchived([]); setManuscripts([]); setSettings(DEFAULT_SETTINGS); setView("dashboard"); setShowConfirm(null); } })}
+                        style={{ ...S.btnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
+                        Delete All Data
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>)}
+
           {/* === AI DOCUMENT IMPORT === */}
           {view === "ai_import" && (<div>
             <div style={{ marginTop: 24, marginBottom: 20 }}>
@@ -3662,7 +3979,7 @@ const handleCreateWorld = async () => {
                 <div key={f.key} onClick={() => setCodexFilter(f.key)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, cursor: "pointer", letterSpacing: 0.5, fontWeight: codexFilter === f.key ? 600 : 400, background: codexFilter === f.key ? f.color + "20" : "transparent", color: codexFilter === f.key ? f.color : "#556677", border: "1px solid " + (codexFilter === f.key ? f.color + "40" : "#1e2a3a") }}>{f.label}</div>
               ))}
             </div>
-            {filtered.map((a) => { const ac = conflictsFor(a.id); const ai = checkArticleIntegrity(a, articles, a.id); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); return (
+            {filtered.map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); return (
               <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: "rgba(17,24,39,0.6)", border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? "rgba(240,192,64,0.2)" : "#1a2435"), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
                 onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.85)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.6)"; }}>
                 {a.portrait ? (
@@ -4014,7 +4331,7 @@ const handleCreateWorld = async () => {
                 </div>
               </>)}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={S.textarea} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} rows={8} /></div>
+              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={{ ...S.textarea, fontFamily: editorFontFamily, fontSize: Math.round(13 * fontScale) }} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} rows={8} /></div>
 
               {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
                 <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>
