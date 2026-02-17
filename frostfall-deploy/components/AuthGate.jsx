@@ -1,320 +1,181 @@
 "use client";
-
-import React, { useEffect, useState } from "react";
-import ThemeSelect from "./ThemeSelect";
-import { applyThemeToRoot, loadThemeKey, saveThemeKey } from "../lib/themes";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { applyThemeToRoot, loadThemeKey } from "../lib/themes";
 
 export default function AuthGate({ children }) {
-  // Theme (Option A)
-  const [themeKey, setThemeKey] = useState(() => loadThemeKey());
-
-  useEffect(() => {
-    applyThemeToRoot(themeKey);
-    saveThemeKey(themeKey);
-  }, [themeKey]);
-
-  // Auth state
-  const [session, setSession] = useState(null);
-  const [authMode, setAuthMode] = useState("signin"); // "signin" | "signup"
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authView, setAuthView] = useState("login"); // login | register | forgot
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-
+  // Apply saved theme on mount (integrates with lib/themes.js CSS variable system)
   useEffect(() => {
-    // If env vars missing, supabase.js exports null.
-    if (!supabase) {
-      setMessage(
-        "Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY missing)."
-      );
-      return;
-    }
-
-    let sub;
-
-    (async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (!error) setSession(data?.session ?? null);
-
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-        setSession(newSession ?? null);
-      });
-      sub = listener?.subscription;
-    })();
-
-    return () => {
-      try {
-        sub?.unsubscribe?.();
-      } catch {
-        // ignore
-      }
-    };
+    try { applyThemeToRoot(loadThemeKey()); } catch (_) {}
   }, []);
 
-  async function onSubmit(e) {
-    e.preventDefault();
-    setMessage("");
+  // Check session on mount
+  useEffect(() => {
+    if (!supabase) { setLoading(false); return; }
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user || null);
+      setLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser((prev) => (prev?.id && session?.user?.id && prev.id === session.user.id) ? prev : (session?.user || null));
+    });
+    return () => listener?.subscription?.unsubscribe();
+  }, []);
 
-    if (!supabase) {
-      setMessage("Supabase is not configured.");
-      return;
-    }
+  const handleLogin = async () => {
+    setError(""); setSubmitting(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    setSubmitting(false);
+  };
 
-    const cleanEmail = (email || "").trim();
-    if (!cleanEmail) return setMessage("Enter your email.");
-    if (!password || password.length < 6) return setMessage("Password must be at least 6 characters.");
+  const handleRegister = async () => {
+    setError(""); setSubmitting(true);
+    const { error } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { display_name: displayName || email.split("@")[0] } },
+    });
+    if (error) setError(error.message);
+    else setSuccess("Check your email for a confirmation link!");
+    setSubmitting(false);
+  };
 
-    setBusy(true);
-    try {
-      if (authMode === "signup") {
-        const { error } = await supabase.auth.signUp({ email: cleanEmail, password });
-        if (error) throw error;
-        setMessage("Account created. Check your email if confirmations are enabled.");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-        if (error) throw error;
-      }
-    } catch (err) {
-      setMessage(err?.message || "Authentication failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const handleForgot = async () => {
+    setError(""); setSubmitting(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) setError(error.message);
+    else setSuccess("Password reset email sent!");
+    setSubmitting(false);
+  };
 
-  async function onSignOut() {
-    if (!supabase) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } catch (err) {
-      setMessage(err?.message || "Sign out failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
-  // Authenticated → show app
-  if (session) {
-    return (
-      <div style={{ minHeight: "100vh" }}>
-        <div
-          style={{
-            position: "fixed",
-            top: 14,
-            right: 14,
-            zIndex: 50,
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            background: "var(--topBarBg)",
-            border: "1px solid var(--border)",
-            padding: "10px 12px",
-            borderRadius: 14,
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <ThemeSelect value={themeKey} onChange={setThemeKey} compact />
-          <button
-            onClick={onSignOut}
-            disabled={busy}
-            style={{
-              background: "var(--accentBg)",
-              color: "var(--text)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: "6px 10px",
-              cursor: busy ? "not-allowed" : "pointer",
-              fontFamily: "var(--uiFont, system-ui)",
-              fontSize: 12,
-            }}
-          >
-            Sign out
-          </button>
-        </div>
+  const handleOAuth = async (provider) => {
+    setError("");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) setError(error.message);
+  };
 
-        {children}
+  // If no Supabase configured, skip auth (local dev mode)
+  if (!supabase) return children({ user: null, onLogout: () => {} });
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center", color: "#f0c040" }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>◈</div>
+        <p style={{ fontFamily: "'Cinzel', 'Palatino Linotype', serif", fontSize: 16, letterSpacing: 2 }}>LOADING…</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Login / Signup UI
+  // Authenticated — render app via render prop
+  if (user) return children({ user, onLogout: handleLogout });
+
+  // Auth form styles
+  const S = {
+    input: { width: "100%", background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, padding: "11px 14px", color: "#d4c9a8", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" },
+    btn: { width: "100%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", color: "#0a0e1a", border: "none", borderRadius: 6, padding: "12px 24px", fontSize: 14, fontWeight: 700, fontFamily: "'Cinzel', serif", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" },
+    btnSecondary: { width: "100%", background: "transparent", color: "#8899aa", border: "1px solid #1e2a3a", borderRadius: 6, padding: "11px 24px", fontSize: 13, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
+    link: { fontSize: 12, color: "#f0c040", cursor: "pointer", background: "none", border: "none", fontFamily: "inherit", textDecoration: "underline" },
+  };
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 22,
-        background: "var(--rootBg)",
-        color: "var(--text)",
-        position: "relative",
-      }}
-    >
-      <div style={{ position: "fixed", top: 14, right: 14, zIndex: 50 }}>
-        <ThemeSelect value={themeKey} onChange={setThemeKey} compact />
-      </div>
-
-      <div
-        className="ff-auth-grid"
-        style={{
-          width: "min(980px, 100%)",
-          display: "grid",
-          gridTemplateColumns: "1.2fr 1fr",
-          gap: 18,
-          alignItems: "stretch",
-        }}
-      >
-        <div
-          style={{
-            background: "var(--cardBg)",
-            border: "1px solid var(--border)",
-            borderRadius: 18,
-            padding: 22,
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "var(--displayFont, ui-serif)",
-              fontSize: 28,
-              letterSpacing: 0.6,
-              marginBottom: 8,
-            }}
-          >
-            Frostfall Realms
-          </div>
-
-          <div style={{ color: "var(--textMuted)", lineHeight: 1.5, fontSize: 14 }}>
-            Select a theme that’s readable, then sign in. The theme is applied globally via CSS tokens.
-          </div>
-
-          {message ? (
-            <div
-              style={{
-                marginTop: 16,
-                background: "color-mix(in srgb, var(--accentBg) 35%, transparent)",
-                border: "1px solid var(--border)",
-                padding: "10px 12px",
-                borderRadius: 14,
-                color: "var(--textMuted)",
-                lineHeight: 1.4,
-                fontSize: 13,
-              }}
-            >
-              {message}
-            </div>
-          ) : null}
+    <div style={{ minHeight: "100vh", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif" }}>
+      <div style={{ width: 400, maxWidth: "90vw" }}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 48, color: "#f0c040", marginBottom: 8 }}>◈</div>
+          <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 28, color: "#e8dcc8", margin: "0 0 4px", letterSpacing: 3 }}>FROSTFALL REALMS</h1>
+          <p style={{ fontSize: 13, color: "#556677", letterSpacing: 1 }}>Worldbuilding Engine</p>
         </div>
 
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 18,
-            padding: 22,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-          }}
-        >
-          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode("signin");
-                setMessage("");
-              }}
-              style={{
-                flex: 1,
-                padding: "10px 12px",
-                borderRadius: 14,
-                border: "1px solid var(--border)",
-                cursor: "pointer",
-                background: authMode === "signin" ? "var(--accentBg)" : "var(--inputBg)",
-                color: "var(--text)",
-                fontFamily: "var(--uiFont, system-ui)",
-                fontWeight: 650,
-              }}
-            >
-              Sign in
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode("signup");
-                setMessage("");
-              }}
-              style={{
-                flex: 1,
-                padding: "10px 12px",
-                borderRadius: 14,
-                border: "1px solid var(--border)",
-                cursor: "pointer",
-                background: authMode === "signup" ? "var(--accentBg)" : "var(--inputBg)",
-                color: "var(--text)",
-                fontFamily: "var(--uiFont, system-ui)",
-                fontWeight: 650,
-              }}
-            >
-              Create account
-            </button>
+        <div style={{ background: "linear-gradient(135deg, #111827 0%, #0d1117 100%)", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px" }}>
+          {/* Tabs */}
+          <div style={{ display: "flex", marginBottom: 24, borderBottom: "1px solid #1a2435" }}>
+            {[["login", "Sign In"], ["register", "Create Account"]].map(([id, label]) => (
+              <button key={id} onClick={() => { setAuthView(id); setError(""); setSuccess(""); }}
+                style={{ flex: 1, padding: "10px 0", background: "none", border: "none", borderBottom: authView === id ? "2px solid #f0c040" : "2px solid transparent", color: authView === id ? "#f0c040" : "#556677", fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: 1 }}>
+                {label}
+              </button>
+            ))}
           </div>
 
-          <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 13, color: "var(--textMuted)" }}>Email</span>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                autoComplete="email"
-                placeholder="you@domain.com"
-                style={{ padding: "11px 12px", fontSize: 14, fontFamily: "var(--uiFont, system-ui)" }}
-              />
-            </label>
+          {error && <div style={{ background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.3)", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#e07050" }}>{error}</div>}
+          {success && <div style={{ background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.3)", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#8ec8a0" }}>{success}</div>}
 
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 13, color: "var(--textMuted)" }}>Password</span>
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                autoComplete={authMode === "signup" ? "new-password" : "current-password"}
-                placeholder="••••••••"
-                style={{ padding: "11px 12px", fontSize: 14, fontFamily: "var(--uiFont, system-ui)" }}
-              />
-            </label>
+          {authView === "forgot" ? (
+            <>
+              <p style={{ fontSize: 13, color: "#8899aa", marginBottom: 16, lineHeight: 1.5 }}>Enter your email and we'll send a password reset link.</p>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Email</label>
+                <input style={S.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+              </div>
+              <button style={{ ...S.btn, opacity: submitting ? 0.6 : 1 }} onClick={handleForgot} disabled={submitting}>Send Reset Link</button>
+              <div style={{ textAlign: "center", marginTop: 16 }}><button style={S.link} onClick={() => setAuthView("login")}>← Back to Sign In</button></div>
+            </>
+          ) : (
+            <>
+              {authView === "register" && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Display Name</label>
+                  <input style={S.input} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your worldbuilder name" />
+                </div>
+              )}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Email</label>
+                <input style={S.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" onKeyDown={(e) => e.key === "Enter" && (authView === "login" ? handleLogin() : handleRegister())} />
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Password</label>
+                <input style={S.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={(e) => e.key === "Enter" && (authView === "login" ? handleLogin() : handleRegister())} />
+              </div>
+              <button style={{ ...S.btn, opacity: submitting ? 0.6 : 1 }} onClick={authView === "login" ? handleLogin : handleRegister} disabled={submitting}>
+                {authView === "login" ? "Sign In" : "Create Account"}
+              </button>
 
-            <button
-              type="submit"
-              disabled={busy || !supabase}
-              style={{
-                background: "var(--accent)",
-                color: "black",
-                border: "none",
-                borderRadius: 14,
-                padding: "11px 12px",
-                fontFamily: "var(--uiFont, system-ui)",
-                fontSize: 14,
-                fontWeight: 800,
-                cursor: busy || !supabase ? "not-allowed" : "pointer",
-                opacity: busy || !supabase ? 0.7 : 1,
-              }}
-            >
-              {busy ? "Working…" : authMode === "signup" ? "Create account" : "Sign in"}
-            </button>
-          </form>
+              {authView === "login" && (
+                <div style={{ textAlign: "center", marginTop: 12 }}>
+                  <button style={S.link} onClick={() => { setAuthView("forgot"); setError(""); setSuccess(""); }}>Forgot password?</button>
+                </div>
+              )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
+                <div style={{ flex: 1, height: 1, background: "#1e2a3a" }} />
+                <span style={{ fontSize: 10, color: "#445566", letterSpacing: 1 }}>OR</span>
+                <div style={{ flex: 1, height: 1, background: "#1e2a3a" }} />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button style={S.btnSecondary} onClick={() => handleOAuth("google")}>
+                  <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                  Continue with Google
+                </button>
+                <button style={S.btnSecondary} onClick={() => handleOAuth("github")}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#8899aa"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                  Continue with GitHub
+                </button>
+              </div>
+            </>
+          )}
         </div>
-      </div>
 
-      <style>{`
-        @media (max-width: 880px) {
-          .ff-auth-grid { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
+        <p style={{ textAlign: "center", fontSize: 10, color: "#333d4d", marginTop: 24, letterSpacing: 1 }}>FROSTFALL REALMS © {new Date().getFullYear()}</p>
+      </div>
     </div>
   );
 }
