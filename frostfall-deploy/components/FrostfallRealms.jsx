@@ -2277,8 +2277,8 @@ const handleCreateWorld = async () => {
             <Ornament width={420} />
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
               {[
-                { name: "Buy Me a Coffee", icon: "☕", color: "#FFDD00", textColor: "#0a0e1a", url: "https://buymeacoffee.com", desc: "Quick one-time support" },
-                { name: "Ko-fi", icon: "🎨", color: "#FF5E5B", textColor: "#fff", url: "https://ko-fi.com", desc: "Support with no platform fees" },
+                { name: "Buy Me a Coffee", icon: "☕", color: "#FFDD00", textColor: "#0a0e1a", url: "https://buymeacoffee.com/viktor.13", desc: "Quick one-time support" },
+                { name: "Ko-fi", icon: "🎨", color: "#FF5E5B", textColor: "#fff", url: "https://ko-fi.com/viktor13", desc: "Support with no platform fees" },
                 { name: "Stripe", icon: "💳", color: "#635BFF", textColor: "#fff", url: "https://stripe.com", desc: "Flexible payment options" },
               ].map((p) => (
                 <div key={p.name} onClick={() => window.open(p.url, "_blank")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: p.color + "12", border: "1px solid " + p.color + "30", borderRadius: 8, cursor: "pointer", transition: "all 0.2s" }}
