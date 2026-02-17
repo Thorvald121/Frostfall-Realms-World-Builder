@@ -1,4 +1,5 @@
 // lib/themes.js
+
 export const THEMES = {
   dark_arcane: {
     name: "Dark Arcane",
@@ -54,10 +55,10 @@ export const THEMES = {
     cardBg: "rgba(236,228,212,0.6)",
   },
 
-  // NEW THEME 1
+  // Added theme #1
   frostfall_ice: {
     name: "Frostfall Ice",
-    desc: "Glacier blues, bright legibility, cold steel accents",
+    desc: "Glacier blues, high legibility, cold steel accents",
     rootBg: "linear-gradient(170deg, #06121f 0%, #0a1b2d 45%, #07101b 100%)",
     sidebarBg: "linear-gradient(180deg, #071628 0%, #05101e 100%)",
     border: "#1c3450",
@@ -73,10 +74,10 @@ export const THEMES = {
     cardBg: "rgba(10,27,45,0.62)",
   },
 
-  // NEW THEME 2
+  // Added theme #2
   emberforge: {
     name: "Emberforge",
-    desc: "Charcoal + ember orange, warmer contrast, forge-lit UI",
+    desc: "Charcoal + ember orange, warm contrast, forge-lit UI",
     rootBg: "linear-gradient(170deg, #120a0a 0%, #1a1010 40%, #0e0a0a 100%)",
     sidebarBg: "linear-gradient(180deg, #140c0c 0%, #0f0a0a 100%)",
     border: "#3a2622",
@@ -100,6 +101,17 @@ export function normalizeThemeKey(key) {
   return THEMES[key] ? key : DEFAULT_THEME_KEY;
 }
 
+export function loadThemeKey() {
+  if (typeof window === "undefined") return DEFAULT_THEME_KEY;
+  return normalizeThemeKey(window.localStorage.getItem("ff_theme"));
+}
+
+export function saveThemeKey(themeKey) {
+  if (typeof window === "undefined") return;
+  const key = normalizeThemeKey(themeKey);
+  window.localStorage.setItem("ff_theme", key);
+}
+
 export function applyThemeToRoot(themeKey) {
   if (typeof document === "undefined") return;
 
@@ -109,7 +121,6 @@ export function applyThemeToRoot(themeKey) {
   const root = document.documentElement;
   root.dataset.theme = key;
 
-  // Push all theme values into CSS variables (tokens)
   const vars = {
     "--rootBg": t.rootBg,
     "--sidebarBg": t.sidebarBg,
@@ -126,16 +137,7 @@ export function applyThemeToRoot(themeKey) {
     "--cardBg": t.cardBg,
   };
 
-  for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
-}
-
-export function loadThemeKey() {
-  if (typeof window === "undefined") return DEFAULT_THEME_KEY;
-  return normalizeThemeKey(window.localStorage.getItem("ff_theme"));
-}
-
-export function saveThemeKey(themeKey) {
-  if (typeof window === "undefined") return;
-  const key = normalizeThemeKey(themeKey);
-  window.localStorage.setItem("ff_theme", key);
+  for (const [name, value] of Object.entries(vars)) {
+    root.style.setProperty(name, value);
+  }
 }

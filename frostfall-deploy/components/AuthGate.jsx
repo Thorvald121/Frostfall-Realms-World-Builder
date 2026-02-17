@@ -1,27 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import ThemeSelect from "@/components/ThemeSelect";
-import { applyThemeToRoot, loadThemeKey, saveThemeKey } from "@/lib/themes";
-
-// ✅ CHANGE THIS IMPORT IF YOUR PROJECT USES A DIFFERENT SUPABASE CLIENT PATH
-// Common patterns:
-//   - import { supabase } from "@/lib/supabaseClient";
-//   - import { createClient } from "@/utils/supabase/client";
-//   - import { createBrowserClient } from "@supabase/ssr";
-import { createClient } from "@/lib/supabase/client";
+import React, { useEffect, useState } from "react";
+import ThemeSelect from "./ThemeSelect";
+import { applyThemeToRoot, loadThemeKey, saveThemeKey } from "../lib/themes";
+import { supabase } from "../lib/supabase";
 
 export default function AuthGate({ children }) {
-  const supabase = useMemo(() => {
-    try {
-      return createClient();
-    } catch (e) {
-      // If createClient import/path is wrong, UI still loads and shows a helpful error.
-      return null;
-    }
-  }, []);
-
-  // Theme state (Option A)
+  // Theme (Option A)
   const [themeKey, setThemeKey] = useState(() => loadThemeKey());
 
   useEffect(() => {
@@ -37,85 +22,59 @@ export default function AuthGate({ children }) {
 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [fatal, setFatal] = useState("");
 
-  // Load session + subscribe
   useEffect(() => {
-    let unsub = null;
-
-    async function boot() {
-      if (!supabase) {
-        setFatal(
-          "Supabase client not initialized. Check the import in components/AuthGate.jsx (createClient path)."
-        );
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setSession(data?.session ?? null);
-
-        const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-          setSession(newSession ?? null);
-        });
-
-        unsub = sub?.subscription;
-      } catch (err) {
-        setFatal(err?.message || "Failed to initialize authentication.");
-      }
+    // If env vars missing, supabase.js exports null.
+    if (!supabase) {
+      setMessage(
+        "Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY missing)."
+      );
+      return;
     }
 
-    boot();
+    let sub;
+
+    (async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (!error) setSession(data?.session ?? null);
+
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+        setSession(newSession ?? null);
+      });
+      sub = listener?.subscription;
+    })();
 
     return () => {
       try {
-        unsub?.unsubscribe?.();
+        sub?.unsubscribe?.();
       } catch {
         // ignore
       }
     };
-  }, [supabase]);
+  }, []);
 
   async function onSubmit(e) {
     e.preventDefault();
     setMessage("");
 
     if (!supabase) {
-      setFatal("Supabase client not initialized (bad createClient import/path).");
+      setMessage("Supabase is not configured.");
       return;
     }
 
     const cleanEmail = (email || "").trim();
-
-    if (!cleanEmail) {
-      setMessage("Enter your email.");
-      return;
-    }
-    if (!password || password.length < 6) {
-      setMessage("Password must be at least 6 characters.");
-      return;
-    }
+    if (!cleanEmail) return setMessage("Enter your email.");
+    if (!password || password.length < 6) return setMessage("Password must be at least 6 characters.");
 
     setBusy(true);
     try {
       if (authMode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-        });
+        const { error } = await supabase.auth.signUp({ email: cleanEmail, password });
         if (error) throw error;
-
-        setMessage(
-          "Account created. If email confirmation is enabled, check your inbox before signing in."
-        );
+        setMessage("Account created. Check your email if confirmations are enabled.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
         if (error) throw error;
-        setMessage("");
       }
     } catch (err) {
       setMessage(err?.message || "Authentication failed.");
@@ -138,11 +97,10 @@ export default function AuthGate({ children }) {
     }
   }
 
-  // If authenticated, pass through.
+  // Authenticated → show app
   if (session) {
     return (
       <div style={{ minHeight: "100vh" }}>
-        {/* Top-right controls */}
         <div
           style={{
             position: "fixed",
@@ -170,7 +128,7 @@ export default function AuthGate({ children }) {
               borderRadius: 12,
               padding: "6px 10px",
               cursor: busy ? "not-allowed" : "pointer",
-              fontFamily: "var(--uiFont)",
+              fontFamily: "var(--uiFont, system-ui)",
               fontSize: 12,
             }}
           >
@@ -183,7 +141,7 @@ export default function AuthGate({ children }) {
     );
   }
 
-  // Auth UI
+  // Login / Signup UI
   return (
     <div
       style={{
@@ -196,7 +154,6 @@ export default function AuthGate({ children }) {
         position: "relative",
       }}
     >
-      {/* Theme selector */}
       <div style={{ position: "fixed", top: 14, right: 14, zIndex: 50 }}>
         <ThemeSelect value={themeKey} onChange={setThemeKey} compact />
       </div>
@@ -211,7 +168,6 @@ export default function AuthGate({ children }) {
           alignItems: "stretch",
         }}
       >
-        {/* Left: Brand / Info */}
         <div
           style={{
             background: "var(--cardBg)",
@@ -223,62 +179,37 @@ export default function AuthGate({ children }) {
         >
           <div
             style={{
-              fontFamily: "var(--displayFont)",
+              fontFamily: "var(--displayFont, ui-serif)",
               fontSize: 28,
               letterSpacing: 0.6,
               marginBottom: 8,
-              color: "var(--text)",
             }}
           >
             Frostfall Realms
           </div>
 
           <div style={{ color: "var(--textMuted)", lineHeight: 1.5, fontSize: 14 }}>
-            Theme-driven UI is now global. You can change themes here, and the rest of the
-            application will inherit colors from CSS tokens.
+            Select a theme that’s readable, then sign in. The theme is applied globally via CSS tokens.
           </div>
 
-          <div
-            style={{
-              marginTop: 18,
-              padding: 14,
-              borderRadius: 16,
-              border: "1px solid var(--border)",
-              background: "color-mix(in srgb, var(--surface) 70%, transparent)",
-            }}
-          >
-            <div style={{ fontFamily: "var(--uiFont)", fontWeight: 600, marginBottom: 6 }}>
-              Theme notes
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 18, color: "var(--textMuted)", lineHeight: 1.6 }}>
-              <li>Dark Arcane + Midnight Blue are tuned for readability.</li>
-              <li>Parchment Light keeps ink-on-paper contrast consistent.</li>
-              <li>Frostfall Ice + Emberforge add two more usable palettes.</li>
-            </ul>
-          </div>
-
-          {fatal ? (
+          {message ? (
             <div
               style={{
-                marginTop: 18,
-                color: "var(--text)",
-                background: "rgba(220, 38, 38, 0.15)",
-                border: "1px solid rgba(220, 38, 38, 0.35)",
-                padding: 12,
+                marginTop: 16,
+                background: "color-mix(in srgb, var(--accentBg) 35%, transparent)",
+                border: "1px solid var(--border)",
+                padding: "10px 12px",
                 borderRadius: 14,
-                lineHeight: 1.45,
+                color: "var(--textMuted)",
+                lineHeight: 1.4,
+                fontSize: 13,
               }}
             >
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Configuration issue</div>
-              <div style={{ color: "var(--textMuted)" }}>{fatal}</div>
-              <div style={{ marginTop: 10, color: "var(--textMuted)" }}>
-                Fix: update the Supabase import at the top of <code>components/AuthGate.jsx</code>.
-              </div>
+              {message}
             </div>
           ) : null}
         </div>
 
-        {/* Right: Auth Card */}
         <div
           style={{
             background: "var(--surface)",
@@ -303,7 +234,7 @@ export default function AuthGate({ children }) {
                 cursor: "pointer",
                 background: authMode === "signin" ? "var(--accentBg)" : "var(--inputBg)",
                 color: "var(--text)",
-                fontFamily: "var(--uiFont)",
+                fontFamily: "var(--uiFont, system-ui)",
                 fontWeight: 650,
               }}
             >
@@ -324,7 +255,7 @@ export default function AuthGate({ children }) {
                 cursor: "pointer",
                 background: authMode === "signup" ? "var(--accentBg)" : "var(--inputBg)",
                 color: "var(--text)",
-                fontFamily: "var(--uiFont)",
+                fontFamily: "var(--uiFont, system-ui)",
                 fontWeight: 650,
               }}
             >
@@ -332,13 +263,7 @@ export default function AuthGate({ children }) {
             </button>
           </div>
 
-          <div style={{ marginBottom: 10, color: "var(--textMuted)", fontSize: 13 }}>
-            {authMode === "signup"
-              ? "Create an account to access your worlds and archives."
-              : "Welcome back. Sign in to continue."}
-          </div>
-
-          <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, marginTop: 10 }}>
+          <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
             <label style={{ display: "grid", gap: 6 }}>
               <span style={{ fontSize: 13, color: "var(--textMuted)" }}>Email</span>
               <input
@@ -347,11 +272,7 @@ export default function AuthGate({ children }) {
                 type="email"
                 autoComplete="email"
                 placeholder="you@domain.com"
-                style={{
-                  padding: "11px 12px",
-                  fontSize: 14,
-                  fontFamily: "var(--uiFont)",
-                }}
+                style={{ padding: "11px 12px", fontSize: 14, fontFamily: "var(--uiFont, system-ui)" }}
               />
             </label>
 
@@ -363,60 +284,32 @@ export default function AuthGate({ children }) {
                 type="password"
                 autoComplete={authMode === "signup" ? "new-password" : "current-password"}
                 placeholder="••••••••"
-                style={{
-                  padding: "11px 12px",
-                  fontSize: 14,
-                  fontFamily: "var(--uiFont)",
-                }}
+                style={{ padding: "11px 12px", fontSize: 14, fontFamily: "var(--uiFont, system-ui)" }}
               />
             </label>
 
-            {message ? (
-              <div
-                style={{
-                  background: "color-mix(in srgb, var(--accentBg) 35%, transparent)",
-                  border: "1px solid var(--border)",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  color: "var(--textMuted)",
-                  lineHeight: 1.4,
-                  fontSize: 13,
-                }}
-              >
-                {message}
-              </div>
-            ) : null}
-
             <button
               type="submit"
-              disabled={busy || !!fatal}
+              disabled={busy || !supabase}
               style={{
-                marginTop: 2,
                 background: "var(--accent)",
                 color: "black",
                 border: "none",
                 borderRadius: 14,
                 padding: "11px 12px",
-                fontFamily: "var(--uiFont)",
+                fontFamily: "var(--uiFont, system-ui)",
                 fontSize: 14,
                 fontWeight: 800,
-                cursor: busy || !!fatal ? "not-allowed" : "pointer",
-                opacity: busy || !!fatal ? 0.7 : 1,
+                cursor: busy || !supabase ? "not-allowed" : "pointer",
+                opacity: busy || !supabase ? 0.7 : 1,
               }}
             >
               {busy ? "Working…" : authMode === "signup" ? "Create account" : "Sign in"}
             </button>
-
-            <div style={{ marginTop: 10, fontSize: 12, color: "var(--textDim)", lineHeight: 1.5 }}>
-              Password-based auth shown here for simplicity. If your project uses magic links,
-              OAuth, or email confirmation settings, this UI still works — Supabase behavior will
-              follow your project settings.
-            </div>
           </form>
         </div>
       </div>
 
-      {/* Mobile layout fallback */}
       <style>{`
         @media (max-width: 880px) {
           .ff-auth-grid { grid-template-columns: 1fr !important; }
