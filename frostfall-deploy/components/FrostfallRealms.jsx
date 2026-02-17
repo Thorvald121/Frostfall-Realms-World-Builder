@@ -57,6 +57,8 @@ const THEMES = {
   dark_arcane: { name: "Dark Arcane", desc: "The original — deep blacks, gold accents", rootBg: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", sidebarBg: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", border: "#1e2a3a", surface: "#111827", surfaceHover: "rgba(17,24,39,0.85)", text: "#d4c9a8", textMuted: "#8899aa", textDim: "#556677", accent: "#f0c040", accentBg: "rgba(240,192,64,0.12)", inputBg: "#0d1117", topBarBg: "rgba(10,14,26,0.6)", cardBg: "rgba(17,24,39,0.6)" },
   midnight_blue: { name: "Midnight Blue", desc: "Cool blues and silver — oceanic depths", rootBg: "linear-gradient(170deg, #0a1628 0%, #0f1f3a 40%, #0a1425 100%)", sidebarBg: "linear-gradient(180deg, #0c1424 0%, #0a1020 100%)", border: "#1a2d4a", surface: "#0f1f3a", surfaceHover: "rgba(15,31,58,0.85)", text: "#c8d8e8", textMuted: "#7899bb", textDim: "#4a6888", accent: "#5ea8d0", accentBg: "rgba(94,168,208,0.12)", inputBg: "#0a1628", topBarBg: "rgba(10,22,40,0.6)", cardBg: "rgba(15,31,58,0.6)" },
   parchment: { name: "Parchment Light", desc: "Warm cream and ink — like aged paper", rootBg: "linear-gradient(170deg, #f5f0e8 0%, #ece4d4 40%, #f0ead8 100%)", sidebarBg: "linear-gradient(180deg, #e8e0d0 0%, #ddd4c4 100%)", border: "#c8b898", surface: "#f5f0e8", surfaceHover: "rgba(220,210,190,0.5)", text: "#3a2f20", textMuted: "#6b5d48", textDim: "#9a8a70", accent: "#8b6914", accentBg: "rgba(139,105,20,0.12)", inputBg: "#faf6f0", topBarBg: "rgba(245,240,232,0.85)", cardBg: "rgba(236,228,212,0.6)" },
+  frostfall_ice: { name: "Frostfall Ice", desc: "Glacier blues, cold steel accents", rootBg: "linear-gradient(170deg, #06121f 0%, #0a1b2d 45%, #07101b 100%)", sidebarBg: "linear-gradient(180deg, #071628 0%, #05101e 100%)", border: "#1c3450", surface: "#0a1b2d", surfaceHover: "rgba(10,27,45,0.88)", text: "#d7e6f6", textMuted: "#9fb9d6", textDim: "#6e8aa7", accent: "#7dd3fc", accentBg: "rgba(125,211,252,0.14)", inputBg: "#06121f", topBarBg: "rgba(6,18,31,0.62)", cardBg: "rgba(10,27,45,0.62)" },
+  emberforge: { name: "Emberforge", desc: "Charcoal + ember orange, forge-lit UI", rootBg: "linear-gradient(170deg, #120a0a 0%, #1a1010 40%, #0e0a0a 100%)", sidebarBg: "linear-gradient(180deg, #140c0c 0%, #0f0a0a 100%)", border: "#3a2622", surface: "#1a1010", surfaceHover: "rgba(26,16,16,0.88)", text: "#f1e2d0", textMuted: "#c8ab8a", textDim: "#8a6b52", accent: "#fb923c", accentBg: "rgba(251,146,60,0.14)", inputBg: "#120a0a", topBarBg: "rgba(18,10,10,0.62)", cardBg: "rgba(26,16,16,0.62)" },
 };
 const FONT_SIZES = { compact: 0.88, default: 1.0, large: 1.14 };
 const EDITOR_FONTS = {
@@ -69,6 +71,7 @@ const EDITOR_FONTS = {
 const DEFAULT_SETTINGS = {
   theme: "dark_arcane", fontSize: "default", editorFont: "georgia",
   disabledCategories: [], integritySensitivity: "balanced", eraLabel: "Year",
+  customEras: [], // [{name, start, end, color}] — overrides ERAS when present
   authorName: "", avatarUrl: "",
 };
 
@@ -685,6 +688,14 @@ export default function FrostfallRealms({ user, onLogout }) {
   const theme = THEMES[settings.theme] || THEMES.dark_arcane;
   const fontScale = FONT_SIZES[settings.fontSize] || 1.0;
   const editorFontFamily = EDITOR_FONTS[settings.editorFont] || EDITOR_FONTS.georgia;
+  const sz = (base) => Math.round(base * fontScale); // UI-wide font scaler
+  const activeEras = useMemo(() => settings.customEras?.length > 0 ? settings.customEras : ERAS, [settings.customEras]);
+  const formatYear = useCallback((year) => {
+    const label = settings.eraLabel || "Year";
+    const era = activeEras.find((e) => year >= e.start && year < e.end);
+    if (era) return `${era.label || era.name}, ${label} ${year}`;
+    return `${label} ${year}`;
+  }, [settings.eraLabel, activeEras]);
 
   const [codexSort, setCodexSort] = useState("recent");
   const [dismissedTemporals, setDismissedTemporals] = useState(new Set());
@@ -897,6 +908,7 @@ const handleCreateWorld = async () => {
   const [showDonate, setShowDonate] = useState(false);
   const [authView, setAuthView] = useState(null);
   const aiFileRef = useRef(null);
+  const avatarFileRef = useRef(null);
   const portraitFileRef = useRef(null);
 
   // === MAP BUILDER ===
@@ -930,6 +942,8 @@ const handleCreateWorld = async () => {
   const [novelFocusMode, setNovelFocusMode] = useState(false); // composition/focus mode
   const [novelSplitPane, setNovelSplitPane] = useState("codex"); // "codex" | "notes" | "article" | null
   const [novelSplitArticle, setNovelSplitArticle] = useState(null); // article to show in split pane
+  const [novelEditorSettings, setNovelEditorSettings] = useState(false); // gear popover open
+  const [novelExportOpen, setNovelExportOpen] = useState(false); // export format dropdown
   const [novelGoal, setNovelGoal] = useState({ daily: 0, session: 0, sessionStart: 0 }); // word targets
   const [novelGoalInput, setNovelGoalInput] = useState("");
   const [novelShowGoalSet, setNovelShowGoalSet] = useState(false);
@@ -1021,13 +1035,13 @@ const handleCreateWorld = async () => {
 
   const parseDocumentWithAI = async (text, filename) => {
     setAiParsing(true); setAiParseError(null); setAiSourceName(filename);
-    setAiStaging([]); setAiProgress({ current: 0, total: 0, entries: 0 });
+    setAiProgress({ current: 0, total: 0, entries: 0 });
 
     const chunks = chunkText(text);
     setAiProgress({ current: 0, total: chunks.length, entries: 0 });
     let allEntries = [];
     let errors = [];
-    let existingTitles = articles.map((a) => safeText(a?.title)); // Start with current codex titles
+    let existingTitles = [...articles.map((a) => safeText(a?.title)), ...aiStaging.map((a) => safeText(a?.title))]; // Include current codex + staging titles
 
     for (let i = 0; i < chunks.length; i++) {
       setAiProgress((p) => ({ ...p, current: i + 1 }));
@@ -1043,6 +1057,11 @@ const handleCreateWorld = async () => {
             existingTitles: existingTitles.slice(-50), // Last 50 to stay within token limits
           }),
         });
+        if (!response.ok) {
+          const errText = await response.text().catch(() => "");
+          errors.push("Section " + (i + 1) + ": API error " + response.status + (errText ? " — " + errText.slice(0, 100) : ""));
+          continue;
+        }
         const data = await response.json();
         if (data.error && !data.entries?.length) {
           errors.push("Section " + (i + 1) + ": " + data.error);
@@ -1100,6 +1119,7 @@ const handleCreateWorld = async () => {
   const handleAiFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setAiParseError("");
     // File size warning
     if (file.size > 500000) {
       setAiParseError("⚠ Large file (" + (file.size / 1024).toFixed(0) + "KB). Estimated parse time: " + estimateParseTime(file.size) + ". The file will be split into chunks for processing.");
@@ -1107,20 +1127,27 @@ const handleCreateWorld = async () => {
     const ext = lower(file?.name?.split(".").pop());
     if (ext === "docx" || ext === "doc") {
       const reader = new FileReader();
+      reader.onerror = () => { setAiParseError("Failed to read file. The file may be corrupted or inaccessible."); };
       reader.onload = async (ev) => {
         try {
+          if (!mammoth) { setAiParseError("DOCX parser not loaded. Try a .txt or .md file instead."); return; }
           const arrayBuffer = ev.target.result;
+          if (!arrayBuffer || arrayBuffer.byteLength === 0) { setAiParseError("File appears empty."); return; }
           const result = await mammoth.extractRawText({ arrayBuffer });
-          const text = result.value;
-          if (!text || text.length < 20) { setAiParseError("Document appears empty or could not be read."); return; }
+          const text = result?.value;
+          if (!text || text.length < 20) { setAiParseError("Document appears empty or could not be read. Try saving as .txt and re-uploading."); return; }
           parseDocumentWithAI(text, file.name);
         } catch (err) {
-          setAiParseError("Failed to read .docx file: " + (err.message || "Unknown error"));
+          console.error("DOCX parse error:", err);
+          setAiParseError("Failed to read .docx file: " + (err?.message || "Unknown error") + ". Try converting to .txt first.");
         }
       };
       reader.readAsArrayBuffer(file);
+    } else if (ext === "pdf") {
+      setAiParseError("PDF upload requires conversion. Please save your PDF as a .txt or .docx file and try again.");
     } else {
       const reader = new FileReader();
+      reader.onerror = () => { setAiParseError("Failed to read file."); };
       reader.onload = (ev) => {
         const text = ev.target.result;
         if (!text || text.length < 20) { setAiParseError("File appears empty or too short."); return; }
@@ -1140,10 +1167,16 @@ const handleCreateWorld = async () => {
     const cleaned = toAdd.map(({ _stagingId, _status, ...rest }) => rest);
     setArticles((prev) => [...prev, ...cleaned]);
     const count = cleaned.length;
-    setAiStaging([]);
-    setView("dashboard");
-    setShowConfirm({ title: "Import Complete", message: `${count} entr${count === 1 ? "y" : "ies"} added to the codex from "${aiSourceName}".`, confirmLabel: "OK", confirmColor: "#8ec8a0", onConfirm: () => setShowConfirm(null) });
+    // Keep pending and rejected items — only remove committed ones
+    const committedIds = new Set(toAdd.map((e) => e._stagingId));
+    setAiStaging((prev) => prev.filter((e) => !committedIds.has(e._stagingId)));
+    if (count > 0) {
+      setShowConfirm({ title: "Import Complete", message: `${count} entr${count === 1 ? "y" : "ies"} added to the codex from "${aiSourceName}".`, confirmLabel: "OK", confirmColor: "#8ec8a0", onConfirm: () => setShowConfirm(null) });
+    }
   };
+  const stagingDeleteRejected = () => setAiStaging((p) => p.filter((e) => e._status !== "rejected"));
+  const stagingRejectAll = () => setAiStaging((p) => p.map((e) => e._status === "pending" ? { ...e, _status: "rejected" } : e));
+  const stagingClearAll = () => { setAiStaging([]); setAiSourceName(""); };
 
   // === MAP BUILDER FUNCTIONS ===
   const handleMapImageUpload = (e) => {
@@ -1547,36 +1580,66 @@ const handleCreateWorld = async () => {
   const sessionWords = msWordCount.total - (novelGoal.sessionStart || msWordCount.total);
   const goalProgress = novelGoal.daily > 0 ? Math.min(100, Math.round((sessionWords / novelGoal.daily) * 100)) : 0;
 
-  // === COMPILE TO DOCX ===
-  const compileManuscript = async () => {
+  // === COMPILE / EXPORT MANUSCRIPT ===
+  const buildManuscriptContent = () => {
+    if (!activeMs) return { text: "", html: "" };
+    const clean = (body) => (body || "").replace(/@\[([^\]]+)\]\(([^)]+)\)/g, "$1").replace(/@([\w]+)/g, (_, id) => id.replace(/_/g, " "));
+    let text = activeMs.title + "\n\n";
+    let html = `<h1 style="text-align:center;font-family:'Cinzel',serif;font-size:28px;margin-bottom:4px">${activeMs.title}</h1>`;
+    if (activeMs.description) { text += activeMs.description + "\n\n"; html += `<p style="text-align:center;color:#666;font-style:italic;margin-bottom:40px">${activeMs.description}</p>`; }
+    if (settings.authorName) html += `<p style="text-align:center;color:#888;margin-bottom:40px">by ${settings.authorName}</p>`;
+    text += "---\n\n";
+    html += `<hr style="border:none;border-top:1px solid #ccc;margin:30px auto;width:40%"/>`;
+    for (const act of activeMs.acts) {
+      text += act.title.toUpperCase() + "\n\n";
+      html += `<h2 style="font-family:'Cinzel',serif;text-align:center;font-size:22px;margin:40px 0 20px;text-transform:uppercase;letter-spacing:2px">${act.title}</h2>`;
+      for (const ch of act.chapters) {
+        text += ch.title + "\n\n";
+        html += `<h3 style="font-family:'Cinzel',serif;font-size:18px;margin:30px 0 10px">${ch.title}</h3>`;
+        if (ch.synopsis) { text += ch.synopsis + "\n\n"; html += `<p style="color:#888;font-style:italic;margin-bottom:16px">${ch.synopsis}</p>`; }
+        for (const sc of ch.scenes) {
+          if (sc.body) {
+            const cleaned = clean(sc.body);
+            text += cleaned + "\n\n";
+            html += cleaned.split("\n").map((p) => p.trim() ? `<p style="font-family:Georgia,serif;font-size:14px;line-height:1.8;text-indent:2em;margin:0 0 8px">${p}</p>` : "").join("");
+          }
+        }
+        text += "* * *\n\n";
+        html += `<p style="text-align:center;color:#999;margin:24px 0">* &nbsp; * &nbsp; *</p>`;
+      }
+    }
+    return { text, html };
+  };
+
+  const compileManuscript = async (format = "txt") => {
     if (!activeMs || novelCompiling) return;
     setNovelCompiling(true);
+    setNovelExportOpen(false);
     try {
-      // Build plain text manuscript
-      let text = activeMs.title + "\n\n";
-      if (activeMs.description) text += activeMs.description + "\n\n";
-      text += "---\n\n";
-      for (const act of activeMs.acts) {
-        text += act.title.toUpperCase() + "\n\n";
-        for (const ch of act.chapters) {
-          text += ch.title + "\n\n";
-          if (ch.synopsis) text += ch.synopsis + "\n\n";
-          for (const sc of ch.scenes) {
-            if (sc.body) {
-              // Strip @mentions to plain text
-              let clean = sc.body.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, "$1").replace(/@([\w]+)/g, (_, id) => id.replace(/_/g, " "));
-              text += clean + "\n\n";
-            }
-          }
-          text += "* * *\n\n";
-        }
+      const { text, html } = buildManuscriptContent();
+      const filename = (activeMs.title || "manuscript").replace(/[^a-z0-9]+/gi, "_");
+      const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${activeMs.title}</title><style>@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap');body{max-width:700px;margin:60px auto;padding:0 30px;font-family:Georgia,serif;color:#222;line-height:1.8}@media print{body{margin:0;padding:20px}}</style></head><body>${html}</body></html>`;
+
+      if (format === "txt") {
+        const blob = new Blob([text], { type: "text/plain" });
+        const url = URL.createObjectURL(blob); const a = document.createElement("a");
+        a.href = url; a.download = filename + ".txt"; a.click(); URL.revokeObjectURL(url);
+      } else if (format === "docx") {
+        // Word-compatible HTML document
+        const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>body{font-family:Georgia,serif;font-size:12pt;line-height:1.8;color:#000}h1{font-size:24pt;text-align:center}h2{font-size:18pt;text-align:center;text-transform:uppercase}h3{font-size:14pt}p{text-indent:0.5in;margin:0 0 6pt}@page{margin:1in}</style></head><body>${html}</body></html>`;
+        const blob = new Blob([wordHtml], { type: "application/vnd.ms-word" });
+        const url = URL.createObjectURL(blob); const a = document.createElement("a");
+        a.href = url; a.download = filename + ".doc"; a.click(); URL.revokeObjectURL(url);
+      } else if (format === "pdf") {
+        // Open formatted HTML in new window for print-to-PDF
+        const w = window.open("", "_blank");
+        if (w) { w.document.write(fullHtml); w.document.close(); setTimeout(() => w.print(), 500); }
+      } else if (format === "html") {
+        // Clean HTML e-book format
+        const blob = new Blob([fullHtml], { type: "text/html" });
+        const url = URL.createObjectURL(blob); const a = document.createElement("a");
+        a.href = url; a.download = filename + ".html"; a.click(); URL.revokeObjectURL(url);
       }
-      // Create downloadable file
-      const blob = new Blob([text], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = (activeMs.title || "manuscript").replace(/[^a-z0-9]+/gi, "_") + ".txt";
-      a.click(); URL.revokeObjectURL(url);
     } catch (e) { console.error("Compile error:", e); }
     setNovelCompiling(false);
   };
@@ -2039,8 +2102,16 @@ const handleCreateWorld = async () => {
     let l = articles;
     if (codexFilter !== "all") l = l.filter((a) => a.category === codexFilter);
     if (searchQuery.trim()) { const q = lower(searchQuery); l = l.filter((a) => lower(a.title).includes(q) || lower(a.summary).includes(q) || a.tags?.some((t) => t.includes(q))); }
+    // Sort
+    if (codexSort === "alpha_asc") l = [...l].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    else if (codexSort === "alpha_desc") l = [...l].sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+    else if (codexSort === "oldest") l = [...l].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    else if (codexSort === "words") l = [...l].sort((a, b) => (b.body?.split(/\s+/).length || 0) - (a.body?.split(/\s+/).length || 0));
+    else if (codexSort === "era") l = [...l].sort((a, b) => (a.temporal?.active_start ?? 99999) - (b.temporal?.active_start ?? 99999));
+    else if (codexSort === "category") l = [...l].sort((a, b) => (a.category || "").localeCompare(b.category || ""));
+    else l = [...l].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)); // recent (default)
     return l;
-  }, [articles, codexFilter, searchQuery]);
+  }, [articles, codexFilter, searchQuery, codexSort]);
 
   const recent = useMemo(() => [...articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 6), [articles]);
   const catCounts = useMemo(() => {
@@ -2156,7 +2227,7 @@ const handleCreateWorld = async () => {
   const extraCats = Object.entries(CATEGORIES).slice(4);
 
   return (
-    <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: Math.round(13 * fontScale) }}>
+    <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
       <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
       {showDupeModal && <DuplicateModal duplicates={pendingDupes} onOverride={doSave} onCancel={() => { setShowDupeModal(false); setPendingDupes([]); }} onNavigate={navigate} />}
       {showDeleteModal && <DeleteModal article={showDeleteModal} onArchive={() => doArchive(showDeleteModal)} onPermanent={() => doPermanentDelete(showDeleteModal)} onCancel={() => setShowDeleteModal(null)} />}
@@ -2275,7 +2346,7 @@ const handleCreateWorld = async () => {
         )}
         <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
           {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: "#1a2435", margin: "8px 16px" }} /> : (
-            <div key={item.id} style={{ ...S.navItem(isAct(item)), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} onClick={item.action}
+            <div key={item.id} style={{ ...S.navItem(isAct(item)), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} onClick={item.action}
               onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = "rgba(240,192,64,0.05)"; }}
               onMouseLeave={(e) => { if (!isAct(item)) e.currentTarget.style.background = "transparent"; }}>
               <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{item.icon}</span>
@@ -2483,21 +2554,25 @@ const handleCreateWorld = async () => {
               {globalIntegrity.length > 0 && (<>
                 <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e8dcc8", margin: "24px 0 12px", letterSpacing: 1 }}>📋 Article Integrity Issues</h3>
                 {globalIntegrity.map(({ article: a, issues }) => (
-                  <div key={a.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: "14px 18px", marginBottom: 8 }}>
+                  <div key={a.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: "14px 18px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }}
+                    onClick={() => navigate(a.id)}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.85)"; e.currentTarget.style.borderColor = "rgba(224,112,80,0.35)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; e.currentTarget.style.borderColor = "rgba(224,112,80,0.15)"; }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                       <span style={{ color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#d4c9a8", cursor: "pointer" }} onClick={() => navigate(a.id)}>{a.title}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#d4c9a8" }}>{a.title}</span>
                       <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
                       <span style={{ ...S.catBadge("#e07050"), marginLeft: "auto" }}>{issues.length} issue{issues.length !== 1 ? "s" : ""}</span>
                     </div>
                     {issues.map((w, i) => (
-                      <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0 5px 28px", fontSize: 12 }}>
+                      <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0 5px 28px", fontSize: 12, alignItems: "center" }}>
                         <span style={{ color: w.severity === "error" ? "#e07050" : "#f0c040" }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
-                        <span style={{ color: "#8899aa" }}>{w.message}</span>
+                        <span style={{ color: "#8899aa", flex: 1 }}>{w.message}</span>
                       </div>
                     ))}
-                    <div style={{ textAlign: "right", marginTop: 6 }}>
-                      <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer" }} onClick={() => { goEdit(a); }}>Edit article →</span>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
+                      <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "3px 10px", background: "rgba(126,200,227,0.08)", borderRadius: 12 }} onClick={(e) => { e.stopPropagation(); navigate(a.id); }}>View article →</span>
+                      <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", padding: "3px 10px", background: "rgba(240,192,64,0.08)", borderRadius: 12 }} onClick={(e) => { e.stopPropagation(); goEdit(a); }}>Edit article →</span>
                     </div>
                   </div>
                 ))}
@@ -2589,14 +2664,14 @@ const handleCreateWorld = async () => {
                 <div style={{ width: Math.max(tlTotalWidth + 100, 800), minHeight: "100%", position: "relative" }}>
                   {/* Era Bands */}
                   <div style={{ height: 52, position: "sticky", top: 0, zIndex: 10, display: "flex", background: "rgba(10,14,26,0.95)", borderBottom: "1px solid #1a2435", backdropFilter: "blur(8px)" }}>
-                    {ERAS.map((era) => {
+                    {activeEras.map((era, ei) => {
                       const x = yearToX(Math.max(era.start, tlRange.min));
                       const xEnd = yearToX(Math.min(era.end, tlRange.max));
                       const w = xEnd - x;
                       if (w <= 0) return null;
                       return (
-                        <div key={era.id} style={{ position: "absolute", left: x, width: w, height: "100%", background: era.bg, borderRight: "1px solid " + era.color + "30", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                          <span style={{ fontFamily: "'Cinzel', serif", fontSize: w > 200 ? 12 : 9, color: era.color, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600, whiteSpace: "nowrap", opacity: w > 60 ? 1 : 0.5 }}>{w > 140 ? era.label : era.label.split("—")[0]?.trim()}</span>
+                        <div key={era.id || "era_" + ei} style={{ position: "absolute", left: x, width: w, height: "100%", background: era.bg || era.color + "0f", borderRight: "1px solid " + era.color + "30", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                          <span style={{ fontFamily: "'Cinzel', serif", fontSize: w > 200 ? 12 : 9, color: era.color, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600, whiteSpace: "nowrap", opacity: w > 60 ? 1 : 0.5 }}>{w > 140 ? (era.label || era.name) : (era.label || era.name || "").split("—")[0]?.trim()}</span>
                         </div>
                       );
                     })}
@@ -2990,7 +3065,30 @@ const handleCreateWorld = async () => {
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => setNovelView("corkboard")} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>🗂 Corkboard</button>
-                    <button onClick={compileManuscript} disabled={novelCompiling} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export"}</button>
+                    <div style={{ position: "relative" }}>
+                      <button onClick={() => setNovelExportOpen(!novelExportOpen)} disabled={novelCompiling} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export ▾"}</button>
+                      {novelExportOpen && (
+                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 8, padding: 4, minWidth: 180, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                          {[
+                            { id: "txt", label: "Plain Text (.txt)", icon: "📝", desc: "Simple, universal format" },
+                            { id: "docx", label: "Word Document (.doc)", icon: "📄", desc: "Microsoft Word compatible" },
+                            { id: "pdf", label: "PDF (Print Dialog)", icon: "📋", desc: "Opens print-to-PDF dialog" },
+                            { id: "html", label: "E-Book HTML (.html)", icon: "📖", desc: "Formatted, e-reader friendly" },
+                          ].map((fmt) => (
+                            <div key={fmt.id} onClick={() => compileManuscript(fmt.id)}
+                              style={{ padding: "8px 12px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "background 0.1s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.08)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                              <span style={{ fontSize: 14 }}>{fmt.icon}</span>
+                              <div>
+                                <div style={{ fontSize: 11, color: "#d4c9a8", fontWeight: 500 }}>{fmt.label}</div>
+                                <div style={{ fontSize: 9, color: "#556677" }}>{fmt.desc}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button onClick={addAct} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>+ Act</button>
                     <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>Delete</button>
                   </div>
@@ -3189,7 +3287,7 @@ const handleCreateWorld = async () => {
                       style={{
                         flex: 1, width: "100%", background: "transparent", border: "none",
                         color: "#c8bda0", caretColor: "#f0c040",
-                        fontSize: Math.round(18 * fontScale), fontFamily: editorFontFamily,
+                        fontSize: 18, fontFamily: editorFontFamily,
                         lineHeight: 2.2, padding: "0 20px", outline: "none", resize: "none",
                         letterSpacing: 0.4, overflowY: "auto", whiteSpace: "pre-wrap", wordWrap: "break-word",
                       }}
@@ -3247,6 +3345,40 @@ const handleCreateWorld = async () => {
                     <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? "rgba(240,192,64,0.1)" : "transparent", color: novelSplitPane ? "#f0c040" : "#8899aa" }}>
                       ◫ Split
                     </button>
+                    <div style={{ position: "relative" }}>
+                      <button onClick={() => setNovelEditorSettings(!novelEditorSettings)} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", color: novelEditorSettings ? theme.accent : "#8899aa", background: novelEditorSettings ? theme.accentBg : "transparent" }}>⚙ Editor</button>
+                      {novelEditorSettings && (
+                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: 16, zIndex: 200, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                            <span style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: theme.text, letterSpacing: 0.5 }}>Editor Settings</span>
+                            <span onClick={() => setNovelEditorSettings(false)} style={{ cursor: "pointer", color: "#556677", fontSize: 14 }}>✕</span>
+                          </div>
+                          {/* Editor Font */}
+                          <label style={{ display: "block", fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Font</label>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
+                            {Object.entries(EDITOR_FONTS).map(([fid, fam]) => (
+                              <div key={fid} onClick={() => setSettings((p) => ({ ...p, editorFont: fid }))}
+                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid " + (settings.editorFont === fid ? theme.accent + "50" : "transparent"), background: settings.editorFont === fid ? theme.accentBg : "transparent" }}>
+                                <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid " + (settings.editorFont === fid ? theme.accent : "#1e2a3a"), display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  {settings.editorFont === fid && <div style={{ width: 7, height: 7, borderRadius: "50%", background: theme.accent }} />}
+                                </div>
+                                <span style={{ fontSize: 12, fontFamily: fam, color: settings.editorFont === fid ? theme.accent : theme.textMuted }}>{fid === "system" ? "Sans-Serif" : fid === "mono" ? "Monospace" : fid.charAt(0).toUpperCase() + fid.slice(1)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Font Size */}
+                          <label style={{ display: "block", fontSize: 10, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Size</label>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            {[{ id: "compact", label: "Compact" }, { id: "default", label: "Default" }, { id: "large", label: "Large" }].map((s) => (
+                              <button key={s.id} onClick={() => setSettings((p) => ({ ...p, fontSize: s.id }))}
+                                style={{ flex: 1, padding: "6px 0", borderRadius: 6, cursor: "pointer", border: "1px solid " + (settings.fontSize === s.id ? theme.accent + "50" : "#1e2a3a"), background: settings.fontSize === s.id ? theme.accentBg : "transparent", color: settings.fontSize === s.id ? theme.accent : theme.textMuted, fontSize: 10, fontFamily: "inherit" }}>
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Writing goal bar */}
@@ -3375,7 +3507,7 @@ const handleCreateWorld = async () => {
                         style={{
                           flex: 1, width: "100%", background: "#0d1117", border: "none",
                           color: "#d4c9a8", caretColor: "#f0c040",
-                          fontSize: Math.round(15 * fontScale), fontFamily: editorFontFamily,
+                          fontSize: 15, fontFamily: editorFontFamily,
                           lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none",
                           boxSizing: "border-box", letterSpacing: 0.3, overflowY: "auto",
                           whiteSpace: "pre-wrap", wordWrap: "break-word", minHeight: 200,
@@ -3623,38 +3755,27 @@ const handleCreateWorld = async () => {
                   </div>
                 </div>
 
-                {/* Font Size */}
+                {/* UI Scale */}
                 <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Font Size</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Scale text across the entire interface.</p>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Interface Scale</h3>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Adjust the overall size of the interface.</p>
                   <div style={{ display: "flex", gap: 8 }}>
-                    {[{ id: "compact", label: "Compact", sample: "Aa" }, { id: "default", label: "Default", sample: "Aa" }, { id: "large", label: "Large", sample: "Aa" }].map((sz) => (
-                      <button key={sz.id} onClick={() => setSettings((p) => ({ ...p, fontSize: sz.id }))}
-                        style={{ flex: 1, padding: "14px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.fontSize === sz.id ? theme.accent + "50" : theme.border), background: settings.fontSize === sz.id ? theme.accentBg : "transparent", color: settings.fontSize === sz.id ? theme.accent : theme.textMuted, textAlign: "center", fontFamily: "inherit", transition: "all 0.2s" }}>
-                        <div style={{ fontSize: Math.round(20 * FONT_SIZES[sz.id]), fontFamily: "'Cinzel', serif", marginBottom: 4 }}>{sz.sample}</div>
-                        <div style={{ fontSize: 11 }}>{sz.label}</div>
+                    {[{ id: "compact", label: "Compact", sample: "Aa" }, { id: "default", label: "Default", sample: "Aa" }, { id: "large", label: "Large", sample: "Aa" }].map((s) => (
+                      <button key={s.id} onClick={() => setSettings((p) => ({ ...p, fontSize: s.id }))}
+                        style={{ flex: 1, padding: "14px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.fontSize === s.id ? theme.accent + "50" : theme.border), background: settings.fontSize === s.id ? theme.accentBg : "transparent", color: settings.fontSize === s.id ? theme.accent : theme.textMuted, textAlign: "center", fontFamily: "inherit", transition: "all 0.2s" }}>
+                        <div style={{ fontSize: Math.round(20 * FONT_SIZES[s.id]), fontFamily: "'Cinzel', serif", marginBottom: 4 }}>{s.sample}</div>
+                        <div style={{ fontSize: 11 }}>{s.label}</div>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Editor Font */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Editor Font</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Font family used in the novel editor and article body.</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {Object.entries(EDITOR_FONTS).map(([fid, fam]) => (
-                      <div key={fid} onClick={() => setSettings((p) => ({ ...p, editorFont: fid }))}
-                        style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.editorFont === fid ? theme.accent + "50" : theme.border), background: settings.editorFont === fid ? theme.accentBg : "transparent", transition: "all 0.2s" }}>
-                        <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid " + (settings.editorFont === fid ? theme.accent : theme.border), display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          {settings.editorFont === fid && <div style={{ width: 10, height: 10, borderRadius: "50%", background: theme.accent }} />}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, color: settings.editorFont === fid ? theme.accent : theme.text, fontWeight: 500, textTransform: "capitalize" }}>{fid === "system" ? "System Sans-Serif" : fid === "mono" ? "Monospace" : fid.charAt(0).toUpperCase() + fid.slice(1)}</div>
-                          <div style={{ fontSize: 14, color: theme.textMuted, fontFamily: fam, marginTop: 2 }}>The quick brown fox jumps over the lazy dog.</div>
-                        </div>
-                      </div>
-                    ))}
+                {/* Editor settings note */}
+                <div style={{ background: theme.accentBg, border: "1px solid " + theme.accent + "30", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>⚙</span>
+                  <div>
+                    <div style={{ fontSize: 12, color: theme.text, fontWeight: 500 }}>Editor font and size settings have moved</div>
+                    <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>Open a scene in the Novel Writing tool and click <b>⚙ Editor</b> in the toolbar to configure font family and size.</div>
                   </div>
                 </div>
               </div>
@@ -3711,20 +3832,53 @@ const handleCreateWorld = async () => {
                 {/* Custom Era Label */}
                 <div style={{ marginBottom: 32 }}>
                   <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Time Period Label</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Customize how years are displayed across the platform. Default is "Year" (e.g., Year 2800).</p>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Customize how years are displayed. The label combines with era names when defined.</p>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
                     <input value={settings.eraLabel} onChange={(e) => setSettings((p) => ({ ...p, eraLabel: e.target.value }))}
                       style={{ ...S.input, width: 180, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }}
                       placeholder="Year" />
-                    <span style={{ fontSize: 12, color: theme.textDim }}>Preview: <span style={{ color: theme.accent }}>{settings.eraLabel || "Year"} 2800</span></span>
+                    <span style={{ fontSize: 12, color: theme.textDim }}>Preview: <span style={{ color: theme.accent }}>{formatYear(2400)}</span></span>
                   </div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
                     {["Year", "Age", "Cycle", "Era", "Turn", "AR", "AE"].map((preset) => (
                       <button key={preset} onClick={() => setSettings((p) => ({ ...p, eraLabel: preset }))}
                         style={{ background: settings.eraLabel === preset ? theme.accentBg : "transparent", border: "1px solid " + (settings.eraLabel === preset ? theme.accent + "40" : theme.border), borderRadius: 6, padding: "4px 12px", fontSize: 11, color: settings.eraLabel === preset ? theme.accent : theme.textMuted, cursor: "pointer", fontFamily: "inherit" }}>
                         {preset}
                       </button>
                     ))}
+                  </div>
+
+                  {/* Custom Era Ranges */}
+                  <h4 style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Era Definitions</h4>
+                  <p style={{ fontSize: 11, color: theme.textDim, margin: "0 0 12px" }}>Define named eras with year ranges. Used in timeline display and year formatting. Leave empty to use defaults.</p>
+                  {(settings.customEras?.length > 0 ? settings.customEras : ERAS).map((era, i) => {
+                    const isCustom = settings.customEras?.length > 0;
+                    return (
+                      <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                        <input style={{ ...S.input, flex: 1, padding: "6px 10px", fontSize: 11, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }}
+                          value={era.label || era.name || ""} placeholder="Era name..."
+                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], label: e.target.value, name: e.target.value }; setSettings((p) => ({ ...p, customEras: eras })); }} />
+                        <input type="number" style={{ ...S.input, width: 70, padding: "6px 8px", fontSize: 11, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text, textAlign: "center" }}
+                          value={era.start} placeholder="Start"
+                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], start: parseInt(e.target.value) || 0 }; setSettings((p) => ({ ...p, customEras: eras })); }} />
+                        <span style={{ fontSize: 10, color: theme.textDim }}>to</span>
+                        <input type="number" style={{ ...S.input, width: 70, padding: "6px 8px", fontSize: 11, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text, textAlign: "center" }}
+                          value={era.end} placeholder="End"
+                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], end: parseInt(e.target.value) || 0 }; setSettings((p) => ({ ...p, customEras: eras })); }} />
+                        <input type="color" value={era.color || "#f0c040"} style={{ width: 24, height: 24, border: "none", background: "none", cursor: "pointer", padding: 0 }}
+                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], color: e.target.value }; setSettings((p) => ({ ...p, customEras: eras })); }} />
+                        {isCustom && <button onClick={() => { const eras = settings.customEras.filter((_, j) => j !== i); setSettings((p) => ({ ...p, customEras: eras })); }}
+                          style={{ background: "none", border: "none", color: "#e07050", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>}
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={() => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e}))), { id: "custom_" + Date.now(), label: "New Era", name: "New Era", start: 0, end: 1000, color: "#8ec8a0", bg: "rgba(142,200,160,0.06)" }]; setSettings((p) => ({ ...p, customEras: eras })); }}
+                      style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>+ Add Era</button>
+                    {settings.customEras?.length > 0 && (
+                      <button onClick={() => setSettings((p) => ({ ...p, customEras: [] }))}
+                        style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#f0c040", borderColor: "rgba(240,192,64,0.3)" }}>Reset to Defaults</button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3740,15 +3894,29 @@ const handleCreateWorld = async () => {
                   <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
                     {/* Avatar */}
                     <div style={{ flexShrink: 0 }}>
-                      <div style={{ width: 80, height: 80, borderRadius: "50%", border: "2px solid " + theme.border, background: theme.surface, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", marginBottom: 8 }}>
+                      <div style={{ width: 80, height: 80, borderRadius: "50%", border: "2px solid " + theme.border, background: theme.surface, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", marginBottom: 8, cursor: "pointer" }}
+                        onClick={() => avatarFileRef.current?.click()}>
                         {settings.avatarUrl ? (
                           <img src={settings.avatarUrl} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
                           <span style={{ fontSize: 28, color: theme.textDim }}>👤</span>
                         )}
                       </div>
-                      <input type="text" placeholder="Image URL..." value={settings.avatarUrl} onChange={(e) => setSettings((p) => ({ ...p, avatarUrl: e.target.value }))}
-                        style={{ ...S.input, fontSize: 10, padding: "5px 8px", width: 80, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }} />
+                      <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
+                        const file = e.target.files?.[0]; if (!file) return;
+                        if (file.size > 2000000) { alert("Image must be under 2MB"); return; }
+                        // Try Supabase upload first, fall back to data URL
+                        if (supabase && user) {
+                          const url = await uploadPortrait(user.id, file);
+                          if (url) { setSettings((p) => ({ ...p, avatarUrl: url })); e.target.value = ""; return; }
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => { setSettings((p) => ({ ...p, avatarUrl: ev.target.result })); };
+                        reader.readAsDataURL(file);
+                        e.target.value = "";
+                      }} />
+                      <button onClick={() => avatarFileRef.current?.click()} style={{ ...S.btnS, fontSize: 9, padding: "4px 8px", width: 80, textAlign: "center" }}>Upload</button>
+                      {settings.avatarUrl && <button onClick={() => setSettings((p) => ({ ...p, avatarUrl: "" }))} style={{ background: "none", border: "none", fontSize: 9, color: "#e07050", cursor: "pointer", width: 80, textAlign: "center", marginTop: 4 }}>Remove</button>}
                     </div>
                     {/* Name + info */}
                     <div style={{ flex: 1 }}>
@@ -3899,7 +4067,10 @@ const handleCreateWorld = async () => {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={stagingApproveAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>✓ Approve All Pending</button>
+                  <button onClick={stagingRejectAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>✕ Reject All Pending</button>
                   <button onClick={stagingCommit} disabled={!aiStaging.some((e) => e._status === "approved" || e._status === "edited")} style={{ ...S.btnP, fontSize: 11, padding: "8px 16px", opacity: aiStaging.some((e) => e._status === "approved" || e._status === "edited") ? 1 : 0.4 }}>Commit to Codex</button>
+                  <button onClick={stagingDeleteRejected} disabled={!aiStaging.some((e) => e._status === "rejected")} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.2)", opacity: aiStaging.some((e) => e._status === "rejected") ? 1 : 0.3 }}>🗑 Remove Rejected</button>
+                  {aiStaging.length > 0 && <button onClick={stagingClearAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#556677" }}>Clear All</button>}
                 </div>
               </div>
             </div>
@@ -3973,6 +4144,18 @@ const handleCreateWorld = async () => {
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 24, marginBottom: 20 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: "#e8dcc8", margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "The Full Codex" : (CATEGORIES[codexFilter]?.label || "") + "s"}</h2>
               <Ornament width={160} /><span style={{ fontSize: 12, color: "#556677" }}>{filtered.length} entries</span>
+              <div style={{ marginLeft: "auto" }}>
+                <select value={codexSort} onChange={(e) => setCodexSort(e.target.value)}
+                  style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, padding: "5px 10px", color: "#8899aa", fontSize: 11, cursor: "pointer", outline: "none", fontFamily: "inherit" }}>
+                  <option value="recent">Most Recent</option>
+                  <option value="alpha_asc">A → Z</option>
+                  <option value="alpha_desc">Z → A</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="words">Most Words</option>
+                  <option value="era">By Time Period</option>
+                  <option value="category">By Category</option>
+                </select>
+              </div>
             </div>
             <div style={{ display: "flex", gap: 5, marginBottom: 20, flexWrap: "wrap" }}>
               {[{ key: "all", label: "All", color: "#f0c040" }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((f) => (
@@ -4331,7 +4514,7 @@ const handleCreateWorld = async () => {
                 </div>
               </>)}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={{ ...S.textarea, fontFamily: editorFontFamily, fontSize: Math.round(13 * fontScale) }} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} rows={8} /></div>
+              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: "#6b7b8d", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: "#445566" }}>— type @ to link codex entries</span></label><textarea style={{ ...S.textarea, fontFamily: editorFontFamily, fontSize: 13 }} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} rows={8} /></div>
 
               {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
                 <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>
