@@ -951,6 +951,10 @@ const handleCreateWorld = async () => {
   const [novelMsForm, setNovelMsForm] = useState({ title: "", description: "" });
   const [showMsCreate, setShowMsCreate] = useState(false);
   const novelEditorRef = useRef(null);
+  const activeMsIdRef = useRef(null);
+  const prevActiveSceneRef = useRef(null);
+  const prevFocusModeRef = useRef(false);
+  const manuscriptsRef = useRef(manuscripts);
   // Enhanced features
   const [novelFocusMode, setNovelFocusMode] = useState(false); // composition/focus mode
   const [novelSplitPane, setNovelSplitPane] = useState("codex"); // "codex" | "notes" | "article" | null
@@ -1380,6 +1384,12 @@ const handleCreateWorld = async () => {
     }
   }, [manuscripts]);
 
+  // Keep refs in sync
+  useEffect(() => {
+    activeMsIdRef.current = activeMs?.id || null;
+  }, [activeMs?.id]);
+  manuscriptsRef.current = manuscripts;
+
   const createManuscript = () => {
     if (!novelMsForm.title.trim()) return;
     const ms = {
@@ -1422,7 +1432,9 @@ const handleCreateWorld = async () => {
   };
 
   const updateMs = (updater) => {
-    setManuscripts((prev) => prev.map((m) => m.id === activeMs?.id ? { ...updater(m), updatedAt: new Date().toISOString() } : m));
+    const msId = activeMsIdRef.current;
+    if (!msId) return;
+    setManuscripts((prev) => prev.map((m) => m.id === msId ? { ...updater(m), updatedAt: new Date().toISOString() } : m));
   };
 
   const deleteManuscript = (msId) => {
@@ -1522,8 +1534,11 @@ const handleCreateWorld = async () => {
   const countWords = (body) => { const t = stripTags(body || ""); return t ? t.split(/\s+/).filter(Boolean).length : 0; };
 
   const getActiveScene = () => {
-    if (!activeMs || !novelActiveScene) return null;
-    const act = activeMs.acts.find((a) => a.id === novelActiveScene.actId);
+    if (!novelActiveScene) return null;
+    const msId = activeMsIdRef.current;
+    const ms = manuscripts.find((m) => m.id === msId) || activeMs;
+    if (!ms) return null;
+    const act = ms.acts.find((a) => a.id === novelActiveScene.actId);
     const ch = act?.chapters.find((c) => c.id === novelActiveScene.chId);
     return ch?.scenes.find((s) => s.id === novelActiveScene.scId) || null;
   };
@@ -1584,7 +1599,14 @@ const handleCreateWorld = async () => {
         }),
       }),
     }));
-    if (novelEditorRef.current) lastRenderedSceneRef.current = null; // force re-render
+    if (novelEditorRef.current) {
+      const ms = manuscriptsRef.current.find((m) => m.id === activeMsIdRef.current);
+      const act = ms?.acts.find((a) => a.id === actId);
+      const ch = act?.chapters.find((c) => c.id === chId);
+      const sc = ch?.scenes.find((s) => s.id === scId);
+      const snapBody = sc?.snapshots?.[snapIdx]?.body || "";
+      novelEditorRef.current.innerHTML = textToMentionHTML(snapBody);
+    }
   };
 
   // === SESSION WORD TRACKING ===
@@ -1743,16 +1765,58 @@ const handleCreateWorld = async () => {
   const lastRenderedSceneRef = useRef(null);
   const isComposingRef = useRef(false);
 
-  // Set innerHTML when scene changes
+  // Save editor content before switching scenes, then load new scene content
   useEffect(() => {
-    if (!novelEditorRef.current || !novelActiveScene) return;
-    const scene = getActiveScene();
-    const sceneKey = novelActiveScene.scId;
-    if (lastRenderedSceneRef.current !== sceneKey) {
-      lastRenderedSceneRef.current = sceneKey;
-      novelEditorRef.current.innerHTML = textToMentionHTML(scene?.body || "");
+    const prev = prevActiveSceneRef.current;
+    const currentSceneKey = novelActiveScene?.scId;
+    const isWriteView = novelView === "write";
+    const focusChanged = prevFocusModeRef.current !== novelFocusMode;
+    prevFocusModeRef.current = novelFocusMode;
+
+    if (prev && prev.scId !== currentSceneKey && !focusChanged && novelEditorRef.current) {
+      const raw = serializeEditor(novelEditorRef.current);
+      if (raw) {
+        const msId = activeMsIdRef.current;
+        if (msId) {
+          setManuscripts((ms) => ms.map((m) => m.id !== msId ? m : {
+            ...m, updatedAt: new Date().toISOString(),
+            acts: m.acts.map((a) => a.id !== prev.actId ? a : {
+              ...a, chapters: a.chapters.map((c) => c.id !== prev.chId ? c : {
+                ...c, scenes: c.scenes.map((s) => s.id !== prev.scId ? s : { ...s, body: raw }),
+              }),
+            }),
+          }));
+        }
+      }
     }
-  }, [novelActiveScene?.scId, textToMentionHTML]);
+
+    prevActiveSceneRef.current = isWriteView && novelActiveScene ? { ...novelActiveScene } : null;
+
+    if (!isWriteView) {
+      lastRenderedSceneRef.current = null;
+      return;
+    }
+
+    if (focusChanged) {
+      lastRenderedSceneRef.current = null;
+    }
+
+    if (!novelEditorRef.current || !novelActiveScene) return;
+
+    if (lastRenderedSceneRef.current !== currentSceneKey) {
+      lastRenderedSceneRef.current = currentSceneKey;
+      const msId = activeMsIdRef.current;
+      const ms = manuscriptsRef.current.find((m) => m.id === msId);
+      let body = "";
+      if (ms) {
+        const act = ms.acts.find((a) => a.id === novelActiveScene.actId);
+        const ch = act?.chapters.find((c) => c.id === novelActiveScene.chId);
+        const scene = ch?.scenes.find((s) => s.id === novelActiveScene.scId);
+        body = scene?.body || "";
+      }
+      novelEditorRef.current.innerHTML = textToMentionHTML(body);
+    }
+  }, [novelActiveScene?.scId, novelView, novelFocusMode, textToMentionHTML]);
 
   // Handle input in contentEditable editor
   const handleNovelInput = useCallback(() => {
@@ -1783,6 +1847,57 @@ const handleCreateWorld = async () => {
       setNovelMention(null);
     }
   }, [novelActiveScene, serializeEditor, updateScene]);
+
+  // Handle backspace/delete near mention spans
+  const handleMentionKeyDown = useCallback((e) => {
+    if (e.key !== "Backspace" && e.key !== "Delete") return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return;
+    const node = range.startContainer;
+    const offset = range.startOffset;
+    if (e.key === "Backspace") {
+      if (node.nodeType === Node.TEXT_NODE && offset === 0) {
+        const prev = node.previousSibling;
+        if (prev && prev.dataset?.mentionId) {
+          e.preventDefault();
+          prev.parentNode.removeChild(prev);
+          handleNovelInput();
+          return;
+        }
+      }
+      if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+        const prev = node.childNodes[offset - 1];
+        if (prev && prev.dataset?.mentionId) {
+          e.preventDefault();
+          prev.parentNode.removeChild(prev);
+          handleNovelInput();
+          return;
+        }
+      }
+    }
+    if (e.key === "Delete") {
+      if (node.nodeType === Node.TEXT_NODE && offset === node.textContent.length) {
+        const next = node.nextSibling;
+        if (next && next.dataset?.mentionId) {
+          e.preventDefault();
+          next.parentNode.removeChild(next);
+          handleNovelInput();
+          return;
+        }
+      }
+      if (node.nodeType === Node.ELEMENT_NODE && offset < node.childNodes.length) {
+        const next = node.childNodes[offset];
+        if (next && next.dataset?.mentionId) {
+          e.preventDefault();
+          next.parentNode.removeChild(next);
+          handleNovelInput();
+          return;
+        }
+      }
+    }
+  }, [handleNovelInput]);
 
   const insertMention = useCallback((article) => {
     if (!novelMention || !novelEditorRef.current) return;
@@ -2924,7 +3039,7 @@ const handleCreateWorld = async () => {
                 transition: "all 0.3s ease", overflow: "hidden", flexShrink: 0,
               }}>
                 {tlSelected && (
-                  <div style={{ width: 320, padding: "20px 18px", overflowY: "auto", height: "100%" }}>
+                  <div style={{ width: 320, padding: "20px 18px 60px", overflowY: "auto", height: "100%", boxSizing: "border-box" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                       <span style={S.catBadge(CATEGORIES[tlSelected.category]?.color)}>
                         {CATEGORIES[tlSelected.category]?.icon} {CATEGORIES[tlSelected.category]?.label}
@@ -3435,6 +3550,7 @@ const handleCreateWorld = async () => {
                           if (e.key === "i") { e.preventDefault(); execFormat("italic"); }
                           if (e.key === "u") { e.preventDefault(); execFormat("underline"); }
                         }
+                        handleMentionKeyDown(e);
                       }}
                       onBlur={() => setTimeout(() => setNovelMention(null), 200)}
                       data-placeholder={"Begin writing...\nType @ to reference codex entries."}
@@ -3721,12 +3837,12 @@ const handleCreateWorld = async () => {
                         onKeyDown={(e) => {
                           if (e.key === "Escape") setNovelMention(null);
                           if (novelMention && mentionMatches.length > 0 && (e.key === "Tab" || e.key === "Enter")) { e.preventDefault(); insertMention(mentionMatches[0]); }
-                          // Formatting keyboard shortcuts
                           if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
                             if (e.key === "b") { e.preventDefault(); execFormat("bold"); updateFormatState(); }
                             if (e.key === "i") { e.preventDefault(); execFormat("italic"); updateFormatState(); }
                             if (e.key === "u") { e.preventDefault(); execFormat("underline"); updateFormatState(); }
                           }
+                          handleMentionKeyDown(e);
                         }}
                         onKeyUp={updateFormatState}
                         onMouseUp={updateFormatState}
