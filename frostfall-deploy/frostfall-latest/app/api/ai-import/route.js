@@ -45,108 +45,190 @@ CRITICAL OUTPUT RULES:
 4. All strings must use double quotes
 5. Clean all title text of markdown artifacts like {#id .unnumbered}`;
 
+// Strip invalid Unicode surrogate code units (common in pasted/converted docs)
+function sanitizeForJSON(s) {
+  return (s || "").replace(/[\uD800-\uDFFF]/g, "");
+}
+
+// Try hard to parse a JSON array from a model response
 function extractJSON(raw, wasTruncated) {
-  let jsonText = raw;
+  let jsonText = String(raw || "");
+
+  // Remove common fence wrappers if the model disobeys
+  jsonText = jsonText
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    .trim();
+
+  // If truncated, try to close the last object and the array
   if (wasTruncated) {
-    const lastBrace = jsonText.lastIndexOf("}");
-    if (lastBrace !== -1) jsonText = jsonText.slice(0, lastBrace + 1) + "]";
+    const lastObjClose = jsonText.lastIndexOf("}");
+    if (lastObjClose !== -1) {
+      // Make a best-effort to end with a JSON array
+      jsonText = jsonText.slice(0, lastObjClose + 1);
+      if (!jsonText.trim().endsWith("]")) jsonText += "]";
+      if (!jsonText.trim().startsWith("[")) jsonText = "[" + jsonText;
+    }
   }
-  try { return JSON.parse(jsonText.trim()); } catch (_) {}
+
+  // 1) Direct parse
   try {
-    return JSON.parse(jsonText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim());
-  } catch (_) {}
+    const parsed = JSON.parse(jsonText);
+    return parsed;
+  } catch (_) {
+    // continue
+  }
+
+  // 2) Extract the first complete [...] block
   const start = jsonText.indexOf("[");
   if (start !== -1) {
-    let depth = 0, end = -1;
+    let depth = 0;
+    let end = -1;
     for (let i = start; i < jsonText.length; i++) {
       if (jsonText[i] === "[") depth++;
-      if (jsonText[i] === "]") depth--;
-      if (depth === 0) { end = i; break; }
+      else if (jsonText[i] === "]") depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
     }
     if (end !== -1) {
       const slice = jsonText.slice(start, end + 1);
-      try { return JSON.parse(slice); } catch (_) {
-        try { return JSON.parse(slice.replace(/,\s*([\]}])/g, "$1")); } catch (_) {}
+      try {
+        return JSON.parse(slice);
+      } catch (_) {
+        // try removing trailing commas
+        try {
+          return JSON.parse(slice.replace(/,\s*([\]}])/g, "$1"));
+        } catch (_) {
+          // continue
+        }
+      }
     }
   }
-}
-const objStart = jsonText.indexOf("{");
-if (objStart !== -1) {
-  try { return [JSON.parse(jsonText.slice(objStart).replace(/```\s*$/g, "").trim())]; } catch (_) {}
-}
-return null;
+
+  // 3) If it returned a single object, wrap it into an array
+  const objStart = jsonText.indexOf("{");
+  if (objStart !== -1) {
+    const objText = jsonText.slice(objStart).trim();
+    try {
+      return [JSON.parse(objText)];
+    } catch (_) {
+      try {
+        return [JSON.parse(objText.replace(/,\s*([\]}])/g, "$1"))];
+      } catch (_) {
+        // continue
+      }
+    }
+  }
+
+  return null;
 }
 
 function cleanEntries(entries) {
-  if (!Array.isArray(entries)) entries = [entries];
-  return entries
-  .filter((e) => e && typeof e === "object" && e.title && e.category)
-  .map((e) => ({
-    title: String(e.title || "").replace(/\{#[^}]*\}/g, "").replace(/\.unnumbered/g, "").trim(),
-               category: String(e.category || ""),
-               summary: String(e.summary || ""),
-               fields: (typeof e.fields === "object" && e.fields) ? e.fields : {},
-               body: String(e.body || ""),
-               tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
-               temporal: (typeof e.temporal === "object" && e.temporal) ? e.temporal : null,
-}));
-  }
+  const arr = Array.isArray(entries) ? entries : entries ? [entries] : [];
+  return arr
+    .filter((e) => e && typeof e === "object" && e.title && e.category)
+    .map((e) => ({
+      title: String(e.title || "")
+        .replace(/\{#[^}]*\}/g, "")
+        .replace(/\.unnumbered/g, "")
+        .trim(),
+      category: String(e.category || "").trim(),
+      summary: String(e.summary || "").trim(),
+      fields: e.fields && typeof e.fields === "object" ? e.fields : {},
+      body: String(e.body || ""),
+      tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
+      temporal: e.temporal && typeof e.temporal === "object" ? e.temporal : null,
+    }));
+}
 
-  export async function POST(request) {
-    try {
-      const { text, filename, chunkIndex, totalChunks, existingTitles } = await request.json();
-      if (!text || text.length < 10) {
-        return NextResponse.json({ entries: [] });
-      }
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        return NextResponse.json({ error: "Anthropic API key not configured" }, { status: 500 });
-      }
+export async function POST(request) {
+  try {
+    const payload = await request.json().catch(() => ({}));
+    const { text, filename, chunkIndex, totalChunks, existingTitles } = payload;
 
-      let contextNote = "";
-      if (totalChunks > 1) {
-        contextNote = `\n\nThis is section ${chunkIndex + 1} of ${totalChunks} from "${filename}". Extract only NEW distinct entities from THIS section.`;
-      }
-      if (existingTitles && existingTitles.length > 0) {
-        contextNote += `\n\nEntities already extracted: ${existingTitles.join(", ")}. Do NOT create duplicate entries for these — only create new ones or skip if this section adds nothing new.`;
-      }
+    const safeText = sanitizeForJSON(text);
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 8192,
-          system: SYSTEM_PROMPT,
-          messages: [{
-            role: "user",
-            content: "Parse this document section. Return ONLY a JSON array of codex entries." + contextNote + "\n\n" + text,
-          }],
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        return NextResponse.json({ error: `AI API error ${response.status}`, details: errText, entries: [] }, { status: 502 });
-      }
-
-      const data = await response.json();
-      const raw = data.content?.map((c) => c.text || "").join("") || "";
-      if (!raw || raw.trim().length === 0) {
-        return NextResponse.json({ entries: [], warning: "Empty response" });
-      }
-
-      const parsed = extractJSON(raw, data.stop_reason === "max_tokens");
-      if (!parsed) {
-        return NextResponse.json({ entries: [], warning: "Could not parse response" });
-      }
-
-      return NextResponse.json({ entries: cleanEntries(parsed) });
-    } catch (err) {
-      return NextResponse.json({ error: err.message || "Unknown error", entries: [] }, { status: 500 });
+    // Local validation: don't even call upstream
+    if (!safeText || safeText.trim().length < 10) {
+      return NextResponse.json({ entries: [], warning: "Empty/too short input" }, { status: 200 });
     }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "Anthropic API key not configured", entries: [] }, { status: 500 });
+    }
+
+    let contextNote = "";
+    const tc = Number(totalChunks || 1);
+    const ci = Number.isFinite(Number(chunkIndex)) ? Number(chunkIndex) : 0;
+
+    if (tc > 1) {
+      contextNote = `\n\nThis is section ${ci + 1} of ${tc} from "${filename || "document"}". Extract only NEW distinct entities from THIS section.`;
+    }
+    if (Array.isArray(existingTitles) && existingTitles.length > 0) {
+      contextNote += `\n\nEntities already extracted: ${existingTitles.join(
+        ", "
+      )}. Do NOT create duplicate entries for these — only create new ones or skip if this section adds nothing new.`;
+    }
+
+    const upstreamBody = {
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content:
+            "Parse this document section. Return ONLY a JSON array of codex entries." +
+            contextNote +
+            "\n\n" +
+            safeText,
+        },
+      ],
+    };
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(upstreamBody),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      // Keep your 502 behavior for upstream failures, but include details.
+      return NextResponse.json(
+        { error: `AI API error ${response.status}`, details: errText, entries: [] },
+        { status: 502 }
+      );
+    }
+
+    const data = await response.json();
+    const raw =
+      Array.isArray(data.content) ? data.content.map((c) => c?.text || "").join("") : "";
+
+    if (!raw || raw.trim().length === 0) {
+      return NextResponse.json({ entries: [], warning: "Empty response" }, { status: 200 });
+    }
+
+    const parsed = extractJSON(raw, data.stop_reason === "max_tokens");
+    if (!parsed) {
+      return NextResponse.json(
+        { entries: [], warning: "Could not parse response", rawPreview: raw.slice(0, 500) },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json({ entries: cleanEntries(parsed) }, { status: 200 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err?.message || "Unknown error", entries: [] },
+      { status: 500 }
+    );
   }
+}
