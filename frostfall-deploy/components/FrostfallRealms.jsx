@@ -53,12 +53,20 @@ const ERAS = [
 
 const SWIM_LANE_ORDER = ["deity", "magic", "race", "character", "event", "location", "organization", "item", "language", "flora_fauna", "laws_customs"];
 
+// Theme-aware alpha helper: ta("#ff0000", 0.5) → "rgba(255,0,0,0.5)"
+const ta = (hex, alpha) => {
+  if (!hex || hex.startsWith("rgba")) return hex;
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 const THEMES = {
-  dark_arcane: { name: "Dark Arcane", desc: "The original — deep blacks, gold accents", rootBg: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", sidebarBg: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", border: "#1e2a3a", surface: "#111827", surfaceHover: "rgba(17,24,39,0.85)", text: "#e2d9be", textMuted: "#a8b4c2", textDim: "#7a8da0", accent: "#f0c040", accentBg: "rgba(240,192,64,0.12)", inputBg: "#0d1117", topBarBg: "rgba(10,14,26,0.95)", cardBg: "rgba(17,24,39,0.6)" },
-  midnight_blue: { name: "Midnight Blue", desc: "Cool blues and silver — oceanic depths", rootBg: "linear-gradient(170deg, #0a1628 0%, #0f1f3a 40%, #0a1425 100%)", sidebarBg: "linear-gradient(180deg, #0c1424 0%, #0a1020 100%)", border: "#1a2d4a", surface: "#0f1f3a", surfaceHover: "rgba(15,31,58,0.85)", text: "#d8e6f4", textMuted: "#99b4d0", textDim: "#7494b8", accent: "#5ea8d0", accentBg: "rgba(94,168,208,0.12)", inputBg: "#0a1628", topBarBg: "rgba(10,22,40,0.95)", cardBg: "rgba(15,31,58,0.6)" },
-  parchment: { name: "Parchment Light", desc: "Warm cream and ink — like aged paper", rootBg: "linear-gradient(170deg, #f5f0e8 0%, #ece4d4 40%, #f0ead8 100%)", sidebarBg: "linear-gradient(180deg, #e8e0d0 0%, #ddd4c4 100%)", border: "#c8b898", surface: "#f5f0e8", surfaceHover: "rgba(220,210,190,0.5)", text: "#2a2010", textMuted: "#50442e", textDim: "#70624c", accent: "#8b6914", accentBg: "rgba(139,105,20,0.12)", inputBg: "#faf6f0", topBarBg: "rgba(245,240,232,0.96)", cardBg: "rgba(236,228,212,0.6)" },
-  frostfall_ice: { name: "Frostfall Ice", desc: "Glacier blues, cold steel accents", rootBg: "linear-gradient(170deg, #06121f 0%, #0a1b2d 45%, #07101b 100%)", sidebarBg: "linear-gradient(180deg, #071628 0%, #05101e 100%)", border: "#1c3450", surface: "#0a1b2d", surfaceHover: "rgba(10,27,45,0.88)", text: "#e2edf8", textMuted: "#b4cde2", textDim: "#8aabca", accent: "#7dd3fc", accentBg: "rgba(125,211,252,0.14)", inputBg: "#06121f", topBarBg: "rgba(6,18,31,0.95)", cardBg: "rgba(10,27,45,0.62)" },
-  emberforge: { name: "Emberforge", desc: "Charcoal + ember orange, forge-lit UI", rootBg: "linear-gradient(170deg, #120a0a 0%, #1a1010 40%, #0e0a0a 100%)", sidebarBg: "linear-gradient(180deg, #140c0c 0%, #0f0a0a 100%)", border: "#3a2622", surface: "#1a1010", surfaceHover: "rgba(26,16,16,0.88)", text: "#f4eadc", textMuted: "#d4bfa4", textDim: "#aa8e74", accent: "#fb923c", accentBg: "rgba(251,146,60,0.14)", inputBg: "#120a0a", topBarBg: "rgba(18,10,10,0.95)", cardBg: "rgba(26,16,16,0.62)" },
+  dark_arcane: { name: "Dark Arcane", desc: "The original — deep blacks, gold accents", rootBg: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", sidebarBg: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", border: "#1e2a3a", divider: "#1a2435", surface: "#111827", surfaceHover: "rgba(17,24,39,0.85)", deepBg: "#0a0e1a", text: "#e2d9be", textMuted: "#a8b4c2", textDim: "#7a8da0", accent: "#f0c040", accentBg: "rgba(240,192,64,0.12)", inputBg: "#0d1117", topBarBg: "rgba(10,14,26,0.95)", cardBg: "rgba(17,24,39,0.6)" },
+  midnight_blue: { name: "Midnight Blue", desc: "Cool blues and silver — oceanic depths", rootBg: "linear-gradient(170deg, #0a1628 0%, #0f1f3a 40%, #0a1425 100%)", sidebarBg: "linear-gradient(180deg, #0c1424 0%, #0a1020 100%)", border: "#1a2d4a", divider: "#152640", surface: "#0f1f3a", surfaceHover: "rgba(15,31,58,0.85)", deepBg: "#0a1020", text: "#d8e6f4", textMuted: "#99b4d0", textDim: "#7494b8", accent: "#5ea8d0", accentBg: "rgba(94,168,208,0.12)", inputBg: "#0a1628", topBarBg: "rgba(10,22,40,0.95)", cardBg: "rgba(15,31,58,0.6)" },
+  parchment: { name: "Parchment Light", desc: "Warm cream and ink — like aged paper", rootBg: "linear-gradient(170deg, #f5f0e8 0%, #ece4d4 40%, #f0ead8 100%)", sidebarBg: "linear-gradient(180deg, #e8e0d0 0%, #ddd4c4 100%)", border: "#c8b898", divider: "#d5cbb0", surface: "#f5f0e8", surfaceHover: "rgba(220,210,190,0.5)", deepBg: "#e8e0d0", text: "#2a2010", textMuted: "#50442e", textDim: "#70624c", accent: "#8b6914", accentBg: "rgba(139,105,20,0.12)", inputBg: "#faf6f0", topBarBg: "rgba(245,240,232,0.96)", cardBg: "rgba(236,228,212,0.6)" },
+  frostfall_ice: { name: "Frostfall Ice", desc: "Glacier blues, cold steel accents", rootBg: "linear-gradient(170deg, #06121f 0%, #0a1b2d 45%, #07101b 100%)", sidebarBg: "linear-gradient(180deg, #071628 0%, #05101e 100%)", border: "#1c3450", divider: "#162a42", surface: "#0a1b2d", surfaceHover: "rgba(10,27,45,0.88)", deepBg: "#05101e", text: "#e2edf8", textMuted: "#b4cde2", textDim: "#8aabca", accent: "#7dd3fc", accentBg: "rgba(125,211,252,0.14)", inputBg: "#06121f", topBarBg: "rgba(6,18,31,0.95)", cardBg: "rgba(10,27,45,0.62)" },
+  emberforge: { name: "Emberforge", desc: "Charcoal + ember orange, forge-lit UI", rootBg: "linear-gradient(170deg, #120a0a 0%, #1a1010 40%, #0e0a0a 100%)", sidebarBg: "linear-gradient(180deg, #140c0c 0%, #0f0a0a 100%)", border: "#3a2622", divider: "#2e1e1a", surface: "#1a1010", surfaceHover: "rgba(26,16,16,0.88)", deepBg: "#0f0a0a", text: "#f4eadc", textMuted: "#d4bfa4", textDim: "#aa8e74", accent: "#fb923c", accentBg: "rgba(251,146,60,0.14)", inputBg: "#120a0a", topBarBg: "rgba(18,10,10,0.95)", cardBg: "rgba(26,16,16,0.62)" },
 };
 const FONT_SIZES = { compact: 0.88, default: 1.0, large: 1.14 };
 const EDITOR_FONTS = {
@@ -637,7 +645,7 @@ const MS = {
 const S = {
   root: { fontFamily: "'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", color: "#d4c9a8", minHeight: "100vh", display: "flex", overflow: "hidden", height: "100vh" },
   sidebar: { width: 260, minWidth: 260, background: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", borderRight: "1px solid #1e2a3a", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
-  navItem: (a) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px", cursor: "pointer", background: a ? "linear-gradient(90deg, rgba(240,192,64,0.12) 0%, transparent 100%)" : "transparent", borderLeft: a ? "2px solid #f0c040" : "2px solid transparent", color: a ? "#f0c040" : "#8899aa", fontSize: 13, fontWeight: a ? 600 : 400, transition: "all 0.2s", letterSpacing: 0.5 }),
+  navItem: (a, t) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px", cursor: "pointer", background: a ? "linear-gradient(90deg, " + (t ? t.accentBg : "rgba(240,192,64,0.12)") + " 0%, transparent 100%)" : "transparent", borderLeft: a ? "2px solid " + (t ? t.accent : "#f0c040") : "2px solid transparent", color: a ? (t ? t.accent : "#f0c040") : (t ? t.textMuted : "#8899aa"), fontSize: 13, fontWeight: a ? 600 : 400, transition: "all 0.2s", letterSpacing: 0.5 }),
   topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 28px", borderBottom: "1px solid #1a2435", background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)", position: "relative", zIndex: 50, flexShrink: 0 },
   searchBox: { background: "#111827", border: "1px solid #1e2a3a", borderRadius: 6, padding: "7px 14px 7px 34px", color: "#d4c9a8", fontSize: 13, width: 320, outline: "none", fontFamily: "inherit" },
   content: { flex: 1, overflowY: "auto", padding: "0 28px 40px" },
@@ -686,6 +694,11 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [settingsTab, setSettingsTab] = useState("appearance"); // appearance | world | account
   const theme = THEMES[settings.theme] || THEMES.dark_arcane;
+  // Theme-computed style overrides (shadow static S.* defaults)
+  const tBtnP = { ...S.btnP, background: "linear-gradient(135deg, " + theme.accent + " 0%, " + ta(theme.accent, 0.7) + " 100%)", color: theme.deepBg || theme.deepBg };
+  const tBtnS = { ...tBtnS, color: theme.textMuted, border: "1px solid " + theme.border };
+  const tTag = { ...tTag, color: theme.textDim, background: ta(theme.textDim, 0.15) };
+  const tRelItem = { ...tRelItem, color: theme.textMuted, background: ta(theme.surface, 0.5) };
   const fontScale = FONT_SIZES[settings.fontSize] || 1.0;
   const editorFontFamily = EDITOR_FONTS[settings.editorFont] || EDITOR_FONTS.georgia;
   const sz = (base) => Math.round(base * fontScale); // UI-wide font scaler
@@ -856,7 +869,7 @@ const handleCreateWorld = async () => {
         const incoming = data.articles || [];
         const incomingArchived = data.archived || [];
         if (incoming.length === 0 && incomingArchived.length === 0) {
-          setShowConfirm({ title: "Empty Import", message: "The file contains no articles to import.", confirmLabel: "OK", confirmColor: "#f0c040", onConfirm: () => setShowConfirm(null) });
+          setShowConfirm({ title: "Empty Import", message: "The file contains no articles to import.", confirmLabel: "OK", confirmColor: theme.accent, onConfirm: () => setShowConfirm(null) });
           return;
         }
         // Find conflicts (same ID exists in current articles)
@@ -958,7 +971,7 @@ const handleCreateWorld = async () => {
     { id: "red", color: "#e07050", label: "Action" },
     { id: "blue", color: "#7ec8e3", label: "World Building" },
     { id: "green", color: "#8ec8a0", label: "Character Dev" },
-    { id: "gold", color: "#f0c040", label: "Plot Point" },
+    { id: "gold", color: theme.accent, label: "Plot Point" },
     { id: "purple", color: "#c084fc", label: "Dialogue" },
     { id: "pink", color: "#f472b6", label: "Romance" },
     { id: "teal", color: "#5eead4", label: "Mystery" },
@@ -1207,7 +1220,7 @@ const handleCreateWorld = async () => {
     if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
 
     if (mapTool === "pin") {
-      const pin = { id: "pin_" + Date.now(), x: nx, y: ny, label: "New Pin", color: "#f0c040", linkedArticleId: null };
+      const pin = { id: "pin_" + Date.now(), x: nx, y: ny, label: "New Pin", color: theme.accent, linkedArticleId: null };
       setMapData((prev) => ({ ...prev, pins: [...prev.pins, pin] }));
       setMapEditPanel(pin); setMapSelected({ type: "pin", id: pin.id });
     } else if (mapTool === "territory") {
@@ -1232,7 +1245,7 @@ const handleCreateWorld = async () => {
 
   const finishTerritory = () => {
     if (!mapDrawing || mapDrawing.length < 3) { setMapDrawing(null); return; }
-    const terr = { id: "terr_" + Date.now(), points: mapDrawing, label: "New Territory", color: "#f0c040", fill: "rgba(240,192,64,0.15)", linkedArticleId: null };
+    const terr = { id: "terr_" + Date.now(), points: mapDrawing, label: "New Territory", color: theme.accent, fill: ta(theme.accent, 0.15), linkedArticleId: null };
     setMapData((prev) => ({ ...prev, territories: [...prev.territories, terr] }));
     setMapDrawing(null); setMapEditPanel(terr); setMapSelected({ type: "territory", id: terr.id });
   };
@@ -1378,7 +1391,7 @@ const handleCreateWorld = async () => {
         title: "Act I",
         synopsis: "",
         order: 0,
-        color: "#f0c040",
+        color: theme.accent,
         chapters: [{
           id: "ch_" + Date.now(),
           title: "Chapter 1",
@@ -1422,7 +1435,7 @@ const handleCreateWorld = async () => {
       ...m,
       acts: [...m.acts, {
         id: "act_" + Date.now(), title: "Act " + (m.acts.length + 1), synopsis: "", order: m.acts.length,
-        color: ["#f0c040", "#7ec8e3", "#e07050", "#8ec8a0", "#c084fc"][m.acts.length % 5],
+        color: [theme.accent, "#7ec8e3", "#e07050", "#8ec8a0", "#c084fc"][m.acts.length % 5],
         chapters: [{
           id: "ch_" + Date.now(), title: "Chapter 1", synopsis: "", order: 0, status: "draft",
           scenes: [{ id: "sc_" + Date.now(), title: "Scene 1", body: "", order: 0, notes: "", color: "none", label: "", povCharacter: "", snapshots: [] }],
@@ -1520,7 +1533,7 @@ const handleCreateWorld = async () => {
       let actWords = 0;
       for (const ch of act.chapters) {
         for (const sc of ch.scenes) {
-          const w = sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0;
+          const w = countWords(sc.body);
           actWords += w;
         }
       }
@@ -1530,7 +1543,7 @@ const handleCreateWorld = async () => {
     return { total, acts };
   }, [activeMs]);
 
-  const chapterWordCount = (ch) => ch.scenes.reduce((sum, sc) => sum + (sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0), 0);
+  const chapterWordCount = (ch) => ch.scenes.reduce((sum, sc) => sum + (countWords(sc.body)), 0);
 
   // Navigate to next/prev scene
   const navigateScene = (dir) => {
@@ -1550,7 +1563,7 @@ const handleCreateWorld = async () => {
           ...c, scenes: c.scenes.map((s) => {
             if (s.id !== scId) return s;
             const snaps = s.snapshots || [];
-            return { ...s, snapshots: [...snaps, { body: s.body || "", savedAt: new Date().toISOString(), wordCount: (s.body || "").trim().split(/\s+/).filter(Boolean).length }].slice(-10) };
+            return { ...s, snapshots: [...snaps, { body: s.body || "", savedAt: new Date().toISOString(), wordCount: countWords(s.body) }].slice(-10) };
           }),
         }),
       }),
@@ -1583,7 +1596,10 @@ const handleCreateWorld = async () => {
   // === COMPILE / EXPORT MANUSCRIPT ===
   const buildManuscriptContent = () => {
     if (!activeMs) return { text: "", html: "" };
-    const clean = (body) => (body || "").replace(/@\[([^\]]+)\]\(([^)]+)\)/g, "$1").replace(/@([\w]+)/g, (_, id) => id.replace(/_/g, " "));
+    // Clean mention markers from body: @[Title](id) → Title
+    const cleanMentions = (body) => (body || "").replace(/@\[([^\]]+)\]\(([^)]+)\)/g, "$1");
+    // For plain text: strip HTML tags + mentions
+    const toPlainText = (body) => stripTags(cleanMentions(body));
     let text = activeMs.title + "\n\n";
     let html = `<h1 style="text-align:center;font-family:'Cinzel',serif;font-size:28px;margin-bottom:4px">${activeMs.title}</h1>`;
     if (activeMs.description) { text += activeMs.description + "\n\n"; html += `<p style="text-align:center;color:#666;font-style:italic;margin-bottom:40px">${activeMs.description}</p>`; }
@@ -1599,9 +1615,9 @@ const handleCreateWorld = async () => {
         if (ch.synopsis) { text += ch.synopsis + "\n\n"; html += `<p style="color:#888;font-style:italic;margin-bottom:16px">${ch.synopsis}</p>`; }
         for (const sc of ch.scenes) {
           if (sc.body) {
-            const cleaned = clean(sc.body);
-            text += cleaned + "\n\n";
-            html += cleaned.split("\n").map((p) => p.trim() ? `<p style="font-family:Georgia,serif;font-size:14px;line-height:1.8;text-indent:2em;margin:0 0 8px">${p}</p>` : "").join("");
+            text += toPlainText(sc.body) + "\n\n";
+            // For HTML export: preserve formatting, just clean mentions
+            html += `<div style="font-family:Georgia,serif;font-size:14px;line-height:1.8;margin:0 0 16px">${cleanMentions(sc.body)}</div>`;
           }
         }
         text += "* * *\n\n";
@@ -1667,38 +1683,52 @@ const handleCreateWorld = async () => {
   // Convert raw text with @[Title](id) to HTML with styled mention spans
   const textToMentionHTML = useCallback((text) => {
     if (!text) return "";
-    // Escape HTML entities first
-    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    // Replace @[Title](id) with styled spans
+    // Detect if body is already HTML (has tags) or is legacy plain text
+    const isHTML = /<[a-z][\s\S]*>/i.test(text);
+    let html = text;
+    if (!isHTML) {
+      // Legacy plain text — escape HTML entities
+      html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      html = html.replace(/\n/g, "<br>");
+    }
+    // Replace @[Title](id) with styled mention spans (works on both formats)
     html = html.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, (_, title, id) => {
       const art = articles.find((a) => a.id === id);
       const cat = art?.category;
       const icon = CATEGORIES[cat]?.icon || "?";
-      const color = CATEGORIES[cat]?.color || "#f0c040";
+      const color = CATEGORIES[cat]?.color || theme.accent;
       const brokenStyle = !art ? "background:rgba(224,112,80,0.12);border:1px solid rgba(224,112,80,0.4);color:#e07050" : `background:${color}18;border:1px solid ${color}40;color:${color}`;
       return `<span contenteditable="false" data-mention-id="${id}" data-mention-title="${title.replace(/"/g, "&quot;")}" style="${brokenStyle};border-radius:4px;padding:1px 6px;margin:0 1px;font-family:'Cinzel',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.3px;cursor:pointer;user-select:all;display:inline;white-space:nowrap">${!art ? "⚠" : icon} ${title}</span>`;
     });
-    // Convert newlines to <br>
-    html = html.replace(/\n/g, "<br>");
     return html;
   }, [articles]);
 
-  // Serialize contentEditable DOM back to raw text with @[Title](id) format
+  // Serialize contentEditable DOM back to HTML with @[Title](id) format for mentions
+  // Preserves formatting tags (b, i, u, s, h2, h3, ul, ol, li, blockquote, hr)
+  const FORMATTING_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "H1", "H2", "H3", "UL", "OL", "LI", "BLOCKQUOTE", "HR", "A"]);
   const serializeEditor = useCallback((node) => {
     let result = "";
     if (!node) return result;
     for (const child of node.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) {
-        result += child.textContent;
+        // Escape HTML in text nodes to prevent injection
+        result += child.textContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       } else if (child.nodeName === "BR") {
-        result += "\n";
+        result += "<br>";
       } else if (child.dataset?.mentionId) {
+        // Serialize mention spans back to @[Title](id) marker
         const title = child.dataset.mentionTitle || child.textContent.replace(/^[^\s]*\s/, "");
         result += "@[" + title + "](" + child.dataset.mentionId + ")";
+      } else if (child.nodeName === "HR") {
+        result += "<hr>";
+      } else if (FORMATTING_TAGS.has(child.nodeName)) {
+        // Preserve formatting tag
+        const tag = child.nodeName.toLowerCase();
+        result += "<" + tag + ">" + serializeEditor(child) + "</" + tag + ">";
       } else if (child.nodeName === "DIV" || child.nodeName === "P") {
-        // ContentEditable sometimes wraps lines in divs
-        if (result.length > 0 && !result.endsWith("\n")) result += "\n";
-        result += serializeEditor(child);
+        // ContentEditable wraps lines in divs/p — convert to proper paragraphs
+        const inner = serializeEditor(child);
+        if (inner.trim()) result += "<p>" + inner + "</p>";
       } else {
         result += serializeEditor(child);
       }
@@ -1761,7 +1791,7 @@ const handleCreateWorld = async () => {
     span.dataset.mentionId = article.id;
     span.dataset.mentionTitle = article.title;
     const cat = article.category;
-    const color = CATEGORIES[cat]?.color || "#f0c040";
+    const color = CATEGORIES[cat]?.color || theme.accent;
     const icon = CATEGORIES[cat]?.icon || "?";
     span.style.cssText = `background:${color}18;border:1px solid ${color}40;color:${color};border-radius:4px;padding:1px 6px;margin:0 1px;font-family:'Cinzel',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.3px;cursor:pointer;user-select:all;display:inline;white-space:nowrap`;
     span.textContent = icon + " " + article.title;
@@ -1837,7 +1867,7 @@ const handleCreateWorld = async () => {
       span.dataset.mentionId = article.id;
       span.dataset.mentionTitle = article.title;
       const cat = article.category;
-      const color = CATEGORIES[cat]?.color || "#f0c040";
+      const color = CATEGORIES[cat]?.color || theme.accent;
       const icon = CATEGORIES[cat]?.icon || "?";
       span.style.cssText = `background:${color}18;border:1px solid ${color}40;color:${color};border-radius:4px;padding:1px 6px;margin:0 1px;font-family:'Cinzel',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.3px;cursor:pointer;user-select:all;display:inline;white-space:nowrap`;
       span.textContent = icon + " " + article.title;
@@ -1858,21 +1888,48 @@ const handleCreateWorld = async () => {
     updateScene(novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId, { body: raw });
   }, [novelActiveScene, serializeEditor, updateScene]);
 
+  // Utility: strip HTML tags for word counting and plain text exports
+  const stripTags = (html) => html ? html.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim() : "";
+  const countWords = (body) => { const t = stripTags(body || ""); return t ? t.split(/\s+/).filter(Boolean).length : 0; };
+
+  // Text formatting commands for the editor
+  const execFormat = useCallback((cmd, value) => {
+    if (!novelEditorRef.current) return;
+    novelEditorRef.current.focus();
+    document.execCommand(cmd, false, value || null);
+    // Trigger save after formatting
+    const raw = serializeEditor(novelEditorRef.current);
+    if (novelActiveScene) updateScene(novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId, { body: raw });
+  }, [novelActiveScene, serializeEditor, updateScene]);
+
+  // Query format state for active button highlighting
+  const [formatState, setFormatState] = useState({});
+  const updateFormatState = useCallback(() => {
+    setFormatState({
+      bold: document.queryCommandState("bold"),
+      italic: document.queryCommandState("italic"),
+      underline: document.queryCommandState("underline"),
+      strikethrough: document.queryCommandState("strikeThrough"),
+      ul: document.queryCommandState("insertUnorderedList"),
+      ol: document.queryCommandState("insertOrderedList"),
+    });
+  }, []);
+
   // Hover tooltip state for mentions
   const [mentionTooltip, setMentionTooltip] = useState(null);
 
   // Codex articles filtered for sidebar
   const novelCodexArticles = useMemo(() => {
-    let filtered = articles;
-    if (novelCodexFilter !== "all") filtered = filtered.filter((a) => a.category === novelCodexFilter);
+    let list = articles;
+    if (novelCodexFilter !== "all") list = list.filter((a) => a.category === novelCodexFilter);
     if (novelCodexSearch) {
       const q = lower(novelCodexSearch);
-      filtered = filtered.filter((a) => lower(a.title).includes(q) || lower(a.summary).includes(q));
+      list = list.filter((a) => lower(a.title).includes(q) || lower(a.summary || "").includes(q) || a.tags?.some((t) => lower(t).includes(q)) || lower(stripTags(a.body || "")).includes(q) || (a.fields && Object.values(a.fields).some((v) => v && lower(String(v)).includes(q))));
     }
-    return filtered.slice(0, 50);
+    return list.slice(0, 50);
   }, [articles, novelCodexFilter, novelCodexSearch]);
 
-  const STATUS_COLORS = { draft: "#556677", revised: "#f0c040", final: "#8ec8a0" };
+  const STATUS_COLORS = { draft: theme.textDim, revised: theme.accent, final: "#8ec8a0" };
 
   useEffect(() => { setFadeIn(false); const t = setTimeout(() => setFadeIn(true), 30); return () => clearTimeout(t); }, [view, activeArticle]);
 
@@ -2101,7 +2158,46 @@ const handleCreateWorld = async () => {
   const filtered = useMemo(() => {
     let l = articles;
     if (codexFilter !== "all") l = l.filter((a) => a.category === codexFilter);
-    if (searchQuery.trim()) { const q = lower(searchQuery); l = l.filter((a) => lower(a.title).includes(q) || lower(a.summary).includes(q) || a.tags?.some((t) => t.includes(q))); }
+    let matchMap = {}; // articleId → { where: "title"|"summary"|"body"|"tags"|"fields", snippet: "..." }
+    if (searchQuery.trim()) {
+      const q = lower(searchQuery);
+      l = l.filter((a) => {
+        // Title match (highest priority)
+        if (lower(a.title).includes(q)) { matchMap[a.id] = { where: "title" }; return true; }
+        // Summary match
+        if (lower(a.summary || "").includes(q)) { matchMap[a.id] = { where: "summary" }; return true; }
+        // Tag match
+        if (a.tags?.some((t) => lower(t).includes(q))) { matchMap[a.id] = { where: "tags", snippet: a.tags.filter((t) => lower(t).includes(q)).join(", ") }; return true; }
+        // Fields match (search all field values)
+        if (a.fields) {
+          for (const [fk, fv] of Object.entries(a.fields)) {
+            if (fv && lower(String(fv)).includes(q)) {
+              matchMap[a.id] = { where: "fields", snippet: formatKey(fk) + ": " + String(fv).slice(0, 80) }; return true;
+            }
+          }
+        }
+        // Body match (search stripped text)
+        const bodyText = stripTags ? stripTags((a.body || "").replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1")) : (a.body || "").replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1");
+        if (lower(bodyText).includes(q)) {
+          // Extract snippet around match
+          const idx = lower(bodyText).indexOf(q);
+          const start = Math.max(0, idx - 40);
+          const end = Math.min(bodyText.length, idx + q.length + 60);
+          const snippet = (start > 0 ? "…" : "") + bodyText.slice(start, end).trim() + (end < bodyText.length ? "…" : "");
+          matchMap[a.id] = { where: "body", snippet }; return true;
+        }
+        // Linked article title match
+        if (a.linkedIds?.length > 0) {
+          for (const lid of a.linkedIds) {
+            const linked = articles.find((x) => x.id === lid);
+            if (linked && lower(linked.title).includes(q)) {
+              matchMap[a.id] = { where: "linked", snippet: "Links to: " + linked.title }; return true;
+            }
+          }
+        }
+        return false;
+      });
+    }
     // Sort
     if (codexSort === "alpha_asc") l = [...l].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
     else if (codexSort === "alpha_desc") l = [...l].sort((a, b) => (b.title || "").localeCompare(a.title || ""));
@@ -2110,7 +2206,15 @@ const handleCreateWorld = async () => {
     else if (codexSort === "era") l = [...l].sort((a, b) => (a.temporal?.active_start ?? 99999) - (b.temporal?.active_start ?? 99999));
     else if (codexSort === "category") l = [...l].sort((a, b) => (a.category || "").localeCompare(b.category || ""));
     else l = [...l].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)); // recent (default)
-    return l;
+    // If searching, boost title matches to top
+    if (searchQuery.trim()) {
+      l = [...l].sort((a, b) => {
+        const aw = matchMap[a.id]?.where === "title" ? 0 : matchMap[a.id]?.where === "summary" ? 1 : 2;
+        const bw = matchMap[b.id]?.where === "title" ? 0 : matchMap[b.id]?.where === "summary" ? 1 : 2;
+        return aw - bw;
+      });
+    }
+    return { list: l, matchMap };
   }, [articles, codexFilter, searchQuery, codexSort]);
 
   const recent = useMemo(() => [...articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 6), [articles]);
@@ -2228,6 +2332,17 @@ const handleCreateWorld = async () => {
 
   return (
     <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
+      {/* Editor formatting styles */}
+      <style>{`
+        [contenteditable] h2 { font-family: 'Cinzel', serif; font-size: 1.4em; font-weight: 700; margin: 0.8em 0 0.4em; color: ${theme.text}; letter-spacing: 0.5px; border-bottom: 1px solid ${theme.border}; padding-bottom: 4px; }
+        [contenteditable] h3 { font-family: 'Cinzel', serif; font-size: 1.15em; font-weight: 600; margin: 0.6em 0 0.3em; color: ${theme.text}; letter-spacing: 0.3px; }
+        [contenteditable] blockquote { border-left: 3px solid ${theme.accent}; margin: 0.5em 0; padding: 4px 16px; color: ${theme.textMuted}; font-style: italic; background: ${ta(theme.accent, 0.04)}; border-radius: 0 6px 6px 0; }
+        [contenteditable] ul, [contenteditable] ol { margin: 0.3em 0; padding-left: 1.5em; }
+        [contenteditable] li { margin: 2px 0; }
+        [contenteditable] hr { border: none; border-top: 1px solid ${theme.border}; margin: 1em 0; }
+        [contenteditable] strong, [contenteditable] b { color: ${theme.text}; }
+        [contenteditable]:empty::before { content: attr(data-placeholder); color: ${theme.textDim}; opacity: 0.5; white-space: pre-line; pointer-events: none; }
+      `}</style>
       <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
       {showDupeModal && <DuplicateModal duplicates={pendingDupes} onOverride={doSave} onCancel={() => { setShowDupeModal(false); setPendingDupes([]); }} onNavigate={navigate} />}
       {showDeleteModal && <DeleteModal article={showDeleteModal} onArchive={() => doArchive(showDeleteModal)} onPermanent={() => doPermanentDelete(showDeleteModal)} onCancel={() => setShowDeleteModal(null)} />}
@@ -2235,7 +2350,7 @@ const handleCreateWorld = async () => {
       {/* Integrity gate modal — shown when saving an article with lore conflicts */}
       {integrityGate && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
-          <div style={{ background: "#111827", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", maxWidth: 480, width: "90%" }}>
+          <div style={{ background: theme.surface, border: "1px solid " + theme.border, borderRadius: 12, padding: "28px 32px", maxWidth: 480, width: "90%" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
               <span style={{ fontSize: 24 }}>🛡</span>
               <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Lore Integrity Warning</h3>
@@ -2245,18 +2360,18 @@ const handleCreateWorld = async () => {
             </p>
             <div style={{ maxHeight: 200, overflowY: "auto", marginBottom: 20 }}>
               {integrityGate.warnings.map((w, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, padding: "8px 10px", marginBottom: 4, borderRadius: 6, background: w.severity === "error" ? "rgba(224,112,80,0.08)" : "rgba(240,192,64,0.06)", border: "1px solid " + (w.severity === "error" ? "rgba(224,112,80,0.2)" : "rgba(240,192,64,0.15)") }}>
+                <div key={i} style={{ display: "flex", gap: 8, padding: "8px 10px", marginBottom: 4, borderRadius: 6, background: w.severity === "error" ? "rgba(224,112,80,0.08)" : ta(theme.accent, 0.06), border: "1px solid " + (w.severity === "error" ? "rgba(224,112,80,0.2)" : ta(theme.accent, 0.15)) }}>
                   <span style={{ fontSize: 12, flexShrink: 0 }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
                   <div>
-                    <div style={{ fontSize: 12, color: w.severity === "error" ? "#e07050" : "#f0c040", lineHeight: 1.4 }}>{w.message}</div>
+                    <div style={{ fontSize: 12, color: w.severity === "error" ? "#e07050" : theme.accent, lineHeight: 1.4 }}>{w.message}</div>
                     {w.suggestion && <div style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}>{w.suggestion}</div>}
                   </div>
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button onClick={() => setIntegrityGate(null)} style={{ ...S.btnS, fontSize: 12 }}>Go Back & Fix</button>
-              <button onClick={() => { integrityGate.onProceed(); setIntegrityGate(null); }} style={{ ...S.btnP, fontSize: 12, background: "rgba(224,112,80,0.15)", borderColor: "rgba(224,112,80,0.4)", color: "#e07050" }}>Save Anyway</button>
+              <button onClick={() => setIntegrityGate(null)} style={{ ...tBtnS, fontSize: 12 }}>Go Back & Fix</button>
+              <button onClick={() => { integrityGate.onProceed(); setIntegrityGate(null); }} style={{ ...tBtnP, fontSize: 12, background: "rgba(224,112,80,0.15)", borderColor: "rgba(224,112,80,0.4)", color: "#e07050" }}>Save Anyway</button>
             </div>
           </div>
         </div>
@@ -2271,15 +2386,15 @@ const handleCreateWorld = async () => {
           <div style={{ ...MS.box, maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <span style={{ fontSize: 36 }}>♥</span>
-              <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: "#f0c040", margin: "8px 0 4px", letterSpacing: 1 }}>Support Frostfall Realms</h3>
+              <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.accent, margin: "8px 0 4px", letterSpacing: 1 }}>Support Frostfall Realms</h3>
               <p style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.6, margin: 0 }}>If you enjoy this worldbuilding engine, consider supporting its development.</p>
             </div>
             <Ornament width={420} />
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
               {[
-                { name: "Buy Me a Coffee", icon: "☕", color: "#FFDD00", textColor: "#0a0e1a", url: "https://buymeacoffee.com/viktor.13", desc: "Quick one-time support" },
-                { name: "Ko-fi", icon: "🎨", color: "#FF5E5B", textColor: "#fff", url: "https://ko-fi.com/viktor13", desc: "Support with no platform fees" },
-                
+                { name: "Buy Me a Coffee", icon: "☕", color: "#FFDD00", textColor: theme.deepBg, url: "https://buymeacoffee.com", desc: "Quick one-time support" },
+                { name: "Ko-fi", icon: "🎨", color: "#FF5E5B", textColor: "#fff", url: "https://ko-fi.com", desc: "Support with no platform fees" },
+                { name: "Stripe", icon: "💳", color: "#635BFF", textColor: "#fff", url: "https://stripe.com", desc: "Flexible payment options" },
               ].map((p) => (
                 <div key={p.name} onClick={() => window.open(p.url, "_blank")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: p.color + "12", border: "1px solid " + p.color + "30", borderRadius: 8, cursor: "pointer", transition: "all 0.2s" }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = p.color + "25"; e.currentTarget.style.transform = "translateY(-1px)"; }}
@@ -2294,44 +2409,44 @@ const handleCreateWorld = async () => {
               ))}
             </div>
             <p style={{ fontSize: 10, color: theme.textDim, textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>Links will be configured when the platform is deployed. Thank you for your support!</p>
-            <div style={{ textAlign: "center", marginTop: 12 }}><button style={S.btnS} onClick={() => setShowDonate(false)}>Close</button></div>
+            <div style={{ textAlign: "center", marginTop: 12 }}><button style={tBtnS} onClick={() => setShowDonate(false)}>Close</button></div>
           </div>
         </div>
       )}
 
       {/* SIDEBAR */}
       <div style={{ ...S.sidebar, background: theme.sidebarBg, borderRight: "1px solid " + theme.border }}>
-        <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid #1a2435" }}>
-          <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: "#f0c040", letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
+        <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid " + theme.divider }}>
+          <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: theme.accent, letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
           <p style={{ fontSize: 10, color: theme.textDim, letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
           <Ornament width={228} />
         </div>
         {/* User info bar */}
         {user && (
-          <div style={{ padding: "8px 16px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#0a0e1a" }}>
+          <div style={{ padding: "8px 16px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: theme.deepBg }}>
               {(user.user_metadata?.display_name || user.email || "U")[0].toUpperCase()}
             </div>
             <span style={{ flex: 1, fontSize: 11, color: theme.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {user.user_metadata?.display_name || user.email?.split("@")[0]}
             </span>
             <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#556677"; }}>⏻</button>
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>⏻</button>
           </div>
         )}
         {/* World switcher */}
         {activeWorld && (
-          <div style={{ padding: "8px 16px", borderBottom: "1px solid #1a2435" }}>
+          <div style={{ padding: "8px 16px", borderBottom: "1px solid " + theme.divider }}>
             <div onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
-              <span style={{ fontSize: 14, color: "#f0c040" }}>🌍</span>
+              <span style={{ fontSize: 14, color: theme.accent }}>🌍</span>
               <span style={{ flex: 1, fontSize: 12, color: theme.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>
               <span style={{ fontSize: 10, color: theme.textDim, transition: "transform 0.2s", transform: worldSwitcherOpen ? "rotate(180deg)" : "none" }}>▾</span>
             </div>
             {worldSwitcherOpen && (
-              <div style={{ marginTop: 4, background: "rgba(17,24,39,0.5)", borderRadius: 6, border: "1px solid #1e2a3a", overflow: "hidden" }}>
+              <div style={{ marginTop: 4, background: ta(theme.surface, 0.5), borderRadius: 6, border: "1px solid " + theme.border, overflow: "hidden" }}>
                 {allWorlds.map((w) => (
-                  <div key={w.id} onClick={() => switchWorld(w)} style={{ padding: "8px 12px", fontSize: 11, color: w.id === activeWorld?.id ? "#f0c040" : "#8899aa", cursor: "pointer", borderBottom: "1px solid #111827", display: "flex", alignItems: "center", gap: 8, background: w.id === activeWorld?.id ? "rgba(240,192,64,0.06)" : "transparent" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = w.id === activeWorld?.id ? "rgba(240,192,64,0.06)" : "transparent"; }}>
+                  <div key={w.id} onClick={() => switchWorld(w)} style={{ padding: "8px 12px", fontSize: 11, color: w.id === activeWorld?.id ? theme.accent : theme.textMuted, cursor: "pointer", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, background: w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent"; }}>
                     <span style={{ fontSize: 10 }}>{w.id === activeWorld?.id ? "●" : "○"}</span>
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
                   </div>
@@ -2345,17 +2460,17 @@ const handleCreateWorld = async () => {
           </div>
         )}
         <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
-          {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: "#1a2435", margin: "8px 16px" }} /> : (
-            <div key={item.id} style={{ ...S.navItem(isAct(item)), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} onClick={item.action}
-              onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = "rgba(240,192,64,0.05)"; }}
+          {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: theme.divider, margin: "8px 16px" }} /> : (
+            <div key={item.id} style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} onClick={item.action}
+              onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = ta(theme.accent, 0.05); }}
               onMouseLeave={(e) => { if (!isAct(item)) e.currentTarget.style.background = "transparent"; }}>
               <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{item.icon}</span>
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.count != null && <span style={{ fontSize: 11, color: item.alert ? "#e07050" : "#556677", background: item.alert ? "rgba(224,112,80,0.15)" : "transparent", padding: item.alert ? "1px 8px" : 0, borderRadius: 10, fontWeight: item.alert ? 700 : 400 }}>{item.count}</span>}
+              {item.count != null && <span style={{ fontSize: 11, color: item.alert ? "#e07050" : theme.textDim, background: item.alert ? "rgba(224,112,80,0.15)" : "transparent", padding: item.alert ? "1px 8px" : 0, borderRadius: 10, fontWeight: item.alert ? 700 : 400 }}>{item.count}</span>}
             </div>
           ))}
         </div>
-        <div style={{ padding: "10px 16px", borderTop: "1px solid #1a2435" }}>
+        <div style={{ padding: "10px 16px", borderTop: "1px solid " + theme.divider }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
             <button onClick={exportWorld} style={{ flex: 1, fontSize: 10, color: "#8ec8a0", background: "rgba(142,200,160,0.08)", border: "1px solid rgba(142,200,160,0.2)", borderRadius: 5, padding: "6px 0", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, letterSpacing: 0.5 }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.18)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.08)"; }}>⬇ Export</button>
@@ -2363,7 +2478,7 @@ const handleCreateWorld = async () => {
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.18)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }}>⬆ Import</button>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? "#f0c040" : saveStatus === "error" ? "#e07050" : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px rgba(240,192,64,0.4)" : "none" }} />
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? theme.accent : saveStatus === "error" ? "#e07050" : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px " + ta(theme.accent, 0.4) : "none" }} />
             <span style={{ fontSize: 9, color: theme.textDim, letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
           </div>
         </div>
@@ -2374,7 +2489,10 @@ const handleCreateWorld = async () => {
         <div style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg }}>
           <div style={{ position: "relative" }}>
             <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }}>⌕</span>
-            <input style={S.searchBox} placeholder="Search the codex..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
+            <div style={{ position: "relative" }}>
+              <input style={S.searchBox} placeholder="Search titles, body, fields, tags…" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
+              {searchQuery && <span onClick={() => setSearchQuery("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 12, color: theme.textDim, lineHeight: 1 }}>✕</span>}
+            </div>
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {mainCats.map(([k, c]) => (
@@ -2411,10 +2529,10 @@ const handleCreateWorld = async () => {
               </p>
               <Ornament width={300} />
               {!showWorldCreate ? (
-                <button onClick={() => setShowWorldCreate(true)} style={{ ...S.btnP, fontSize: 15, padding: "14px 40px", marginTop: 24 }}>Create Your First World</button>
+                <button onClick={() => setShowWorldCreate(true)} style={{ ...tBtnP, fontSize: 15, padding: "14px 40px", marginTop: 24 }}>Create Your First World</button>
               ) : (
-                <div style={{ marginTop: 24, background: "rgba(17,24,39,0.6)", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
+                <div style={{ marginTop: 24, background: ta(theme.surface, 0.6), border: "1px solid " + theme.border, borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
+                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.accent, margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
                     <input style={S.input} placeholder="e.g. Aelvarin, Middle-earth, Eberron" value={worldForm.name} onChange={(e) => setWorldForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
@@ -2424,8 +2542,8 @@ const handleCreateWorld = async () => {
                     <textarea style={{ ...S.textarea, minHeight: 60 }} placeholder="A brief description of your world…" value={worldForm.description} onChange={(e) => setWorldForm((f) => ({ ...f, description: e.target.value }))} />
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={handleCreateWorld} disabled={!worldForm.name.trim()} style={{ ...S.btnP, flex: 1, opacity: worldForm.name.trim() ? 1 : 0.4 }}>Create World</button>
-                    <button onClick={() => setShowWorldCreate(false)} style={{ ...S.btnS }}>Cancel</button>
+                    <button onClick={handleCreateWorld} disabled={!worldForm.name.trim()} style={{ ...tBtnP, flex: 1, opacity: worldForm.name.trim() ? 1 : 0.4 }}>Create World</button>
+                    <button onClick={() => setShowWorldCreate(false)} style={{ ...tBtnS }}>Cancel</button>
                   </div>
                 </div>
               )}
@@ -2435,8 +2553,8 @@ const handleCreateWorld = async () => {
           {/* === WORLD CREATE MODAL (from sidebar) === */}
           {showWorldCreate && activeWorld && (
             <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={(e) => { if (e.target === e.currentTarget) setShowWorldCreate(false); }}>
-              <div style={{ background: "#111827", border: "1px solid #1e2a3a", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
-                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
+              <div style={{ background: theme.surface, border: "1px solid " + theme.border, borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 440 }}>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.accent, margin: "0 0 20px", letterSpacing: 1 }}>Create a New World</h3>
                 <div style={{ marginBottom: 14 }}>
                   <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 }}>World Name *</label>
                   <input style={S.input} placeholder="e.g. Aelvarin, Middle-earth, Eberron" value={worldForm.name} onChange={(e) => setWorldForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
@@ -2446,8 +2564,8 @@ const handleCreateWorld = async () => {
                   <textarea style={{ ...S.textarea, minHeight: 60 }} placeholder="A brief description of your world…" value={worldForm.description} onChange={(e) => setWorldForm((f) => ({ ...f, description: e.target.value }))} />
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={handleCreateWorld} disabled={!worldForm.name.trim()} style={{ ...S.btnP, flex: 1, opacity: worldForm.name.trim() ? 1 : 0.4 }}>Create World</button>
-                  <button onClick={() => { setShowWorldCreate(false); setWorldForm({ name: "", description: "" }); }} style={{ ...S.btnS }}>Cancel</button>
+                  <button onClick={handleCreateWorld} disabled={!worldForm.name.trim()} style={{ ...tBtnP, flex: 1, opacity: worldForm.name.trim() ? 1 : 0.4 }}>Create World</button>
+                  <button onClick={() => { setShowWorldCreate(false); setWorldForm({ name: "", description: "" }); }} style={{ ...tBtnS }}>Cancel</button>
                 </div>
               </div>
             </div>
@@ -2461,7 +2579,7 @@ const handleCreateWorld = async () => {
             </div>
             <Ornament width={300} />
             <div style={{ display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" }}>
-              {[{ n: stats.total, l: "Total Articles", c: "#f0c040" }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
+              {[{ n: stats.total, l: "Total Articles", c: theme.accent }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
                 <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
               ))}
             </div>
@@ -2471,16 +2589,16 @@ const handleCreateWorld = async () => {
               <div style={{ background: "rgba(224,112,80,0.04)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: 4 }}>
                 {allConflicts.slice(0, 3).map((c) => (
                   <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
-                    <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : "#f0c040", marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
+                    <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : theme.accent, marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
                     <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
-                    <span style={S.catBadge(c.severity === "error" ? "#e07050" : "#f0c040")}>{c.severity}</span>
+                    <span style={S.catBadge(c.severity === "error" ? "#e07050" : theme.accent)}>{c.severity}</span>
                   </div>
                 ))}
                 {globalIntegrity.slice(0, Math.max(0, 4 - allConflicts.length)).map(({ article: a, issues }) => (
                   <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(a.id)}>
                     <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
                     <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: theme.textDim }}>{issues[0].message}</div></div>
-                    <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : "#f0c040")}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
+                    <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : theme.accent)}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
                   </div>
                 ))}
                 <div style={{ padding: "10px 14px", textAlign: "center", fontSize: 12, color: "#e07050", cursor: "pointer" }} onClick={() => setView("integrity")}>View full integrity report →</div>
@@ -2490,7 +2608,7 @@ const handleCreateWorld = async () => {
             <p style={S.sTitle}>⚒ Quick Create</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {Object.entries(CATEGORIES).map(([k, c]) => (
-                <div key={k} style={{ background: "rgba(17,24,39,0.7)", border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
+                <div key={k} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = c.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = c.color + "33"; e.currentTarget.style.transform = "none"; }}>
                   <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div><div style={{ fontSize: 11, color: c.color, fontWeight: 600 }}>New {c.label}</div>
@@ -2500,8 +2618,8 @@ const handleCreateWorld = async () => {
 
             <p style={S.sTitle}>📜 Recent Edits</p>
             {recent.map((a) => { const ac = conflictsFor(a.id); return (
-              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(17,24,39,0.5)", border: "1px solid " + (ac.length > 0 ? "rgba(224,112,80,0.3)" : "#151d2e"), borderRadius: 6, marginBottom: 6, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.8)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
+              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + (ac.length > 0 ? "rgba(224,112,80,0.3)" : theme.divider), borderRadius: 6, marginBottom: 6, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
+                onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
                 <span style={{ fontSize: 16, width: 24, textAlign: "center", color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#c8bda0" }}>{a.title}</span>
                 {ac.length > 0 && <span style={{ fontSize: 12, color: "#e07050" }}>⚠ {ac.length}</span>}
@@ -2524,7 +2642,7 @@ const handleCreateWorld = async () => {
               <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
                 {[
                   { n: allConflicts.filter((c) => c.severity === "error").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "error").length, 0), l: "Errors", c: "#e07050" },
-                  { n: allConflicts.filter((c) => c.severity === "warning").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "warning").length, 0), l: "Warnings", c: "#f0c040" },
+                  { n: allConflicts.filter((c) => c.severity === "warning").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "warning").length, 0), l: "Warnings", c: theme.accent },
                   { n: new Set([...allConflicts.map((c) => c.sourceId), ...globalIntegrity.map((a) => a.article.id)]).size, l: "Articles Affected", c: "#7ec8e3" },
                 ].map((s, i) => (
                   <div key={i} style={{ ...S.statCard, flex: "0 0 auto", padding: "14px 24px" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: s.c, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
@@ -2535,16 +2653,16 @@ const handleCreateWorld = async () => {
               {allConflicts.length > 0 && (<>
                 <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "24px 0 12px", letterSpacing: 1 }}>⏱ Temporal Conflicts</h3>
                 {allConflicts.map((c) => (
-                  <div key={c.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid " + (c.severity === "error" ? "rgba(224,112,80,0.25)" : "rgba(240,192,64,0.2)"), borderLeft: "3px solid " + (c.severity === "error" ? "#e07050" : "#f0c040"), borderRadius: 6, padding: "16px 20px", marginBottom: 10 }}>
+                  <div key={c.id} style={{ background: ta(theme.surface, 0.5), border: "1px solid " + (c.severity === "error" ? "rgba(224,112,80,0.25)" : ta(theme.accent, 0.2)), borderLeft: "3px solid " + (c.severity === "error" ? "#e07050" : theme.accent), borderRadius: 6, padding: "16px 20px", marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                      <span style={{ fontSize: 18, color: c.severity === "error" ? "#e07050" : "#f0c040" }}>{c.severity === "error" ? "✕" : "⚠"}</span>
+                      <span style={{ fontSize: 18, color: c.severity === "error" ? "#e07050" : theme.accent }}>{c.severity === "error" ? "✕" : "⚠"}</span>
                       <div style={{ flex: 1 }}>
-                        <span style={S.catBadge(c.severity === "error" ? "#e07050" : "#f0c040")}>{c.severity} · Temporal Conflict</span>
+                        <span style={S.catBadge(c.severity === "error" ? "#e07050" : theme.accent)}>{c.severity} · Temporal Conflict</span>
                         <p style={{ fontSize: 13, color: theme.text, margin: "8px 0", lineHeight: 1.6 }}>{c.message}</p>
                         <p style={{ fontSize: 12, color: theme.textMuted, margin: 0, fontStyle: "italic" }}>💡 {c.suggestion}</p>
                         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                           <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "4px 12px", background: "rgba(126,200,227,0.1)", borderRadius: 12 }} onClick={() => navigate(c.sourceId)}>View "{c.sourceTitle}" →</span>
-                          <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", padding: "4px 12px", background: "rgba(240,192,64,0.1)", borderRadius: 12 }} onClick={() => navigate(c.targetId)}>View "{c.targetTitle}" →</span>
+                          <span style={{ fontSize: 11, color: theme.accent, cursor: "pointer", padding: "4px 12px", background: ta(theme.accent, 0.1), borderRadius: 12 }} onClick={() => navigate(c.targetId)}>View "{c.targetTitle}" →</span>
                           <span style={{ fontSize: 11, color: theme.textDim, cursor: "pointer", padding: "4px 12px", background: "rgba(85,102,119,0.1)", borderRadius: 12 }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
                         </div>
                       </div>
@@ -2557,10 +2675,10 @@ const handleCreateWorld = async () => {
               {globalIntegrity.length > 0 && (<>
                 <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "24px 0 12px", letterSpacing: 1 }}>📋 Article Integrity Issues</h3>
                 {globalIntegrity.map(({ article: a, issues }) => (
-                  <div key={a.id} style={{ background: "rgba(17,24,39,0.5)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: "14px 18px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }}
+                  <div key={a.id} style={{ background: ta(theme.surface, 0.5), border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: "14px 18px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }}
                     onClick={() => navigate(a.id)}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.85)"; e.currentTarget.style.borderColor = "rgba(224,112,80,0.35)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; e.currentTarget.style.borderColor = "rgba(224,112,80,0.15)"; }}>
+                    onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); e.currentTarget.style.borderColor = "rgba(224,112,80,0.35)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); e.currentTarget.style.borderColor = "rgba(224,112,80,0.15)"; }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                       <span style={{ color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
                       <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{a.title}</span>
@@ -2569,13 +2687,13 @@ const handleCreateWorld = async () => {
                     </div>
                     {issues.map((w, i) => (
                       <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0 5px 28px", fontSize: 12, alignItems: "center" }}>
-                        <span style={{ color: w.severity === "error" ? "#e07050" : "#f0c040" }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
+                        <span style={{ color: w.severity === "error" ? "#e07050" : theme.accent }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
                         <span style={{ color: theme.textMuted, flex: 1 }}>{w.message}</span>
                       </div>
                     ))}
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
                       <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "3px 10px", background: "rgba(126,200,227,0.08)", borderRadius: 12 }} onClick={(e) => { e.stopPropagation(); navigate(a.id); }}>View article →</span>
-                      <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", padding: "3px 10px", background: "rgba(240,192,64,0.08)", borderRadius: 12 }} onClick={(e) => { e.stopPropagation(); goEdit(a); }}>Edit article →</span>
+                      <span style={{ fontSize: 11, color: theme.accent, cursor: "pointer", padding: "3px 10px", background: ta(theme.accent, 0.08), borderRadius: 12 }} onClick={(e) => { e.stopPropagation(); goEdit(a); }}>Edit article →</span>
                     </div>
                   </div>
                 ))}
@@ -2586,7 +2704,7 @@ const handleCreateWorld = async () => {
           {/* === ARCHIVES === */}
           {view === "archives" && (<div>
             <div style={{ marginTop: 24, marginBottom: 20 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#f0c040", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>📦 Archives</h2>
+              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.accent, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>📦 Archives</h2>
               <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>Entries moved here can be restored to the codex or permanently deleted.</p>
             </div>
             <Ornament width={300} />
@@ -2598,7 +2716,7 @@ const handleCreateWorld = async () => {
               </div>
             ) : (<div style={{ marginTop: 20 }}>
               {archived.map((a) => (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 14, background: "rgba(17,24,39,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: "14px 18px", marginBottom: 8, opacity: 0.85 }}>
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 14, background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 8, padding: "14px 18px", marginBottom: 8, opacity: 0.85 }}>
                   <div style={{ fontSize: 20, color: CATEGORIES[a.category]?.color, opacity: 0.6 }}>{CATEGORIES[a.category]?.icon}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -2621,37 +2739,37 @@ const handleCreateWorld = async () => {
           {/* === TIMELINE === */}
           {view === "timeline" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Timeline Header */}
-            <div style={{ padding: "20px 28px 12px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+            <div style={{ padding: "20px 28px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <div>
                 <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⏳ Timeline of {activeWorld?.name || "Your World"}</h2>
                 <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{tlData.items.length} temporal entries across {Object.keys(tlData.lanes).length} categories</p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 11, color: theme.textDim, letterSpacing: 0.5 }}>ZOOM</span>
-                <button onClick={() => setTlZoom((z) => Math.max(0, z - 1))} style={{ ...S.btnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom <= 0}>−</button>
-                <div style={{ width: 80, height: 4, background: "#1e2a3a", borderRadius: 2, position: "relative" }}>
-                  <div style={{ position: "absolute", left: `${(tlZoom / 6) * 100}%`, top: -4, width: 12, height: 12, background: "#f0c040", borderRadius: "50%", transform: "translateX(-50%)", boxShadow: "0 0 8px rgba(240,192,64,0.4)" }} />
+                <button onClick={() => setTlZoom((z) => Math.max(0, z - 1))} style={{ ...tBtnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom <= 0}>−</button>
+                <div style={{ width: 80, height: 4, background: theme.border, borderRadius: 2, position: "relative" }}>
+                  <div style={{ position: "absolute", left: `${(tlZoom / 6) * 100}%`, top: -4, width: 12, height: 12, background: theme.accent, borderRadius: "50%", transform: "translateX(-50%)", boxShadow: "0 0 8px " + ta(theme.accent, 0.4) }} />
                 </div>
-                <button onClick={() => setTlZoom((z) => Math.min(6, z + 1))} style={{ ...S.btnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom >= 6}>+</button>
+                <button onClick={() => setTlZoom((z) => Math.min(6, z + 1))} style={{ ...tBtnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom >= 6}>+</button>
               </div>
             </div>
 
             {/* Timeline Body */}
             <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
               {/* Swim Lane Labels */}
-              <div ref={tlLabelRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlRef.current) tlRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ width: 160, minWidth: 160, borderRight: "1px solid #1a2435", background: "rgba(10,14,26,0.6)", flexShrink: 0, overflowY: "auto" }}>
+              <div ref={tlLabelRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlRef.current) tlRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ width: 160, minWidth: 160, borderRight: "1px solid " + theme.divider, background: ta(theme.deepBg, 0.6), flexShrink: 0, overflowY: "auto" }}>
                 {/* Era header spacer */}
-                <div style={{ height: 52, borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ height: 52, borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <span style={{ fontSize: 10, color: theme.textDim, letterSpacing: 2, textTransform: "uppercase" }}>Categories</span>
                 </div>
                 {/* Tick row spacer */}
-                <div style={{ height: 28, borderBottom: "1px solid #151d2e" }} />
+                <div style={{ height: 28, borderBottom: "1px solid " + theme.divider }} />
                 {SWIM_LANE_ORDER.map((cat) => {
                   if (!tlData.lanes[cat]) return null;
                   const c = CATEGORIES[cat];
                   const h = tlLaneHeights[cat] || 50;
                   return (
-                    <div key={cat} style={{ height: h, minHeight: 50, borderBottom: "1px solid #151d2e", display: "flex", alignItems: "center", gap: 8, padding: "0 16px" }}>
+                    <div key={cat} style={{ height: h, minHeight: 50, borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8, padding: "0 16px" }}>
                       <span style={{ fontSize: 16, color: c.color }}>{c.icon}</span>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: c.color, letterSpacing: 0.5 }}>{categoryPluralLabel(cat)}</div>
@@ -2666,7 +2784,7 @@ const handleCreateWorld = async () => {
               <div ref={tlRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlLabelRef.current) tlLabelRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ flex: 1, overflowX: "auto", overflowY: "auto", position: "relative" }}>
                 <div style={{ width: Math.max(tlTotalWidth + 100, 800), minHeight: "100%", position: "relative" }}>
                   {/* Era Bands */}
-                  <div style={{ height: 52, position: "sticky", top: 0, zIndex: 10, display: "flex", background: "rgba(10,14,26,0.95)", borderBottom: "1px solid #1a2435", backdropFilter: "blur(8px)" }}>
+                  <div style={{ height: 52, position: "sticky", top: 0, zIndex: 10, display: "flex", background: ta(theme.deepBg, 0.95), borderBottom: "1px solid " + theme.divider, backdropFilter: "blur(8px)" }}>
                     {activeEras.map((era, ei) => {
                       const x = yearToX(Math.max(era.start, tlRange.min));
                       const xEnd = yearToX(Math.min(era.end, tlRange.max));
@@ -2681,10 +2799,10 @@ const handleCreateWorld = async () => {
                   </div>
 
                   {/* Year Ticks */}
-                  <div style={{ height: 28, position: "relative", borderBottom: "1px solid #151d2e" }}>
+                  <div style={{ height: 28, position: "relative", borderBottom: "1px solid " + theme.divider }}>
                     {tlTicks.ticks.map((y) => (
                       <div key={y} style={{ position: "absolute", left: yearToX(y), top: 0, height: "100%" }}>
-                        <div style={{ width: 1, height: "100%", background: "#1a2435" }} />
+                        <div style={{ width: 1, height: "100%", background: theme.divider }} />
                         <span style={{ position: "absolute", top: 6, left: 4, fontSize: 9, color: theme.textDim, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{y < 0 ? `${Math.abs(y)} BA` : `Year ${y.toLocaleString()}`}</span>
                       </div>
                     ))}
@@ -2710,7 +2828,7 @@ const handleCreateWorld = async () => {
                     const maxRow = Math.max(0, ...Object.values(entryRows));
                     const laneH = 40 + maxRow * 30;
                     return (
-                      <div key={cat} style={{ height: laneH, minHeight: 50, borderBottom: "1px solid #151d2e", position: "relative" }}>
+                      <div key={cat} style={{ height: laneH, minHeight: 50, borderBottom: "1px solid " + theme.divider, position: "relative" }}>
                         {tlTicks.ticks.map((y) => (
                           <div key={y} style={{ position: "absolute", left: yearToX(y), top: 0, width: 1, height: "100%", background: "rgba(30,42,58,0.4)" }} />
                         ))}
@@ -2760,7 +2878,7 @@ const handleCreateWorld = async () => {
                                 onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.3)"; e.currentTarget.style.boxShadow = "0 0 12px " + c.color + "60"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; if (!isSelected) e.currentTarget.style.boxShadow = "0 0 6px " + c.color + "20"; }}
                               />
-                              <div className="tl-tip" style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: theme.text, whiteSpace: "nowrap", background: "rgba(10,14,26,0.95)", padding: "2px 8px", borderRadius: 4, border: "1px solid " + c.color + "40", zIndex: 20 }}>{a.title}{isDead ? " †" : ""}</div>
+                              <div className="tl-tip" style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: theme.text, whiteSpace: "nowrap", background: ta(theme.deepBg, 0.95), padding: "2px 8px", borderRadius: 4, border: "1px solid " + c.color + "40", zIndex: 20 }}>{a.title}{isDead ? " †" : ""}</div>
                             </div>
                           );
                         })}
@@ -2773,8 +2891,8 @@ const handleCreateWorld = async () => {
               {/* Side Panel */}
               <div style={{
                 width: tlPanelOpen ? 320 : 0, minWidth: tlPanelOpen ? 320 : 0,
-                borderLeft: tlPanelOpen ? "1px solid #1a2435" : "none",
-                background: "rgba(10,14,26,0.95)", backdropFilter: "blur(10px)",
+                borderLeft: tlPanelOpen ? "1px solid " + theme.divider : "none",
+                background: ta(theme.deepBg, 0.95), backdropFilter: "blur(10px)",
                 transition: "all 0.3s ease", overflow: "hidden", flexShrink: 0,
               }}>
                 {tlSelected && (
@@ -2784,7 +2902,7 @@ const handleCreateWorld = async () => {
                         {CATEGORIES[tlSelected.category]?.icon} {CATEGORIES[tlSelected.category]?.label}
                       </span>
                       <span onClick={tlClosePanel} style={{ fontSize: 16, color: theme.textDim, cursor: "pointer", padding: "4px 8px", borderRadius: 4 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "#d4c9a8"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#556677"; }}>✕</span>
+                        onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>✕</span>
                     </div>
                     <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>{tlSelected.title}</h3>
                     <p style={{ fontSize: 12, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.5, margin: "0 0 16px" }}>{tlSelected.summary}</p>
@@ -2802,7 +2920,7 @@ const handleCreateWorld = async () => {
                     {tlSelected.fields && Object.keys(tlSelected.fields).length > 0 && (
                       <div style={{ marginBottom: 16 }}>
                         {Object.entries(tlSelected.fields).slice(0, 4).map(([k, v]) => (
-                          <div key={k} style={{ display: "flex", padding: "5px 0", borderBottom: "1px solid #111827" }}>
+                          <div key={k} style={{ display: "flex", padding: "5px 0", borderBottom: "1px solid " + theme.surface }}>
                             <div style={{ width: 100, fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{formatKey(k)}</div>
                             <div style={{ flex: 1, fontSize: 12, color: "#c8bda0", lineHeight: 1.4 }}>{v}</div>
                           </div>
@@ -2821,19 +2939,19 @@ const handleCreateWorld = async () => {
                     {tlSelected.body && (
                       <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.7, marginTop: 12, maxHeight: 200, overflow: "hidden", position: "relative" }}>
                         <RenderBody text={tlSelected.body.split("\n")[0]} articles={articles} onNavigate={(id) => { tlClosePanel(); navigate(id); }} />
-                        {tlSelected.body.split("\n").length > 1 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 40, background: "linear-gradient(transparent, rgba(10,14,26,0.95))" }} />}
+                        {tlSelected.body.split("\n").length > 1 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 40, background: "linear-gradient(transparent, " + ta(theme.deepBg, 0.95) + ")" }} />}
                       </div>
                     )}
 
                     {/* Tags */}
                     {tlSelected.tags?.length > 0 && (
-                      <div style={{ marginTop: 14 }}>{tlSelected.tags.map((t) => <span key={t} style={{ ...S.tag, fontSize: 10, padding: "2px 8px" }}>#{t}</span>)}</div>
+                      <div style={{ marginTop: 14 }}>{tlSelected.tags.map((t) => <span key={t} style={{ ...tTag, fontSize: 10, padding: "2px 8px" }}>#{t}</span>)}</div>
                     )}
 
                     {/* Action buttons */}
                     <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-                      <button onClick={() => { tlClosePanel(); navigate(tlSelected.id); }} style={{ ...S.btnP, padding: "8px 16px", fontSize: 11 }}>View Full Entry →</button>
-                      <button onClick={() => { tlClosePanel(); goEdit(tlSelected); }} style={{ ...S.btnS, padding: "7px 14px", fontSize: 11 }}>✎ Edit</button>
+                      <button onClick={() => { tlClosePanel(); navigate(tlSelected.id); }} style={{ ...tBtnP, padding: "8px 16px", fontSize: 11 }}>View Full Entry →</button>
+                      <button onClick={() => { tlClosePanel(); goEdit(tlSelected); }} style={{ ...tBtnS, padding: "7px 14px", fontSize: 11 }}>✎ Edit</button>
                     </div>
                   </div>
                 )}
@@ -2844,7 +2962,7 @@ const handleCreateWorld = async () => {
           {/* === MAP BUILDER === */}
           {view === "map" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Map Header */}
-            <div style={{ padding: "16px 28px 12px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+            <div style={{ padding: "16px 28px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <div>
                 <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🗺 Map of {activeWorld?.name || "Your World"}</h2>
                 <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{mapData.pins.length} pin{mapData.pins.length !== 1 ? "s" : ""} · {mapData.territories.length} territor{mapData.territories.length !== 1 ? "ies" : "y"}</p>
@@ -2858,25 +2976,25 @@ const handleCreateWorld = async () => {
                   { id: "erase", icon: "✕", tip: "Erase" },
                 ].map((t) => (
                   <button key={t.id} title={t.tip} onClick={() => { setMapTool(t.id); if (mapDrawing && t.id !== "territory") { setMapDrawing(null); } }}
-                    style={{ padding: "6px 12px", fontSize: 14, background: mapTool === t.id ? "rgba(240,192,64,0.2)" : "transparent", border: mapTool === t.id ? "1px solid rgba(240,192,64,0.5)" : "1px solid #1e2a3a", borderRadius: 6, color: mapTool === t.id ? "#f0c040" : "#8899aa", cursor: "pointer", transition: "all 0.2s" }}>
+                    style={{ padding: "6px 12px", fontSize: 14, background: mapTool === t.id ? ta(theme.accent, 0.2) : "transparent", border: mapTool === t.id ? "1px solid " + ta(theme.accent, 0.5) : "1px solid " + theme.border, borderRadius: 6, color: mapTool === t.id ? theme.accent : theme.textMuted, cursor: "pointer", transition: "all 0.2s" }}>
                     {t.icon}
                   </button>
                 ))}
-                <div style={{ width: 1, height: 24, background: "#1e2a3a", margin: "0 4px" }} />
-                <button onClick={() => mapFileRef.current?.click()} style={{ ...S.btnS, fontSize: 11, padding: "6px 12px" }}>📷 Upload Map</button>
+                <div style={{ width: 1, height: 24, background: theme.border, margin: "0 4px" }} />
+                <button onClick={() => mapFileRef.current?.click()} style={{ ...tBtnS, fontSize: 11, padding: "6px 12px" }}>📷 Upload Map</button>
                 <input ref={mapFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleMapImageUpload} />
                 <span style={{ fontSize: 11, color: theme.textDim }}>{Math.round(mapZoom * 100)}%</span>
-                <button onClick={() => setMapZoom((z) => Math.min(5, z + 0.2))} style={{ ...S.btnS, padding: "4px 8px", fontSize: 14 }}>+</button>
-                <button onClick={() => setMapZoom((z) => Math.max(0.2, z - 0.2))} style={{ ...S.btnS, padding: "4px 8px", fontSize: 14 }}>−</button>
-                <button onClick={() => { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }} style={{ ...S.btnS, padding: "4px 8px", fontSize: 10 }}>FIT</button>
+                <button onClick={() => setMapZoom((z) => Math.min(5, z + 0.2))} style={{ ...tBtnS, padding: "4px 8px", fontSize: 14 }}>+</button>
+                <button onClick={() => setMapZoom((z) => Math.max(0.2, z - 0.2))} style={{ ...tBtnS, padding: "4px 8px", fontSize: 14 }}>−</button>
+                <button onClick={() => { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }} style={{ ...tBtnS, padding: "4px 8px", fontSize: 10 }}>FIT</button>
               </div>
             </div>
 
             {mapDrawing && (
-              <div style={{ padding: "8px 28px", background: "rgba(240,192,64,0.06)", borderBottom: "1px solid rgba(240,192,64,0.2)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-                <span style={{ fontSize: 12, color: "#f0c040" }}>Drawing territory — {mapDrawing.length} point{mapDrawing.length !== 1 ? "s" : ""} placed</span>
-                <button onClick={finishTerritory} disabled={mapDrawing.length < 3} style={{ ...S.btnP, fontSize: 10, padding: "4px 14px", opacity: mapDrawing.length < 3 ? 0.4 : 1 }}>Finish ({"\u2265"}3 pts)</button>
-                <button onClick={() => setMapDrawing(null)} style={{ ...S.btnS, fontSize: 10, padding: "4px 14px" }}>Cancel</button>
+              <div style={{ padding: "8px 28px", background: ta(theme.accent, 0.06), borderBottom: "1px solid " + ta(theme.accent, 0.2), display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                <span style={{ fontSize: 12, color: theme.accent }}>Drawing territory — {mapDrawing.length} point{mapDrawing.length !== 1 ? "s" : ""} placed</span>
+                <button onClick={finishTerritory} disabled={mapDrawing.length < 3} style={{ ...tBtnP, fontSize: 10, padding: "4px 14px", opacity: mapDrawing.length < 3 ? 0.4 : 1 }}>Finish ({"\u2265"}3 pts)</button>
+                <button onClick={() => setMapDrawing(null)} style={{ ...tBtnS, fontSize: 10, padding: "4px 14px" }}>Cancel</button>
               </div>
             )}
 
@@ -2891,7 +3009,7 @@ const handleCreateWorld = async () => {
                     <div style={{ fontSize: 56, opacity: 0.3 }}>🗺</div>
                     <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.textDim }}>Upload a Map Image</p>
                     <p style={{ fontSize: 12, color: "#334455", maxWidth: 340, textAlign: "center", lineHeight: 1.6 }}>Upload a PNG, JPG, or WebP image of your world map. You can then place pins at locations and draw territory borders.</p>
-                    <button onClick={() => mapFileRef.current?.click()} style={{ ...S.btnP, fontSize: 13 }}>Choose Image</button>
+                    <button onClick={() => mapFileRef.current?.click()} style={{ ...tBtnP, fontSize: 13 }}>Choose Image</button>
                   </div>
                 ) : (
                   <div style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "0 0", position: "relative", width: mapData.imageW, height: mapData.imageH }}>
@@ -2902,24 +3020,24 @@ const handleCreateWorld = async () => {
                       {mapData.territories.map((t) => (
                         <g key={t.id}>
                           <polygon points={t.points.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
-                            fill={mapSelected?.id === t.id ? "rgba(240,192,64,0.25)" : (t.fill || "rgba(240,192,64,0.12)")}
-                            stroke={mapSelected?.id === t.id ? "#f0c040" : (t.color || "#f0c040")}
+                            fill={mapSelected?.id === t.id ? ta(theme.accent, 0.25) : (t.fill || ta(theme.accent, 0.12))}
+                            stroke={mapSelected?.id === t.id ? theme.accent : (t.color || theme.accent)}
                             strokeWidth={mapSelected?.id === t.id ? 3 : 2} strokeDasharray={mapSelected?.id === t.id ? "none" : "6,3"} />
                           {t.label && t.points.length > 0 && (
                             <text x={t.points.reduce((s, p) => s + p.x, 0) / t.points.length * mapData.imageW}
                               y={t.points.reduce((s, p) => s + p.y, 0) / t.points.length * mapData.imageH}
-                              textAnchor="middle" fill={t.color || "#f0c040"} fontSize={14 / mapZoom} fontFamily="'Cinzel', serif" fontWeight="700"
-                              stroke="#0a0e1a" strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
+                              textAnchor="middle" fill={t.color || theme.accent} fontSize={14 / mapZoom} fontFamily="'Cinzel', serif" fontWeight="700"
+                              stroke={theme.deepBg} strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
                           )}
                         </g>
                       ))}
                       {/* Drawing preview */}
                       {mapDrawing && mapDrawing.length > 1 && (
                         <polyline points={mapDrawing.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
-                          fill="none" stroke="#f0c040" strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
+                          fill="none" stroke={theme.accent} strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
                       )}
                       {mapDrawing && mapDrawing.map((p, i) => (
-                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill="#f0c040" />
+                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill={theme.accent} />
                       ))}
                     </svg>
 
@@ -2928,8 +3046,8 @@ const handleCreateWorld = async () => {
                       const linked = pin.linkedArticleId ? articles.find((a) => a.id === pin.linkedArticleId) : null;
                       return (
                         <div key={pin.id} style={{ position: "absolute", left: pin.x * mapData.imageW - 12, top: pin.y * mapData.imageH - 28, pointerEvents: "auto", cursor: "pointer", zIndex: mapSelected?.id === pin.id ? 10 : 1 }}>
-                          <div style={{ fontSize: 24, filter: mapSelected?.id === pin.id ? "drop-shadow(0 0 6px rgba(240,192,64,0.8))" : "drop-shadow(0 2px 3px rgba(0,0,0,0.5))", transition: "filter 0.2s", transform: mapSelected?.id === pin.id ? "scale(1.2)" : "scale(1)" }}>📍</div>
-                          <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 10 / Math.max(mapZoom, 0.5), fontWeight: 700, color: pin.color || "#f0c040", textShadow: "0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7)", fontFamily: "'Cinzel', serif", letterSpacing: 0.5 }}>
+                          <div style={{ fontSize: 24, filter: mapSelected?.id === pin.id ? "drop-shadow(0 0 6px " + ta(theme.accent, 0.8) + ")" : "drop-shadow(0 2px 3px rgba(0,0,0,0.5))", transition: "filter 0.2s", transform: mapSelected?.id === pin.id ? "scale(1.2)" : "scale(1)" }}>📍</div>
+                          <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 10 / Math.max(mapZoom, 0.5), fontWeight: 700, color: pin.color || theme.accent, textShadow: "0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7)", fontFamily: "'Cinzel', serif", letterSpacing: 0.5 }}>
                             {pin.label}{linked ? " ↗" : ""}
                           </div>
                         </div>
@@ -2941,7 +3059,7 @@ const handleCreateWorld = async () => {
 
               {/* Edit panel */}
               {mapEditPanel && (
-                <div style={{ width: 280, borderLeft: "1px solid #1a2435", padding: "16px 14px", overflowY: "auto", flexShrink: 0, background: "#0d1117" }}>
+                <div style={{ width: 280, borderLeft: "1px solid " + theme.divider, padding: "16px 14px", overflowY: "auto", flexShrink: 0, background: theme.inputBg }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                     <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: 0 }}>
                       {mapEditPanel.points ? "Territory" : "Pin"} Properties
@@ -2955,7 +3073,7 @@ const handleCreateWorld = async () => {
                   <div style={{ marginBottom: 12 }}>
                     <label style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Color</label>
                     <div style={{ display: "flex", gap: 6 }}>
-                      {["#f0c040", "#e07050", "#7ec8e3", "#8ec8a0", "#c084fc", "#d4a060", "#e0c878", "#a088d0"].map((c) => (
+                      {[theme.accent, "#e07050", "#7ec8e3", "#8ec8a0", "#c084fc", "#d4a060", "#e0c878", "#a088d0"].map((c) => (
                         <div key={c} onClick={() => updateMapItem(mapEditPanel.id, { color: c, ...(mapEditPanel.points ? { fill: c + "25" } : {}) })}
                           style={{ width: 22, height: 22, borderRadius: 4, background: c, cursor: "pointer", border: mapEditPanel.color === c ? "2px solid #fff" : "2px solid transparent", transition: "border 0.2s" }} />
                       ))}
@@ -2986,20 +3104,20 @@ const handleCreateWorld = async () => {
                   {mapEditPanel.linkedArticleId && (() => {
                     const linked = articles.find((a) => a.id === mapEditPanel.linkedArticleId);
                     return linked ? (
-                      <div onClick={() => { setActiveArticle(linked); setView("article"); }} style={{ padding: "10px 12px", background: "rgba(240,192,64,0.06)", border: "1px solid rgba(240,192,64,0.15)", borderRadius: 6, cursor: "pointer", marginBottom: 12, transition: "all 0.2s" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.06)"; }}>
+                      <div onClick={() => { setActiveArticle(linked); setView("article"); }} style={{ padding: "10px 12px", background: ta(theme.accent, 0.06), border: "1px solid " + ta(theme.accent, 0.15), borderRadius: 6, cursor: "pointer", marginBottom: 12, transition: "all 0.2s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.12); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.06); }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{CATEGORIES[linked.category]?.icon} {linked.title}</div>
                         <div style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}>{linked.summary?.slice(0, 80)}{linked.summary?.length > 80 ? "…" : ""}</div>
-                        <div style={{ fontSize: 9, color: "#f0c040", marginTop: 4 }}>Click to view article →</div>
+                        <div style={{ fontSize: 9, color: theme.accent, marginTop: 4 }}>Click to view article →</div>
                       </div>
                     ) : null;
                   })()}
-                  <div style={{ borderTop: "1px solid #1a2435", paddingTop: 12 }}>
+                  <div style={{ borderTop: "1px solid " + theme.divider, paddingTop: 12 }}>
                     <button onClick={() => {
                       if (mapEditPanel.points) setMapData((prev) => ({ ...prev, territories: prev.territories.filter((t) => t.id !== mapEditPanel.id) }));
                       else setMapData((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== mapEditPanel.id) }));
                       setMapEditPanel(null); setMapSelected(null);
-                    }} style={{ ...S.btnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", width: "100%" }}>Delete {mapEditPanel.points ? "Territory" : "Pin"}</button>
+                    }} style={{ ...tBtnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", width: "100%" }}>Delete {mapEditPanel.points ? "Territory" : "Pin"}</button>
                   </div>
                 </div>
               )}
@@ -3017,19 +3135,19 @@ const handleCreateWorld = async () => {
                 <Ornament width={300} />
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 24 }}>
                   {manuscripts.map((ms) => {
-                    const wc = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.reduce((ts, s) => ts + (s.body?.trim().split(/\s+/).filter(Boolean).length || 0), 0), 0), 0);
+                    const wc = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.reduce((ts, s) => ts + countWords(s.body), 0), 0), 0);
                     const chCount = ms.acts.reduce((t, a) => t + a.chapters.length, 0);
                     const scCount = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.length, 0), 0);
                     return (
-                      <div key={ms.id} onClick={() => { setActiveMs(ms); setNovelView("outline"); }} style={{ width: 240, padding: "20px 18px", background: "rgba(17,24,39,0.5)", border: "1px solid #1e2a3a", borderRadius: 10, cursor: "pointer", transition: "all 0.2s", position: "relative" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; e.currentTarget.style.transform = "none"; }}>
+                      <div key={ms.id} onClick={() => { setActiveMs(ms); setNovelView("outline"); }} style={{ width: 240, padding: "20px 18px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.border, borderRadius: 10, cursor: "pointer", transition: "all 0.2s", position: "relative" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); e.currentTarget.style.transform = "translateY(-2px)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.transform = "none"; }}>
                         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #f0c040, #e07050)", borderRadius: "10px 10px 0 0" }} />
                         <div style={{ fontSize: 28, marginBottom: 10 }}>📖</div>
                         <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, fontWeight: 600, letterSpacing: 0.5 }}>{ms.title}</div>
                         {ms.description && <div style={{ fontSize: 11, color: theme.textDim, marginTop: 4, lineHeight: 1.4 }}>{ms.description.slice(0, 80)}</div>}
                         <div style={{ display: "flex", gap: 8, marginTop: 12, fontSize: 10, color: theme.textDim, flexWrap: "wrap" }}>
-                          <span style={{ background: "rgba(240,192,64,0.08)", padding: "2px 8px", borderRadius: 8 }}>{ms.acts.length} act{ms.acts.length !== 1 ? "s" : ""}</span>
+                          <span style={{ background: ta(theme.accent, 0.08), padding: "2px 8px", borderRadius: 8 }}>{ms.acts.length} act{ms.acts.length !== 1 ? "s" : ""}</span>
                           <span style={{ background: "rgba(126,200,227,0.08)", padding: "2px 8px", borderRadius: 8 }}>{chCount} ch</span>
                           <span style={{ background: "rgba(142,200,160,0.08)", padding: "2px 8px", borderRadius: 8 }}>{scCount} scenes</span>
                           <span style={{ background: "rgba(192,132,252,0.08)", padding: "2px 8px", borderRadius: 8 }}>{wc.toLocaleString()} words</span>
@@ -3038,19 +3156,19 @@ const handleCreateWorld = async () => {
                     );
                   })}
                   <div onClick={() => setShowMsCreate(true)} style={{ width: 240, padding: "20px 18px", background: "transparent", border: "2px dashed #1e2a3a", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 140, transition: "all 0.2s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; }}>
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
                     <div style={{ fontSize: 32, color: "#334455" }}>+</div>
                     <div style={{ fontSize: 12, color: theme.textDim, marginTop: 6 }}>New Manuscript</div>
                   </div>
                 </div>
                 {showMsCreate && (
-                  <div style={{ marginTop: 20, background: "rgba(17,24,39,0.6)", border: "1px solid #1e2a3a", borderRadius: 10, padding: "20px 24px", maxWidth: 400 }}>
-                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#f0c040", margin: "0 0 14px" }}>New Manuscript</h3>
+                  <div style={{ marginTop: 20, background: ta(theme.surface, 0.6), border: "1px solid " + theme.border, borderRadius: 10, padding: "20px 24px", maxWidth: 400 }}>
+                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.accent, margin: "0 0 14px" }}>New Manuscript</h3>
                     <input style={S.input} placeholder="Title" value={novelMsForm.title} onChange={(e) => setNovelMsForm((f) => ({ ...f, title: e.target.value }))} autoFocus />
                     <textarea style={{ ...S.textarea, minHeight: 50, marginTop: 8 }} placeholder="Description (optional)" value={novelMsForm.description} onChange={(e) => setNovelMsForm((f) => ({ ...f, description: e.target.value }))} />
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                      <button onClick={createManuscript} disabled={!novelMsForm.title.trim()} style={{ ...S.btnP, fontSize: 11, opacity: novelMsForm.title.trim() ? 1 : 0.4 }}>Create</button>
-                      <button onClick={() => setShowMsCreate(false)} style={{ ...S.btnS, fontSize: 11 }}>Cancel</button>
+                      <button onClick={createManuscript} disabled={!novelMsForm.title.trim()} style={{ ...tBtnP, fontSize: 11, opacity: novelMsForm.title.trim() ? 1 : 0.4 }}>Create</button>
+                      <button onClick={() => setShowMsCreate(false)} style={{ ...tBtnS, fontSize: 11 }}>Cancel</button>
                     </div>
                   </div>
                 )}
@@ -3060,18 +3178,18 @@ const handleCreateWorld = async () => {
             {/* Outline Mode — Enhanced */}
             {novelView === "outline" && activeMs && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ padding: "14px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+                <div style={{ padding: "14px 28px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span onClick={() => { setNovelView("select"); setActiveMs(null); }} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Manuscripts</span>
                     <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeMs.title}</h2>
                     <span style={{ fontSize: 11, color: theme.textDim }}>{msWordCount.total.toLocaleString()} words</span>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => setNovelView("corkboard")} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>🗂 Corkboard</button>
+                    <button onClick={() => setNovelView("corkboard")} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px" }}>🗂 Corkboard</button>
                     <div style={{ position: "relative" }}>
-                      <button onClick={() => setNovelExportOpen(!novelExportOpen)} disabled={novelCompiling} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export ▾"}</button>
+                      <button onClick={() => setNovelExportOpen(!novelExportOpen)} disabled={novelCompiling} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export ▾"}</button>
                       {novelExportOpen && (
-                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 8, padding: 4, minWidth: 180, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 8, padding: 4, minWidth: 180, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
                           {[
                             { id: "txt", label: "Plain Text (.txt)", icon: "📝", desc: "Simple, universal format" },
                             { id: "docx", label: "Word Document (.doc)", icon: "📄", desc: "Microsoft Word compatible" },
@@ -3092,8 +3210,8 @@ const handleCreateWorld = async () => {
                         </div>
                       )}
                     </div>
-                    <button onClick={addAct} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px" }}>+ Act</button>
-                    <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>Delete</button>
+                    <button onClick={addAct} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px" }}>+ Act</button>
+                    <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>Delete</button>
                   </div>
                 </div>
                 <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
@@ -3106,24 +3224,24 @@ const handleCreateWorld = async () => {
                         <input style={{ background: "none", border: "none", fontFamily: "'Cinzel', serif", fontSize: 16, color: act.color, fontWeight: 700, letterSpacing: 1, outline: "none", flex: 1, cursor: "text", minWidth: 0 }}
                           value={act.title} onClick={(e) => e.stopPropagation()} onChange={(e) => updateAct(act.id, { title: e.target.value })} />
                         <span style={{ fontSize: 10, color: theme.textDim }}>{(msWordCount.acts[act.id] || 0).toLocaleString()} words</span>
-                        <button onClick={(e) => { e.stopPropagation(); addChapter(act.id); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px" }}>+ Ch</button>
+                        <button onClick={(e) => { e.stopPropagation(); addChapter(act.id); }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px" }}>+ Ch</button>
                         {activeMs.acts.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteAct(act.id); }} style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕</button>}
                       </div>
                       {!novelOutlineCollapsed.has(act.id) && (
                         <div style={{ marginLeft: 20 }}>
                           {act.chapters.map((ch) => (
-                            <div key={ch.id} style={{ marginBottom: 10, background: "rgba(17,24,39,0.4)", border: "1px solid #1a2435", borderRadius: 8, overflow: "hidden" }}>
-                              <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #111827" }}>
+                            <div key={ch.id} style={{ marginBottom: 10, background: ta(theme.surface, 0.4), border: "1px solid " + theme.divider, borderRadius: 8, overflow: "hidden" }}>
+                              <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid " + theme.surface }}>
                                 <span onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(ch.id) ? n.delete(ch.id) : n.add(ch.id); return n; })}
                                   style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", transform: novelOutlineCollapsed.has(ch.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
                                 <input style={{ background: "none", border: "none", fontSize: 13, color: theme.text, fontWeight: 600, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit" }}
                                   value={ch.title} onChange={(e) => updateChapter(act.id, ch.id, { title: e.target.value })} />
                                 <select value={ch.status} onChange={(e) => updateChapter(act.id, ch.id, { status: e.target.value })}
-                                  style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 4, fontSize: 9, color: STATUS_COLORS[ch.status], padding: "2px 6px", cursor: "pointer", outline: "none", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+                                  style={{ background: theme.inputBg, border: "1px solid " + theme.border, borderRadius: 4, fontSize: 9, color: STATUS_COLORS[ch.status], padding: "2px 6px", cursor: "pointer", outline: "none", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
                                   <option value="draft">Draft</option><option value="revised">Revised</option><option value="final">Final</option>
                                 </select>
                                 <span style={{ fontSize: 10, color: theme.textDim, minWidth: 50, textAlign: "right" }}>{chapterWordCount(ch).toLocaleString()} w</span>
-                                <button onClick={() => addScene(act.id, ch.id)} style={{ ...S.btnS, fontSize: 8, padding: "2px 8px" }}>+ Scene</button>
+                                <button onClick={() => addScene(act.id, ch.id)} style={{ ...tBtnS, fontSize: 8, padding: "2px 8px" }}>+ Scene</button>
                                 {act.chapters.length > 1 && <button onClick={() => deleteChapter(act.id, ch.id)} style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 11 }}>✕</button>}
                               </div>
                               <div style={{ padding: "0 14px" }}>
@@ -3133,19 +3251,19 @@ const handleCreateWorld = async () => {
                               {!novelOutlineCollapsed.has(ch.id) && (
                                 <div style={{ padding: "4px 14px 10px" }}>
                                   {ch.scenes.map((sc) => {
-                                    const scWords = sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0;
+                                    const scWords = countWords(sc.body);
                                     const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
                                     return (
                                       <div key={sc.id} onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
-                                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: "rgba(240,192,64,0.02)", borderLeft: scColor.color !== "transparent" ? "3px solid " + scColor.color : "3px solid transparent" }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.02)"; }}>
-                                        <span style={{ fontSize: 10, color: "#f0c040" }}>▸</span>
+                                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: ta(theme.accent, 0.02), borderLeft: scColor.color !== "transparent" ? "3px solid " + scColor.color : "3px solid transparent" }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.08); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.02); }}>
+                                        <span style={{ fontSize: 10, color: theme.accent }}>▸</span>
                                         <input style={{ background: "none", border: "none", fontSize: 12, color: theme.textMuted, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit", cursor: "pointer" }}
                                           value={sc.title} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); updateScene(act.id, ch.id, sc.id, { title: e.target.value }); }} />
                                         {sc.povCharacter && <span style={{ fontSize: 9, color: "#c084fc", background: "rgba(192,132,252,0.1)", padding: "1px 6px", borderRadius: 8 }}>{sc.povCharacter}</span>}
-                                        {sc.label && <span style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#556677", background: (scColor.color !== "transparent" ? scColor.color : "#556677") + "18", padding: "1px 6px", borderRadius: 8 }}>{sc.label || scColor.label}</span>}
+                                        {sc.label && <span style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : theme.textDim, background: (scColor.color !== "transparent" ? scColor.color : theme.textDim) + "18", padding: "1px 6px", borderRadius: 8 }}>{sc.label || scColor.label}</span>}
                                         <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + " w" : "empty"}</span>
-                                        {sc.notes && <span style={{ fontSize: 9, color: "#f0c040" }} title="Has notes">📝</span>}
+                                        {sc.notes && <span style={{ fontSize: 9, color: theme.accent }} title="Has notes">📝</span>}
                                         {sc.snapshots?.length > 0 && <span style={{ fontSize: 9, color: "#7ec8e3" }} title={sc.snapshots.length + " snapshot(s)"}>📸{sc.snapshots.length}</span>}
                                         {ch.scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(act.id, ch.id, sc.id); }} style={{ background: "none", border: "none", color: "#334455", cursor: "pointer", fontSize: 10 }}>✕</button>}
                                       </div>
@@ -3166,7 +3284,7 @@ const handleCreateWorld = async () => {
             {/* === CORKBOARD VIEW === */}
             {novelView === "corkboard" && activeMs && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ padding: "14px 28px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                <div style={{ padding: "14px 28px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
                   <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Outline</span>
                   <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.text, margin: 0, letterSpacing: 1 }}>🗂 Corkboard</h2>
                   <div style={{ flex: 1 }} />
@@ -3176,7 +3294,7 @@ const handleCreateWorld = async () => {
                       if (e.target.value === "all") setCorkboardChapter(null);
                       else { const [a, c] = e.target.value.split("|"); setCorkboardChapter({ actId: a, chId: c }); }
                     }}
-                    style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, fontSize: 11, color: theme.text, padding: "4px 10px", outline: "none" }}>
+                    style={{ background: theme.inputBg, border: "1px solid " + theme.border, borderRadius: 6, fontSize: 11, color: theme.text, padding: "4px 10px", outline: "none" }}>
                     <option value="all">All Chapters</option>
                     {activeMs.acts.map((a) => a.chapters.map((c) => (
                       <option key={c.id} value={a.id + "|" + c.id}>{a.title} › {c.title}</option>
@@ -3196,7 +3314,7 @@ const handleCreateWorld = async () => {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
                           {ch.scenes.map((sc, si) => {
-                            const scWords = sc.body ? sc.body.trim().split(/\s+/).filter(Boolean).length : 0;
+                            const scWords = countWords(sc.body);
                             const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
                             return (
                               <div key={sc.id}
@@ -3206,9 +3324,9 @@ const handleCreateWorld = async () => {
                                 onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
                                 style={{
                                   width: 200, minHeight: 140, padding: "14px 16px",
-                                  background: corkboardDragId === sc.id ? "rgba(240,192,64,0.15)" : "rgba(17,24,39,0.6)",
-                                  border: "1px solid " + (corkboardDragId === sc.id ? "rgba(240,192,64,0.4)" : "#1e2a3a"),
-                                  borderTop: "3px solid " + (scColor.color !== "transparent" ? scColor.color : "#1e2a3a"),
+                                  background: corkboardDragId === sc.id ? ta(theme.accent, 0.15) : ta(theme.surface, 0.6),
+                                  border: "1px solid " + (corkboardDragId === sc.id ? ta(theme.accent, 0.4) : theme.border),
+                                  borderTop: "3px solid " + (scColor.color !== "transparent" ? scColor.color : theme.border),
                                   borderRadius: 8, cursor: "grab", transition: "all 0.2s", position: "relative",
                                 }}
                                 onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)"; }}
@@ -3217,7 +3335,7 @@ const handleCreateWorld = async () => {
                                 {sc.povCharacter && <div style={{ fontSize: 9, color: "#c084fc", marginBottom: 4 }}>POV: {sc.povCharacter}</div>}
                                 {sc.label && <div style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", marginBottom: 4 }}>{sc.label}</div>}
                                 <div style={{ fontSize: 10, color: theme.textDim, lineHeight: 1.4, overflow: "hidden", maxHeight: 52 }}>
-                                  {sc.body ? sc.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1").slice(0, 120) + (sc.body.length > 120 ? "..." : "") : <span style={{ fontStyle: "italic", color: theme.textDim }}>Empty scene</span>}
+                                  {sc.body ? stripTags(sc.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1")).slice(0, 120) + (stripTags(sc.body).length > 120 ? "..." : "") : <span style={{ fontStyle: "italic", color: theme.textDim }}>Empty scene</span>}
                                 </div>
                                 <div style={{ position: "absolute", bottom: 10, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                   <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}</span>
@@ -3231,8 +3349,8 @@ const handleCreateWorld = async () => {
                           })}
                           <div onClick={() => addScene(act.id, ch.id)}
                             style={{ width: 200, minHeight: 140, border: "2px dashed #1e2a3a", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.4)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e2a3a"; }}>
+                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
                             <span style={{ color: theme.textDim, fontSize: 24 }}>+</span>
                           </div>
                         </div>
@@ -3249,7 +3367,7 @@ const handleCreateWorld = async () => {
               const act = activeMs.acts.find((a) => a.id === novelActiveScene?.actId);
               const ch = act?.chapters.find((c) => c.id === novelActiveScene?.chId);
               if (!scene || !act || !ch) return <div style={{ padding: 40, color: theme.textDim }}>No scene selected.</div>;
-              const scWords = scene.body ? scene.body.trim().split(/\s+/).filter(Boolean).length : 0;
+              const scWords = countWords(scene.body);
               const scColor = SCENE_COLORS.find((c) => c.id === (scene.color || "none")) || SCENE_COLORS[0];
               const mentionMatches = novelMention ? articles.filter((a) => {
                 if (!novelMention.query) return true;
@@ -3259,18 +3377,18 @@ const handleCreateWorld = async () => {
 
               // Focus mode — fullscreen overlay
               if (novelFocusMode) return (
-                <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#0a0e1a", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: theme.deepBg, display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ position: "absolute", top: 16, right: 20, display: "flex", gap: 10, opacity: 0.3, transition: "opacity 0.3s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}>
                     <span style={{ fontSize: 11, color: theme.textDim }}>{scWords.toLocaleString()} words</span>
-                    {novelGoal.daily > 0 && <span style={{ fontSize: 11, color: goalProgress >= 100 ? "#8ec8a0" : "#f0c040" }}>{sessionWords}/{novelGoal.daily} today</span>}
-                    <button onClick={() => setNovelFocusMode(false)} style={{ background: "none", border: "1px solid #1e2a3a", color: theme.textDim, borderRadius: 6, padding: "3px 12px", cursor: "pointer", fontSize: 10 }}>Exit Focus</button>
+                    {novelGoal.daily > 0 && <span style={{ fontSize: 11, color: goalProgress >= 100 ? "#8ec8a0" : theme.accent }}>{sessionWords}/{novelGoal.daily} today</span>}
+                    <button onClick={() => setNovelFocusMode(false)} style={{ background: "none", border: "1px solid " + theme.border, color: theme.textDim, borderRadius: 6, padding: "3px 12px", cursor: "pointer", fontSize: 10 }}>Exit Focus</button>
                   </div>
                   <div style={{ position: "absolute", top: 16, left: 20, opacity: 0.15 }}>
                     <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: theme.textDim }}>{act.title} › {ch.title} › {scene.title}</span>
                   </div>
                   {/* Typewriter progress bar */}
-                  {novelGoal.daily > 0 && <div style={{ position: "absolute", top: 0, left: 0, height: 2, background: goalProgress >= 100 ? "#8ec8a0" : "#f0c040", width: goalProgress + "%", transition: "width 0.5s", borderRadius: 1 }} />}
+                  {novelGoal.daily > 0 && <div style={{ position: "absolute", top: 0, left: 0, height: 2, background: goalProgress >= 100 ? "#8ec8a0" : theme.accent, width: goalProgress + "%", transition: "width 0.5s", borderRadius: 1 }} />}
                   <div style={{ flex: 1, width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", overflow: "hidden", padding: "60px 0 40px" }}>
                     <div
                       ref={novelEditorRef}
@@ -3284,27 +3402,48 @@ const handleCreateWorld = async () => {
                       onKeyDown={(e) => {
                         if (e.key === "Escape") { if (novelMention) setNovelMention(null); else setNovelFocusMode(false); }
                         if (novelMention && mentionMatches.length > 0 && (e.key === "Tab" || e.key === "Enter")) { e.preventDefault(); insertMention(mentionMatches[0]); }
+                        if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                          if (e.key === "b") { e.preventDefault(); execFormat("bold"); }
+                          if (e.key === "i") { e.preventDefault(); execFormat("italic"); }
+                          if (e.key === "u") { e.preventDefault(); execFormat("underline"); }
+                        }
                       }}
                       onBlur={() => setTimeout(() => setNovelMention(null), 200)}
                       data-placeholder={"Begin writing...\nType @ to reference codex entries."}
                       style={{
                         flex: 1, width: "100%", background: "transparent", border: "none",
-                        color: "#c8bda0", caretColor: "#f0c040",
+                        color: theme.text, caretColor: theme.accent,
                         fontSize: 18, fontFamily: editorFontFamily,
                         lineHeight: 2.2, padding: "0 20px", outline: "none", resize: "none",
                         letterSpacing: 0.4, overflowY: "auto", whiteSpace: "pre-wrap", wordWrap: "break-word",
                       }}
                     />
+                    {/* Minimal focus mode formatting bar */}
+                    <div style={{ display: "flex", justifyContent: "center", gap: 2, padding: "8px 0 0", opacity: 0.25, transition: "opacity 0.3s" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.25"; }}>
+                      {[
+                        { cmd: "bold", icon: "B", style: { fontWeight: 800 } },
+                        { cmd: "italic", icon: "I", style: { fontStyle: "italic" } },
+                        { cmd: "underline", icon: "U", style: { textDecoration: "underline" } },
+                        { cmd: "strikeThrough", icon: "S", style: { textDecoration: "line-through" } },
+                      ].map((b) => (
+                        <button key={b.cmd}
+                          onMouseDown={(e) => { e.preventDefault(); execFormat(b.cmd); }}
+                          style={{ width: 26, height: 24, border: "none", borderRadius: 4, background: "transparent", color: theme.textDim, cursor: "pointer", fontSize: 12, fontFamily: "Georgia, serif", display: "flex", alignItems: "center", justifyContent: "center", ...b.style }}>
+                          {b.icon}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {/* @mention autocomplete in focus mode */}
                   {novelMention && mentionMatches.length > 0 && (
-                    <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: "#111827", border: "1px solid rgba(240,192,64,0.3)", borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 10000, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+                    <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: theme.surface, border: "1px solid " + ta(theme.accent, 0.3), borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 10000, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
                       <div style={{ padding: "4px 10px 6px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
                       {mentionMatches.map((a, idx) => (
                         <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
-                          style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? "rgba(240,192,64,0.08)" : "transparent"; }}>
+                          style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? ta(theme.accent, 0.08) : "transparent" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.12); }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? ta(theme.accent, 0.08) : "transparent"; }}>
                           <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
                           <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{a.title}</div></div>
                           <span style={{ fontSize: 9, color: theme.textDim }}>{CATEGORIES[a.category]?.label}</span>
@@ -3313,7 +3452,7 @@ const handleCreateWorld = async () => {
                     </div>
                   )}
                   {mentionTooltip && mentionTooltip.article && (
-                    <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 10001, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
+                    <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 10001, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color, fontFamily: "'Cinzel', serif" }}>{CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}</div>
                       <div style={{ fontSize: 11, color: theme.textMuted, lineHeight: 1.5, marginTop: 4 }}>{mentionTooltip.article.summary?.slice(0, 120) || "No summary."}</div>
                     </div>
@@ -3325,9 +3464,9 @@ const handleCreateWorld = async () => {
               return (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   {/* Writing toolbar */}
-                  <div style={{ padding: "8px 20px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                  <div style={{ padding: "8px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                     <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Outline</span>
-                    <div style={{ width: 1, height: 16, background: "#1e2a3a" }} />
+                    <div style={{ width: 1, height: 16, background: theme.border }} />
                     <span style={{ fontSize: 11, color: act.color, fontWeight: 600 }}>{act.title}</span>
                     <span style={{ color: "#334455" }}>›</span>
                     <span style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>{ch.title}</span>
@@ -3337,21 +3476,21 @@ const handleCreateWorld = async () => {
 
                     {/* Scene color tag */}
                     <select value={scene.color || "none"} onChange={(e) => updateScene(act.id, ch.id, scene.id, { color: e.target.value })}
-                      style={{ background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 4, fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", padding: "2px 8px", cursor: "pointer", outline: "none" }}>
+                      style={{ background: theme.inputBg, border: "1px solid " + theme.border, borderRadius: 4, fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", padding: "2px 8px", cursor: "pointer", outline: "none" }}>
                       {SCENE_COLORS.map((c) => <option key={c.id} value={c.id} style={{ color: c.color !== "transparent" ? c.color : "#ccc" }}>{c.label}</option>)}
                     </select>
 
-                    <button onClick={() => navigateScene(-1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>←</button>
-                    <button onClick={() => navigateScene(1)} style={{ ...S.btnS, fontSize: 10, padding: "3px 10px" }}>→</button>
-                    <div style={{ width: 1, height: 16, background: "#1e2a3a" }} />
-                    <button onClick={() => setNovelFocusMode(true)} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }} title="Distraction-free writing">⊡ Focus</button>
-                    <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? "rgba(240,192,64,0.1)" : "transparent", color: novelSplitPane ? "#f0c040" : "#8899aa" }}>
+                    <button onClick={() => navigateScene(-1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>←</button>
+                    <button onClick={() => navigateScene(1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>→</button>
+                    <div style={{ width: 1, height: 16, background: theme.border }} />
+                    <button onClick={() => setNovelFocusMode(true)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }} title="Distraction-free writing">⊡ Focus</button>
+                    <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane ? theme.accent : theme.textMuted }}>
                       ◫ Split
                     </button>
                     <div style={{ position: "relative" }}>
-                      <button onClick={() => setNovelEditorSettings(!novelEditorSettings)} style={{ ...S.btnS, fontSize: 10, padding: "3px 12px", color: novelEditorSettings ? theme.accent : "#8899aa", background: novelEditorSettings ? theme.accentBg : "transparent" }}>⚙ Editor</button>
+                      <button onClick={() => setNovelEditorSettings(!novelEditorSettings)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: novelEditorSettings ? theme.accent : theme.textMuted, background: novelEditorSettings ? theme.accentBg : "transparent" }}>⚙ Editor</button>
                       {novelEditorSettings && (
-                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: 16, zIndex: 200, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 16, zIndex: 200, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                             <span style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: theme.text, letterSpacing: 0.5 }}>Editor Settings</span>
                             <span onClick={() => setNovelEditorSettings(false)} style={{ cursor: "pointer", color: theme.textDim, fontSize: 14 }}>✕</span>
@@ -3362,7 +3501,7 @@ const handleCreateWorld = async () => {
                             {Object.entries(EDITOR_FONTS).map(([fid, fam]) => (
                               <div key={fid} onClick={() => setSettings((p) => ({ ...p, editorFont: fid }))}
                                 style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid " + (settings.editorFont === fid ? theme.accent + "50" : "transparent"), background: settings.editorFont === fid ? theme.accentBg : "transparent" }}>
-                                <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid " + (settings.editorFont === fid ? theme.accent : "#1e2a3a"), display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid " + (settings.editorFont === fid ? theme.accent : theme.border), display: "flex", alignItems: "center", justifyContent: "center" }}>
                                   {settings.editorFont === fid && <div style={{ width: 7, height: 7, borderRadius: "50%", background: theme.accent }} />}
                                 </div>
                                 <span style={{ fontSize: 12, fontFamily: fam, color: settings.editorFont === fid ? theme.accent : theme.textMuted }}>{fid === "system" ? "Sans-Serif" : fid === "mono" ? "Monospace" : fid.charAt(0).toUpperCase() + fid.slice(1)}</span>
@@ -3374,7 +3513,7 @@ const handleCreateWorld = async () => {
                           <div style={{ display: "flex", gap: 4 }}>
                             {[{ id: "compact", label: "Compact" }, { id: "default", label: "Default" }, { id: "large", label: "Large" }].map((s) => (
                               <button key={s.id} onClick={() => setSettings((p) => ({ ...p, fontSize: s.id }))}
-                                style={{ flex: 1, padding: "6px 0", borderRadius: 6, cursor: "pointer", border: "1px solid " + (settings.fontSize === s.id ? theme.accent + "50" : "#1e2a3a"), background: settings.fontSize === s.id ? theme.accentBg : "transparent", color: settings.fontSize === s.id ? theme.accent : theme.textMuted, fontSize: 10, fontFamily: "inherit" }}>
+                                style={{ flex: 1, padding: "6px 0", borderRadius: 6, cursor: "pointer", border: "1px solid " + (settings.fontSize === s.id ? theme.accent + "50" : theme.border), background: settings.fontSize === s.id ? theme.accentBg : "transparent", color: settings.fontSize === s.id ? theme.accent : theme.textMuted, fontSize: 10, fontFamily: "inherit" }}>
                                 {s.label}
                               </button>
                             ))}
@@ -3386,23 +3525,23 @@ const handleCreateWorld = async () => {
 
                   {/* Writing goal bar */}
                   {(novelGoal.daily > 0 || novelShowGoalSet) && (
-                    <div style={{ padding: "6px 20px", borderBottom: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(17,24,39,0.3)" }}>
+                    <div style={{ padding: "6px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: ta(theme.surface, 0.3) }}>
                       {novelShowGoalSet ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 10, color: theme.textDim }}>Daily word goal:</span>
                           <input type="number" style={{ ...S.input, width: 80, padding: "3px 8px", fontSize: 11 }} placeholder="e.g. 1000" value={novelGoalInput}
                             onChange={(e) => setNovelGoalInput(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); } }} />
-                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px" }}>Set</button>
-                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: 0 })); setNovelShowGoalSet(false); }} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px", color: "#e07050" }}>Clear</button>
+                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px" }}>Set</button>
+                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: 0 })); setNovelShowGoalSet(false); }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#e07050" }}>Clear</button>
                         </div>
                       ) : (
                         <>
                           <span style={{ fontSize: 10, color: theme.textDim }}>Session:</span>
-                          <span style={{ fontSize: 11, color: sessionWords > 0 ? "#8ec8a0" : "#556677", fontWeight: 600 }}>+{sessionWords.toLocaleString()}</span>
-                          <div style={{ flex: 1, height: 4, background: "#111827", borderRadius: 2, maxWidth: 200, overflow: "hidden" }}>
-                            <div style={{ height: "100%", width: goalProgress + "%", background: goalProgress >= 100 ? "#8ec8a0" : goalProgress > 50 ? "#f0c040" : "#e07050", borderRadius: 2, transition: "width 0.5s" }} />
+                          <span style={{ fontSize: 11, color: sessionWords > 0 ? "#8ec8a0" : theme.textDim, fontWeight: 600 }}>+{sessionWords.toLocaleString()}</span>
+                          <div style={{ flex: 1, height: 4, background: theme.surface, borderRadius: 2, maxWidth: 200, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: goalProgress + "%", background: goalProgress >= 100 ? "#8ec8a0" : goalProgress > 50 ? theme.accent : "#e07050", borderRadius: 2, transition: "width 0.5s" }} />
                           </div>
-                          <span style={{ fontSize: 10, color: goalProgress >= 100 ? "#8ec8a0" : "#556677" }}>{goalProgress}% of {novelGoal.daily.toLocaleString()}</span>
+                          <span style={{ fontSize: 10, color: goalProgress >= 100 ? "#8ec8a0" : theme.textDim }}>{goalProgress}% of {novelGoal.daily.toLocaleString()}</span>
                           {goalProgress >= 100 && <span style={{ fontSize: 10, color: "#8ec8a0" }}>🎉 Goal reached!</span>}
                           <span onClick={() => { setNovelGoalInput(String(novelGoal.daily)); setNovelShowGoalSet(true); }} style={{ fontSize: 9, color: theme.textDim, cursor: "pointer" }}>✎</span>
                         </>
@@ -3412,7 +3551,7 @@ const handleCreateWorld = async () => {
 
                   <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
                     {/* Chapter nav rail */}
-                    <div style={{ width: 180, borderRight: "1px solid #1a2435", overflowY: "auto", flexShrink: 0, padding: "12px 0", background: "#0a0e1a" }}>
+                    <div style={{ width: 180, borderRight: "1px solid " + theme.divider, overflowY: "auto", flexShrink: 0, padding: "12px 0", background: theme.deepBg }}>
                       {activeMs.acts.map((a) => (
                         <div key={a.id}>
                           <div style={{ padding: "6px 14px", fontSize: 10, color: a.color, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
@@ -3424,7 +3563,7 @@ const handleCreateWorld = async () => {
                                 const sColor = SCENE_COLORS.find((sc) => sc.id === s.color) || SCENE_COLORS[0];
                                 return (
                                   <div key={s.id} onClick={() => setNovelActiveScene({ actId: a.id, chId: c.id, scId: s.id })}
-                                    style={{ padding: "5px 14px 5px 26px", fontSize: 11, color: s.id === scene.id ? "#f0c040" : "#6b7b8d", cursor: "pointer", background: s.id === scene.id ? "rgba(240,192,64,0.06)" : "transparent", borderLeft: s.id === scene.id ? "2px solid #f0c040" : sColor.color !== "transparent" ? "2px solid " + sColor.color + "60" : "2px solid transparent", transition: "all 0.15s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                    style={{ padding: "5px 14px 5px 26px", fontSize: 11, color: s.id === scene.id ? theme.accent : "#6b7b8d", cursor: "pointer", background: s.id === scene.id ? ta(theme.accent, 0.06) : "transparent", borderLeft: s.id === scene.id ? "2px solid " + theme.accent : sColor.color !== "transparent" ? "2px solid " + sColor.color + "60" : "2px solid transparent", transition: "all 0.15s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                                     onMouseEnter={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
                                     onMouseLeave={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "transparent"; }}>
                                     <span style={{ fontSize: 9, color: theme.textDim }}>{c.title.replace(/Chapter\s*/i, "Ch")} · </span>{s.title}
@@ -3436,7 +3575,7 @@ const handleCreateWorld = async () => {
                         </div>
                       ))}
                       {/* Goal set button in nav */}
-                      <div style={{ padding: "12px 14px", borderTop: "1px solid #1a2435", marginTop: 8 }}>
+                      <div style={{ padding: "12px 14px", borderTop: "1px solid " + theme.divider, marginTop: 8 }}>
                         <span onClick={() => setNovelShowGoalSet(true)} style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>🎯 {novelGoal.daily > 0 ? novelGoal.daily.toLocaleString() + " word goal" : "Set word goal"}</span>
                       </div>
                     </div>
@@ -3444,15 +3583,15 @@ const handleCreateWorld = async () => {
                     {/* Main editor area */}
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                       {/* Scene metadata bar */}
-                      <div style={{ padding: "6px 20px", borderBottom: "1px solid #111827", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: "rgba(17,24,39,0.3)" }}>
+                      <div style={{ padding: "6px 20px", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: ta(theme.surface, 0.3) }}>
                         <input style={{ background: "none", border: "none", fontSize: 10, color: "#c084fc", outline: "none", width: 100, fontFamily: "inherit" }}
                           placeholder="POV character..." value={scene.povCharacter || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { povCharacter: e.target.value })} />
-                        <div style={{ width: 1, height: 12, background: "#1a2435" }} />
+                        <div style={{ width: 1, height: 12, background: theme.divider }} />
                         <input style={{ background: "none", border: "none", fontSize: 10, color: theme.textDim, outline: "none", flex: 1, fontFamily: "inherit" }}
                           placeholder="Scene label / notes tag..." value={scene.label || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { label: e.target.value })} />
-                        <div style={{ width: 1, height: 12, background: "#1a2435" }} />
+                        <div style={{ width: 1, height: 12, background: theme.divider }} />
                         <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} title="Save snapshot of current text"
-                          style={{ background: "none", border: "1px solid #1e2a3a", borderRadius: 4, color: "#7ec8e3", cursor: "pointer", fontSize: 9, padding: "2px 8px" }}>📸 Snapshot</button>
+                          style={{ background: "none", border: "1px solid " + theme.border, borderRadius: 4, color: "#7ec8e3", cursor: "pointer", fontSize: 9, padding: "2px 8px" }}>📸 Snapshot</button>
                         {scene.snapshots?.length > 0 && (
                           <span onClick={() => setNovelSnapshotView(novelSnapshotView !== null ? null : scene.snapshots.length - 1)}
                             style={{ fontSize: 9, color: "#7ec8e3", cursor: "pointer", background: "rgba(126,200,227,0.1)", padding: "2px 8px", borderRadius: 4 }}>
@@ -3463,7 +3602,7 @@ const handleCreateWorld = async () => {
 
                       {/* Snapshot viewer */}
                       {novelSnapshotView !== null && scene.snapshots?.length > 0 && (
-                        <div style={{ padding: "10px 20px", borderBottom: "1px solid #1a2435", background: "rgba(126,200,227,0.03)", flexShrink: 0, maxHeight: 200, overflowY: "auto" }}>
+                        <div style={{ padding: "10px 20px", borderBottom: "1px solid " + theme.divider, background: "rgba(126,200,227,0.03)", flexShrink: 0, maxHeight: 200, overflowY: "auto" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                             <span style={{ fontSize: 11, color: "#7ec8e3", fontWeight: 600 }}>📸 Snapshots</span>
                             <div style={{ flex: 1 }} />
@@ -3472,24 +3611,73 @@ const handleCreateWorld = async () => {
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                             {scene.snapshots.map((snap, si) => (
                               <span key={si} onClick={() => setNovelSnapshotView(si)}
-                                style={{ fontSize: 10, padding: "3px 10px", borderRadius: 6, cursor: "pointer", background: novelSnapshotView === si ? "rgba(126,200,227,0.15)" : "rgba(17,24,39,0.5)", border: "1px solid " + (novelSnapshotView === si ? "rgba(126,200,227,0.3)" : "#1e2a3a"), color: novelSnapshotView === si ? "#7ec8e3" : "#6b7b8d" }}>
+                                style={{ fontSize: 10, padding: "3px 10px", borderRadius: 6, cursor: "pointer", background: novelSnapshotView === si ? "rgba(126,200,227,0.15)" : ta(theme.surface, 0.5), border: "1px solid " + (novelSnapshotView === si ? "rgba(126,200,227,0.3)" : theme.border), color: novelSnapshotView === si ? "#7ec8e3" : "#6b7b8d" }}>
                                 {new Date(snap.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {snap.wordCount}w
                               </span>
                             ))}
                           </div>
                           {scene.snapshots[novelSnapshotView] && (
                             <div>
-                              <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.6, maxHeight: 80, overflow: "hidden", padding: 8, background: "rgba(10,14,26,0.5)", borderRadius: 6, fontFamily: "'Georgia', serif" }}>
+                              <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.6, maxHeight: 80, overflow: "hidden", padding: 8, background: ta(theme.deepBg, 0.5), borderRadius: 6, fontFamily: "'Georgia', serif" }}>
                                 {scene.snapshots[novelSnapshotView].body.slice(0, 300) || "(empty)"}...
                               </div>
                               <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, novelSnapshotView); setNovelSnapshotView(null); }}
-                                style={{ ...S.btnS, fontSize: 10, padding: "4px 12px", marginTop: 6, color: "#f0c040", borderColor: "rgba(240,192,64,0.3)" }}>
+                                style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", marginTop: 6, color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>
                                 ↩ Restore this snapshot
                               </button>
                             </div>
                           )}
                         </div>
                       )}
+
+                      {/* Formatting toolbar */}
+                      <div style={{ padding: "4px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 2, flexShrink: 0, background: ta(theme.surface, 0.2), flexWrap: "wrap" }}>
+                        {[
+                          { cmd: "bold", icon: "B", key: "bold", style: { fontWeight: 800 }, tip: "Bold (Ctrl+B)" },
+                          { cmd: "italic", icon: "I", key: "italic", style: { fontStyle: "italic", fontFamily: "Georgia, serif" }, tip: "Italic (Ctrl+I)" },
+                          { cmd: "underline", icon: "U", key: "underline", style: { textDecoration: "underline" }, tip: "Underline (Ctrl+U)" },
+                          { cmd: "strikeThrough", icon: "S", key: "strikethrough", style: { textDecoration: "line-through" }, tip: "Strikethrough" },
+                        ].map((b) => (
+                          <button key={b.cmd} title={b.tip}
+                            onMouseDown={(e) => { e.preventDefault(); execFormat(b.cmd); updateFormatState(); }}
+                            style={{ width: 28, height: 26, border: "1px solid " + (formatState[b.key] ? ta(theme.accent, 0.4) : "transparent"), borderRadius: 4, background: formatState[b.key] ? ta(theme.accent, 0.12) : "transparent", color: formatState[b.key] ? theme.accent : theme.textMuted, cursor: "pointer", fontSize: 13, fontFamily: "Georgia, serif", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.1s", ...b.style }}>
+                            {b.icon}
+                          </button>
+                        ))}
+                        <div style={{ width: 1, height: 18, background: theme.border, margin: "0 4px" }} />
+                        {[
+                          { cmd: "formatBlock", val: "<h2>", icon: "H2", tip: "Heading 2" },
+                          { cmd: "formatBlock", val: "<h3>", icon: "H3", tip: "Heading 3" },
+                        ].map((b) => (
+                          <button key={b.icon} title={b.tip}
+                            onMouseDown={(e) => { e.preventDefault(); execFormat(b.cmd, b.val); }}
+                            style={{ height: 26, padding: "0 8px", border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textMuted, cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 0.5 }}>
+                            {b.icon}
+                          </button>
+                        ))}
+                        <div style={{ width: 1, height: 18, background: theme.border, margin: "0 4px" }} />
+                        <button title="Bullet list" onMouseDown={(e) => { e.preventDefault(); execFormat("insertUnorderedList"); updateFormatState(); }}
+                          style={{ width: 28, height: 26, border: "1px solid " + (formatState.ul ? ta(theme.accent, 0.4) : "transparent"), borderRadius: 4, background: formatState.ul ? ta(theme.accent, 0.12) : "transparent", color: formatState.ul ? theme.accent : theme.textMuted, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          ☰
+                        </button>
+                        <button title="Numbered list" onMouseDown={(e) => { e.preventDefault(); execFormat("insertOrderedList"); updateFormatState(); }}
+                          style={{ width: 28, height: 26, border: "1px solid " + (formatState.ol ? ta(theme.accent, 0.4) : "transparent"), borderRadius: 4, background: formatState.ol ? ta(theme.accent, 0.12) : "transparent", color: formatState.ol ? theme.accent : theme.textMuted, cursor: "pointer", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          1.
+                        </button>
+                        <button title="Block quote" onMouseDown={(e) => { e.preventDefault(); execFormat("formatBlock", "<blockquote>"); }}
+                          style={{ width: 28, height: 26, border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textMuted, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          ❝
+                        </button>
+                        <div style={{ width: 1, height: 18, background: theme.border, margin: "0 4px" }} />
+                        <button title="Horizontal rule" onMouseDown={(e) => { e.preventDefault(); execFormat("insertHorizontalRule"); }}
+                          style={{ width: 28, height: 26, border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textMuted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          ―
+                        </button>
+                        <button title="Clear formatting" onMouseDown={(e) => { e.preventDefault(); execFormat("removeFormat"); execFormat("formatBlock", "<div>"); updateFormatState(); }}
+                          style={{ width: 28, height: 26, border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textDim, cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          ⊘
+                        </button>
+                      </div>
 
                       {/* ContentEditable editor */}
                       <div
@@ -3504,12 +3692,20 @@ const handleCreateWorld = async () => {
                         onKeyDown={(e) => {
                           if (e.key === "Escape") setNovelMention(null);
                           if (novelMention && mentionMatches.length > 0 && (e.key === "Tab" || e.key === "Enter")) { e.preventDefault(); insertMention(mentionMatches[0]); }
+                          // Formatting keyboard shortcuts
+                          if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                            if (e.key === "b") { e.preventDefault(); execFormat("bold"); updateFormatState(); }
+                            if (e.key === "i") { e.preventDefault(); execFormat("italic"); updateFormatState(); }
+                            if (e.key === "u") { e.preventDefault(); execFormat("underline"); updateFormatState(); }
+                          }
                         }}
+                        onKeyUp={updateFormatState}
+                        onMouseUp={updateFormatState}
                         onBlur={() => setTimeout(() => setNovelMention(null), 200)}
                         data-placeholder={"Begin writing " + scene.title + "...\nType @ to reference codex entries — they'll appear as clickable links."}
                         style={{
-                          flex: 1, width: "100%", background: "#0d1117", border: "none",
-                          color: theme.text, caretColor: "#f0c040",
+                          flex: 1, width: "100%", background: theme.inputBg, border: "none",
+                          color: theme.text, caretColor: theme.accent,
                           fontSize: 15, fontFamily: editorFontFamily,
                           lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none",
                           boxSizing: "border-box", letterSpacing: 0.3, overflowY: "auto",
@@ -3519,13 +3715,13 @@ const handleCreateWorld = async () => {
 
                       {/* @mention autocomplete */}
                       {novelMention && mentionMatches.length > 0 && (
-                        <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: "#111827", border: "1px solid rgba(240,192,64,0.3)", borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(240,192,64,0.1)" }}>
+                        <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: theme.surface, border: "1px solid " + ta(theme.accent, 0.3), borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px " + ta(theme.accent, 0.1) }}>
                           <div style={{ padding: "4px 10px 6px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
                           {mentionMatches.map((a, idx) => (
                             <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
-                              style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? "rgba(240,192,64,0.08)" : "transparent", transition: "background 0.1s" }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? "rgba(240,192,64,0.08)" : "transparent"; }}>
+                              style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? ta(theme.accent, 0.08) : "transparent", transition: "background 0.1s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.12); }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? ta(theme.accent, 0.08) : "transparent"; }}>
                               <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color || "#888" }}>{CATEGORIES[a.category]?.icon || "?"}</span>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
@@ -3534,15 +3730,15 @@ const handleCreateWorld = async () => {
                               <span style={{ fontSize: 9, color: theme.textDim, flexShrink: 0 }}>{CATEGORIES[a.category]?.label}</span>
                             </div>
                           ))}
-                          <div style={{ padding: "6px 10px 4px", fontSize: 9, color: theme.textDim, borderTop: "1px solid #1a2435", marginTop: 4 }}>Tab/Enter to insert · Esc to close</div>
+                          <div style={{ padding: "6px 10px 4px", fontSize: 9, color: theme.textDim, borderTop: "1px solid " + theme.divider, marginTop: 4 }}>Tab/Enter to insert · Esc to close</div>
                         </div>
                       )}
 
                       {/* Mention hover tooltip */}
                       {mentionTooltip && mentionTooltip.article && (
-                        <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: "#111827", border: "1px solid #1e2a3a", borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
+                        <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                            {mentionTooltip.article.portrait && <img src={mentionTooltip.article.portrait} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", border: "1px solid #1e2a3a" }} />}
+                            {mentionTooltip.article.portrait && <img src={mentionTooltip.article.portrait} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", border: "1px solid " + theme.border }} />}
                             <div>
                               <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color || "#e8dcc8", fontFamily: "'Cinzel', serif" }}>
                                 {CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}
@@ -3554,7 +3750,7 @@ const handleCreateWorld = async () => {
                           {Object.entries(mentionTooltip.article.fields || {}).filter(([_, v]) => v).slice(0, 3).map(([k, v]) => (
                             <div key={k} style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}><strong style={{ color: theme.textDim }}>{formatKey(k)}:</strong> {String(v).slice(0, 50)}</div>
                           ))}
-                          <div style={{ fontSize: 9, color: "#f0c040", marginTop: 6 }}>Click mention to open article</div>
+                          <div style={{ fontSize: 9, color: theme.accent, marginTop: 6 }}>Click mention to open article</div>
                         </div>
                       )}
 
@@ -3567,7 +3763,7 @@ const handleCreateWorld = async () => {
                             <span style={{ fontSize: 11, color: "#e07050" }}>🛡 {sceneWarnings.length} integrity issue{sceneWarnings.length !== 1 ? "s" : ""}:</span>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
                               {sceneWarnings.slice(0, 4).map((w, i) => (
-                                <span key={i} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: w.severity === "error" ? "rgba(224,112,80,0.1)" : "rgba(240,192,64,0.1)", color: w.severity === "error" ? "#e07050" : "#f0c040", border: "1px solid " + (w.severity === "error" ? "rgba(224,112,80,0.2)" : "rgba(240,192,64,0.2)") }}>
+                                <span key={i} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: w.severity === "error" ? "rgba(224,112,80,0.1)" : ta(theme.accent, 0.1), color: w.severity === "error" ? "#e07050" : theme.accent, border: "1px solid " + (w.severity === "error" ? "rgba(224,112,80,0.2)" : ta(theme.accent, 0.2)) }}>
                                   {w.message}
                                 </span>
                               ))}
@@ -3577,7 +3773,7 @@ const handleCreateWorld = async () => {
                       })()}
 
                       {/* Footer bar */}
-                      <div style={{ padding: "8px 20px", borderTop: "1px solid #1a2435", display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: "#0a0e1a" }}>
+                      <div style={{ padding: "8px 20px", borderTop: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: theme.deepBg }}>
                         <span style={{ fontSize: 10, color: theme.textDim }}>Scene: <strong style={{ color: theme.textMuted }}>{scWords.toLocaleString()}</strong> words</span>
                         <span style={{ fontSize: 10, color: theme.textDim }}>Chapter: <strong style={{ color: theme.textMuted }}>{chapterWordCount(ch).toLocaleString()}</strong></span>
                         <span style={{ fontSize: 10, color: theme.textDim }}>Total: <strong style={{ color: theme.textMuted }}>{msWordCount.total.toLocaleString()}</strong></span>
@@ -3592,16 +3788,16 @@ const handleCreateWorld = async () => {
 
                     {/* === SPLIT PANE RIGHT SIDE === */}
                     {novelSplitPane && (
-                      <div style={{ width: 340, borderLeft: "1px solid #1a2435", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, background: "#0d1117" }}>
+                      <div style={{ width: 340, borderLeft: "1px solid " + theme.divider, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, background: theme.inputBg }}>
                         {/* Split pane tabs */}
-                        <div style={{ padding: "8px 12px", borderBottom: "1px solid #1a2435", display: "flex", gap: 4, flexShrink: 0 }}>
+                        <div style={{ padding: "8px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", gap: 4, flexShrink: 0 }}>
                           {[
                             { id: "notes", icon: "📝", label: "Notes" },
                             { id: "codex", icon: "📖", label: "Codex" },
                             { id: "snapshots", icon: "📸", label: "Snapshots" },
                           ].map((tab) => (
                             <span key={tab.id} onClick={() => setNovelSplitPane(tab.id)}
-                              style={{ fontSize: 10, padding: "4px 10px", borderRadius: 6, cursor: "pointer", background: novelSplitPane === tab.id ? "rgba(240,192,64,0.1)" : "transparent", color: novelSplitPane === tab.id ? "#f0c040" : "#556677", border: "1px solid " + (novelSplitPane === tab.id ? "rgba(240,192,64,0.25)" : "transparent"), transition: "all 0.15s" }}>
+                              style={{ fontSize: 10, padding: "4px 10px", borderRadius: 6, cursor: "pointer", background: novelSplitPane === tab.id ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane === tab.id ? theme.accent : theme.textDim, border: "1px solid " + (novelSplitPane === tab.id ? ta(theme.accent, 0.25) : "transparent"), transition: "all 0.15s" }}>
                               {tab.icon} {tab.label}
                             </span>
                           ))}
@@ -3613,7 +3809,7 @@ const handleCreateWorld = async () => {
                         {novelSplitPane === "notes" && (
                           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                             <div style={{ padding: "10px 14px 6px", flexShrink: 0 }}>
-                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#f0c040", letterSpacing: 0.5 }}>Scene Notes</span>
+                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: theme.accent, letterSpacing: 0.5 }}>Scene Notes</span>
                               <div style={{ fontSize: 10, color: theme.textDim, marginTop: 2 }}>Private notes — won't appear in exports</div>
                             </div>
                             <textarea
@@ -3632,12 +3828,12 @@ const handleCreateWorld = async () => {
                         {/* CODEX PANE (replaces old sidebar) */}
                         {novelSplitPane === "codex" && (
                           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                            <div style={{ padding: "10px 14px", borderBottom: "1px solid #1a2435", flexShrink: 0 }}>
+                            <div style={{ padding: "10px 14px", borderBottom: "1px solid " + theme.divider, flexShrink: 0 }}>
                               <input style={{ ...S.input, fontSize: 11, padding: "6px 10px" }} placeholder="Search articles..." value={novelCodexSearch} onChange={(e) => setNovelCodexSearch(e.target.value)} />
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                                <span onClick={() => setNovelCodexFilter("all")} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === "all" ? "rgba(240,192,64,0.15)" : "transparent", color: novelCodexFilter === "all" ? "#f0c040" : "#556677", border: "1px solid " + (novelCodexFilter === "all" ? "rgba(240,192,64,0.3)" : "#1e2a3a") }}>All</span>
+                                <span onClick={() => setNovelCodexFilter("all")} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === "all" ? ta(theme.accent, 0.15) : "transparent", color: novelCodexFilter === "all" ? theme.accent : theme.textDim, border: "1px solid " + (novelCodexFilter === "all" ? ta(theme.accent, 0.3) : theme.border) }}>All</span>
                                 {["character", "location", "race", "deity", "item", "event"].map((cat) => (
-                                  <span key={cat} onClick={() => setNovelCodexFilter(cat)} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === cat ? CATEGORIES[cat].color + "20" : "transparent", color: novelCodexFilter === cat ? CATEGORIES[cat].color : "#556677", border: "1px solid " + (novelCodexFilter === cat ? CATEGORIES[cat].color + "40" : "#1e2a3a") }}>
+                                  <span key={cat} onClick={() => setNovelCodexFilter(cat)} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === cat ? CATEGORIES[cat].color + "20" : "transparent", color: novelCodexFilter === cat ? CATEGORIES[cat].color : theme.textDim, border: "1px solid " + (novelCodexFilter === cat ? CATEGORIES[cat].color + "40" : theme.border) }}>
                                     {CATEGORIES[cat].icon}
                                   </span>
                                 ))}
@@ -3656,12 +3852,12 @@ const handleCreateWorld = async () => {
                                   </div>
                                   {novelCodexExpanded === a.id && (
                                     <div style={{ padding: "4px 10px 12px 30px" }}>
-                                      {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid #1e2a3a" }} />}
+                                      {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid " + theme.border }} />}
                                       <p style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
                                       {Object.entries(a.fields || {}).filter(([_, v]) => v).slice(0, 5).map(([k, v]) => (
                                         <div key={k} style={{ fontSize: 10, color: theme.textDim, marginBottom: 2 }}><strong style={{ color: theme.textDim }}>{formatKey(k)}:</strong> {String(v).slice(0, 60)}</div>
                                       ))}
-                                      <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", marginTop: 6 }}>Open full article →</div>
+                                      <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: theme.accent, cursor: "pointer", marginTop: 6 }}>Open full article →</div>
                                     </div>
                                   )}
                                 </div>
@@ -3676,7 +3872,7 @@ const handleCreateWorld = async () => {
                           <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                               <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#7ec8e3", letterSpacing: 0.5 }}>Scene Snapshots</span>
-                              <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} style={{ ...S.btnS, fontSize: 9, padding: "3px 10px", color: "#7ec8e3", borderColor: "rgba(126,200,227,0.3)" }}>📸 Save</button>
+                              <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#7ec8e3", borderColor: "rgba(126,200,227,0.3)" }}>📸 Save</button>
                             </div>
                             {(!scene.snapshots || scene.snapshots.length === 0) ? (
                               <div style={{ textAlign: "center", padding: "30px 10px", color: theme.textDim }}>
@@ -3686,7 +3882,7 @@ const handleCreateWorld = async () => {
                               </div>
                             ) : (
                               scene.snapshots.map((snap, si) => (
-                                <div key={si} style={{ marginBottom: 10, background: "rgba(17,24,39,0.5)", border: "1px solid #1e2a3a", borderRadius: 8, padding: "10px 12px" }}>
+                                <div key={si} style={{ marginBottom: 10, background: ta(theme.surface, 0.5), border: "1px solid " + theme.border, borderRadius: 8, padding: "10px 12px" }}>
                                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                                     <span style={{ fontSize: 11, color: "#7ec8e3" }}>
                                       {new Date(snap.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -3697,7 +3893,7 @@ const handleCreateWorld = async () => {
                                     {snap.body.slice(0, 150) || "(empty)"}...
                                   </div>
                                   <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, si); }}
-                                    style={{ ...S.btnS, fontSize: 9, padding: "3px 10px", color: "#f0c040", borderColor: "rgba(240,192,64,0.3)" }}>↩ Restore</button>
+                                    style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>↩ Restore</button>
                                 </div>
                               ))
                             )}
@@ -3868,7 +4064,7 @@ const handleCreateWorld = async () => {
                         <input type="number" style={{ ...S.input, width: 70, padding: "6px 8px", fontSize: 11, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text, textAlign: "center" }}
                           value={era.end} placeholder="End"
                           onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], end: parseInt(e.target.value) || 0 }; setSettings((p) => ({ ...p, customEras: eras })); }} />
-                        <input type="color" value={era.color || "#f0c040"} style={{ width: 24, height: 24, border: "none", background: "none", cursor: "pointer", padding: 0 }}
+                        <input type="color" value={era.color || theme.accent} style={{ width: 24, height: 24, border: "none", background: "none", cursor: "pointer", padding: 0 }}
                           onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], color: e.target.value }; setSettings((p) => ({ ...p, customEras: eras })); }} />
                         {isCustom && <button onClick={() => { const eras = settings.customEras.filter((_, j) => j !== i); setSettings((p) => ({ ...p, customEras: eras })); }}
                           style={{ background: "none", border: "none", color: "#e07050", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>}
@@ -3877,10 +4073,10 @@ const handleCreateWorld = async () => {
                   })}
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button onClick={() => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e}))), { id: "custom_" + Date.now(), label: "New Era", name: "New Era", start: 0, end: 1000, color: "#8ec8a0", bg: "rgba(142,200,160,0.06)" }]; setSettings((p) => ({ ...p, customEras: eras })); }}
-                      style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>+ Add Era</button>
+                      style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>+ Add Era</button>
                     {settings.customEras?.length > 0 && (
                       <button onClick={() => setSettings((p) => ({ ...p, customEras: [] }))}
-                        style={{ ...S.btnS, fontSize: 10, padding: "5px 12px", color: "#f0c040", borderColor: "rgba(240,192,64,0.3)" }}>Reset to Defaults</button>
+                        style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>Reset to Defaults</button>
                     )}
                   </div>
                 </div>
@@ -3918,7 +4114,7 @@ const handleCreateWorld = async () => {
                         reader.readAsDataURL(file);
                         e.target.value = "";
                       }} />
-                      <button onClick={() => avatarFileRef.current?.click()} style={{ ...S.btnS, fontSize: 9, padding: "4px 8px", width: 80, textAlign: "center" }}>Upload</button>
+                      <button onClick={() => avatarFileRef.current?.click()} style={{ ...tBtnS, fontSize: 9, padding: "4px 8px", width: 80, textAlign: "center" }}>Upload</button>
                       {settings.avatarUrl && <button onClick={() => setSettings((p) => ({ ...p, avatarUrl: "" }))} style={{ background: "none", border: "none", fontSize: 9, color: "#e07050", cursor: "pointer", width: 80, textAlign: "center", marginTop: 4 }}>Remove</button>}
                     </div>
                     {/* Name + info */}
@@ -3942,7 +4138,7 @@ const handleCreateWorld = async () => {
                       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "frostfall").replace(/\s+/g, "_").toLowerCase() + "_backup_" + new Date().toISOString().slice(0, 10) + ".json"; a.click(); URL.revokeObjectURL(url);
-                    }} style={{ ...S.btnP, fontSize: 12, padding: "10px 20px" }}>
+                    }} style={{ ...tBtnP, fontSize: 12, padding: "10px 20px" }}>
                       📥 Export World Data (JSON)
                     </button>
                     <button onClick={() => {
@@ -3950,7 +4146,7 @@ const handleCreateWorld = async () => {
                       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "frostfall").replace(/\s+/g, "_").toLowerCase() + "_articles_" + new Date().toISOString().slice(0, 10) + ".json"; a.click(); URL.revokeObjectURL(url);
-                    }} style={{ ...S.btnS, fontSize: 12, color: theme.textMuted, borderColor: theme.border }}>
+                    }} style={{ ...tBtnS, fontSize: 12, color: theme.textMuted, borderColor: theme.border }}>
                       📋 Export Articles Only
                     </button>
                   </div>
@@ -3970,7 +4166,7 @@ const handleCreateWorld = async () => {
                         <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>Revert all appearance, world, and account settings. Does not delete articles.</div>
                       </div>
                       <button onClick={() => setShowConfirm({ title: "Reset Settings?", message: "This will reset all settings to their defaults. Your articles and manuscripts will not be affected.", onConfirm: () => { setSettings(DEFAULT_SETTINGS); setShowConfirm(null); } })}
-                        style={{ ...S.btnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
+                        style={{ ...tBtnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
                         Reset Settings
                       </button>
                     </div>
@@ -3981,7 +4177,7 @@ const handleCreateWorld = async () => {
                         <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>Permanently delete all articles, manuscripts, and settings. This cannot be undone.</div>
                       </div>
                       <button onClick={() => setShowConfirm({ title: "Delete Everything?", message: "This will permanently delete ALL " + articles.length + " articles, " + archived.length + " archived entries, and " + manuscripts.length + " manuscripts. This CANNOT be undone. Please export first.", onConfirm: () => { setArticles([]); setArchived([]); setManuscripts([]); setSettings(DEFAULT_SETTINGS); setView("dashboard"); setShowConfirm(null); } })}
-                        style={{ ...S.btnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
+                        style={{ ...tBtnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
                         Delete All Data
                       </button>
                     </div>
@@ -4001,16 +4197,16 @@ const handleCreateWorld = async () => {
 
             <div style={{ marginTop: 24, maxWidth: 640 }}>
               <div onClick={() => aiFileRef.current?.click()} style={{
-                border: "2px dashed rgba(240,192,64,0.3)", borderRadius: 12, padding: "48px 32px", textAlign: "center",
+                border: "2px dashed " + ta(theme.accent, 0.3), borderRadius: 12, padding: "48px 32px", textAlign: "center",
                 cursor: aiParsing ? "wait" : "pointer", transition: "all 0.3s",
-                background: aiParsing ? "rgba(240,192,64,0.04)" : "rgba(17,24,39,0.4)",
+                background: aiParsing ? ta(theme.accent, 0.04) : ta(theme.surface, 0.4),
               }}
-                onMouseEnter={(e) => { if (!aiParsing) { e.currentTarget.style.borderColor = "rgba(240,192,64,0.6)"; e.currentTarget.style.background = "rgba(240,192,64,0.06)"; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.3)"; e.currentTarget.style.background = aiParsing ? "rgba(240,192,64,0.04)" : "rgba(17,24,39,0.4)"; }}>
+                onMouseEnter={(e) => { if (!aiParsing) { e.currentTarget.style.borderColor = ta(theme.accent, 0.6); e.currentTarget.style.background = ta(theme.accent, 0.06); } }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.3); e.currentTarget.style.background = aiParsing ? ta(theme.accent, 0.04) : ta(theme.surface, 0.4); }}>
                 {aiParsing ? (<>
                   <div style={{ fontSize: 36, marginBottom: 12, animation: "pulse 1.5s ease-in-out infinite" }}>🧠</div>
                   <style>{`@keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
-                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: "#f0c040", margin: "0 0 6px" }}>Analyzing Document…</p>
+                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.accent, margin: "0 0 6px" }}>Analyzing Document…</p>
                   <p style={{ fontSize: 12, color: theme.textDim, marginBottom: 10 }}>AI is reading "{aiSourceName}" and extracting lore entries</p>
                   {aiProgress.total > 0 && (
                     <div style={{ width: "80%", maxWidth: 300, margin: "0 auto" }}>
@@ -4018,7 +4214,7 @@ const handleCreateWorld = async () => {
                         <span>Chunk {aiProgress.current} of {aiProgress.total}</span>
                         <span>{aiProgress.entries} entries found</span>
                       </div>
-                      <div style={{ height: 6, background: "#1a2435", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: 6, background: theme.divider, borderRadius: 3, overflow: "hidden" }}>
                         <div style={{ height: "100%", background: "linear-gradient(90deg, #f0c040, #d4a020)", borderRadius: 3, width: (aiProgress.current / aiProgress.total * 100) + "%", transition: "width 0.5s ease" }} />
                       </div>
                     </div>
@@ -4042,7 +4238,7 @@ const handleCreateWorld = async () => {
                     { step: "4", title: "Commit", desc: "Approved entries are added to your codex with full cross-referencing, temporal data, and integrity checking." },
                   ].map((s) => (
                     <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(240,192,64,0.12)", border: "1px solid rgba(240,192,64,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#f0c040", flexShrink: 0 }}>{s.step}</div>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: ta(theme.accent, 0.12), border: "1px solid " + ta(theme.accent, 0.3), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: theme.accent, flexShrink: 0 }}>{s.step}</div>
                       <div><div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{s.title}</div><div style={{ fontSize: 12, color: theme.textDim, marginTop: 2, lineHeight: 1.5 }}>{s.desc}</div></div>
                     </div>
                   ))}
@@ -4069,11 +4265,11 @@ const handleCreateWorld = async () => {
                   <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>{aiStaging.length} entries parsed{aiSourceName ? " from \"" + aiSourceName + "\"" : ""}</p>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={stagingApproveAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>✓ Approve All Pending</button>
-                  <button onClick={stagingRejectAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>✕ Reject All Pending</button>
-                  <button onClick={stagingCommit} disabled={!aiStaging.some((e) => e._status === "approved" || e._status === "edited")} style={{ ...S.btnP, fontSize: 11, padding: "8px 16px", opacity: aiStaging.some((e) => e._status === "approved" || e._status === "edited") ? 1 : 0.4 }}>Commit to Codex</button>
-                  <button onClick={stagingDeleteRejected} disabled={!aiStaging.some((e) => e._status === "rejected")} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.2)", opacity: aiStaging.some((e) => e._status === "rejected") ? 1 : 0.3 }}>🗑 Remove Rejected</button>
-                  {aiStaging.length > 0 && <button onClick={stagingClearAll} style={{ ...S.btnS, fontSize: 11, padding: "7px 14px", color: theme.textDim }}>Clear All</button>}
+                  <button onClick={stagingApproveAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>✓ Approve All Pending</button>
+                  <button onClick={stagingRejectAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>✕ Reject All Pending</button>
+                  <button onClick={stagingCommit} disabled={!aiStaging.some((e) => e._status === "approved" || e._status === "edited")} style={{ ...tBtnP, fontSize: 11, padding: "8px 16px", opacity: aiStaging.some((e) => e._status === "approved" || e._status === "edited") ? 1 : 0.4 }}>Commit to Codex</button>
+                  <button onClick={stagingDeleteRejected} disabled={!aiStaging.some((e) => e._status === "rejected")} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.2)", opacity: aiStaging.some((e) => e._status === "rejected") ? 1 : 0.3 }}>🗑 Remove Rejected</button>
+                  {aiStaging.length > 0 && <button onClick={stagingClearAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: theme.textDim }}>Clear All</button>}
                 </div>
               </div>
             </div>
@@ -4082,7 +4278,7 @@ const handleCreateWorld = async () => {
             {/* Status summary */}
             <div style={{ display: "flex", gap: 12, margin: "16px 0 20px" }}>
               {[
-                { n: aiStaging.filter((e) => e._status === "pending").length, l: "Pending", c: "#f0c040" },
+                { n: aiStaging.filter((e) => e._status === "pending").length, l: "Pending", c: theme.accent },
                 { n: aiStaging.filter((e) => e._status === "approved" || e._status === "edited").length, l: "Approved", c: "#8ec8a0" },
                 { n: aiStaging.filter((e) => e._status === "rejected").length, l: "Rejected", c: "#e07050" },
               ].map((s, i) => (
@@ -4098,14 +4294,14 @@ const handleCreateWorld = async () => {
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
                 <p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Entries in Staging</p>
                 <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4 }}>Use AI Document Import to parse a lore document.</p>
-                <button onClick={() => setView("ai_import")} style={{ ...S.btnP, marginTop: 16, fontSize: 12 }}>Go to AI Import</button>
+                <button onClick={() => setView("ai_import")} style={{ ...tBtnP, marginTop: 16, fontSize: 12 }}>Go to AI Import</button>
               </div>
             ) : (
               <div>{aiStaging.map((entry) => {
                 const c = CATEGORIES[entry.category] || { label: "Unknown", icon: "?", color: "#888" };
-                const stColor = entry._status === "approved" || entry._status === "edited" ? "#8ec8a0" : entry._status === "rejected" ? "#e07050" : "#f0c040";
+                const stColor = entry._status === "approved" || entry._status === "edited" ? "#8ec8a0" : entry._status === "rejected" ? "#e07050" : theme.accent;
                 return (
-                  <div key={entry._stagingId} style={{ background: "rgba(17,24,39,0.6)", border: "1px solid " + (entry._status === "rejected" ? "rgba(224,112,80,0.2)" : "#1a2435"), borderLeft: "3px solid " + stColor, borderRadius: 8, padding: "16px 20px", marginBottom: 10, opacity: entry._status === "rejected" ? 0.5 : 1, transition: "all 0.3s" }}>
+                  <div key={entry._stagingId} style={{ background: ta(theme.surface, 0.6), border: "1px solid " + (entry._status === "rejected" ? "rgba(224,112,80,0.2)" : theme.divider), borderLeft: "3px solid " + stColor, borderRadius: 8, padding: "16px 20px", marginBottom: 10, opacity: entry._status === "rejected" ? 0.5 : 1, transition: "all 0.3s" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                       <span style={{ fontSize: 20, color: c.color, marginTop: 2 }}>{c.icon}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -4132,7 +4328,7 @@ const handleCreateWorld = async () => {
                           <button onClick={() => stagingReject(entry._stagingId)} style={{ fontSize: 10, color: "#e07050", background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.2)", borderRadius: 5, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>✕ Reject</button>
                         )}
                         {entry._status === "rejected" && (
-                          <button onClick={() => stagingApprove(entry._stagingId)} style={{ fontSize: 10, color: "#f0c040", background: "rgba(240,192,64,0.1)", border: "1px solid rgba(240,192,64,0.2)", borderRadius: 5, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>↩ Restore</button>
+                          <button onClick={() => stagingApprove(entry._stagingId)} style={{ fontSize: 10, color: theme.accent, background: ta(theme.accent, 0.1), border: "1px solid " + ta(theme.accent, 0.2), borderRadius: 5, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>↩ Restore</button>
                         )}
                       </div>
                     </div>
@@ -4146,7 +4342,7 @@ const handleCreateWorld = async () => {
           {view === "codex" && (<div>
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 24, marginBottom: 16 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "The Full Codex" : (CATEGORIES[codexFilter]?.label || "") + "s"}</h2>
-              <Ornament width={120} /><span style={{ fontSize: 12, color: theme.textMuted }}>{filtered.length} entries</span>
+              <Ornament width={120} /><span style={{ fontSize: 12, color: theme.textMuted }}>{filtered.list.length} entries{searchQuery.trim() ? " matching \"" + searchQuery + "\"" : ""}</span>
             </div>
             {/* Category filter pills */}
             <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
@@ -4175,9 +4371,9 @@ const handleCreateWorld = async () => {
                 ))}
               </div>
             </div>
-            {filtered.map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); return (
-              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: "rgba(17,24,39,0.6)", border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? "rgba(240,192,64,0.2)" : "#1a2435"), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.85)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.6)"; }}>
+            {filtered.list.map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); const match = filtered.matchMap[a.id]; return (
+              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: ta(theme.surface, 0.6), border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? ta(theme.accent, 0.2) : theme.divider), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
+                onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.6); }}>
                 {a.portrait ? (
                   <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid " + (CATEGORIES[a.category]?.color || "#888") + "40", flexShrink: 0, marginTop: 2 }}><img src={a.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
                 ) : (
@@ -4185,62 +4381,87 @@ const handleCreateWorld = async () => {
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{a.title}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{searchQuery.trim() && lower(a.title).includes(lower(searchQuery)) ? (() => { const q = lower(searchQuery); const t = a.title; const idx = lower(t).indexOf(q); return <>{t.slice(0, idx)}<mark style={{ background: ta(theme.accent, 0.25), color: theme.accent, borderRadius: 2, padding: "0 1px" }}>{t.slice(idx, idx + searchQuery.length)}</mark>{t.slice(idx + searchQuery.length)}</>; })() : a.title}</span>
                     <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
                     {ac.length > 0 && <span style={{ ...S.catBadge("#e07050"), gap: 3 }}>⚠ {ac.length} conflict{ac.length > 1 ? "s" : ""}</span>}
                     {aiErrors.length > 0 && <span style={{ ...S.catBadge("#e07050"), gap: 3 }}>🛡 {aiErrors.length} error{aiErrors.length > 1 ? "s" : ""}</span>}
-                    {aiWarns.length > 0 && ac.length === 0 && aiErrors.length === 0 && <span style={{ ...S.catBadge("#f0c040"), gap: 3 }}>🛡 {aiWarns.length} warning{aiWarns.length > 1 ? "s" : ""}</span>}
+                    {aiWarns.length > 0 && ac.length === 0 && aiErrors.length === 0 && <span style={{ ...S.catBadge(theme.accent), gap: 3 }}>🛡 {aiWarns.length} warning{aiWarns.length > 1 ? "s" : ""}</span>}
                   </div>
-                  <p style={{ fontSize: 12, color: "#7a8a9a", margin: 0, lineHeight: 1.5 }}>{a.summary}</p>
-                  <div style={{ marginTop: 6 }}>{a.tags?.slice(0, 5).map((t) => <span key={t} style={S.tag}>#{t}</span>)}</div>
+                  <p style={{ fontSize: 12, color: theme.textMuted, margin: 0, lineHeight: 1.5 }}>{searchQuery.trim() && a.summary && lower(a.summary).includes(lower(searchQuery)) ? (() => { const q = lower(searchQuery); const s = a.summary; const idx = lower(s).indexOf(q); return <>{s.slice(0, idx)}<mark style={{ background: ta(theme.accent, 0.25), color: theme.accent, borderRadius: 2, padding: "0 1px" }}>{s.slice(idx, idx + searchQuery.length)}</mark>{s.slice(idx + searchQuery.length)}</>; })() : a.summary}</p>
+                  {/* Search match context */}
+                  {match && match.where !== "title" && match.where !== "summary" && match.snippet && (
+                    <div style={{ marginTop: 6, padding: "4px 10px", background: ta(theme.accent, 0.06), borderRadius: 4, borderLeft: "2px solid " + ta(theme.accent, 0.4) }}>
+                      <span style={{ fontSize: 10, color: theme.accent, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginRight: 6 }}>
+                        {match.where === "body" ? "📄 Body" : match.where === "fields" ? "📋 Fields" : match.where === "tags" ? "🏷 Tags" : match.where === "linked" ? "🔗 Linked" : ""}
+                      </span>
+                      <span style={{ fontSize: 11, color: theme.textMuted }}>
+                        {(() => {
+                          if (!searchQuery.trim()) return match.snippet;
+                          const q = lower(searchQuery);
+                          const snip = match.snippet;
+                          const idx = lower(snip).indexOf(q);
+                          if (idx === -1) return snip;
+                          return <>{snip.slice(0, idx)}<mark style={{ background: ta(theme.accent, 0.25), color: theme.accent, borderRadius: 2, padding: "0 1px" }}>{snip.slice(idx, idx + searchQuery.length)}</mark>{snip.slice(idx + searchQuery.length)}</>;
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ marginTop: 6 }}>{a.tags?.slice(0, 5).map((t) => <span key={t} style={tTag}>#{t}</span>)}</div>
                 </div>
                 <span style={{ fontSize: 11, color: theme.textDim, whiteSpace: "nowrap" }}>{timeAgo(a.updatedAt)}</span>
               </div>
             ); })}
-            {filtered.length === 0 && <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}><div style={{ fontSize: 32, marginBottom: 12 }}>⌕</div><p>No entries found.</p></div>}
+            {filtered.list.length === 0 && <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}><div style={{ fontSize: 32, marginBottom: 12 }}>⌕</div><p>{searchQuery.trim() ? "No entries matching \"" + searchQuery + "\"" : "No entries found."}</p></div>}
           </div>)}
 
           {/* === ARTICLE VIEW === */}
           {view === "article" && activeArticle && (
             <div style={{ display: "flex", gap: 0, overflow: "hidden", margin: "0 -28px", height: "calc(100vh - 56px)" }}>
               <div style={{ flex: 1, overflowY: "auto", padding: "0 28px 40px" }}>
+                {/* Breadcrumbs */}
                 <div style={{ fontSize: 11, color: theme.textDim, marginTop: 20, marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ cursor: "pointer", color: theme.textDim }} onClick={goDash}>Dashboard</span><span>›</span>
                   <span style={{ cursor: "pointer", color: theme.textDim }} onClick={() => goCodex(activeArticle.category)}>{categoryPluralLabel(activeArticle.category)}</span><span>›</span>
                   <span style={{ color: CATEGORIES[activeArticle.category]?.color }}>{activeArticle.title}</span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
-                  <span style={{ fontSize: 28, color: CATEGORIES[activeArticle.category]?.color }}>{CATEGORIES[activeArticle.category]?.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeArticle.title}</h1>
-                    <span style={{ ...S.catBadge(CATEGORIES[activeArticle.category]?.color), marginTop: 6 }}>{CATEGORIES[activeArticle.category]?.label}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => goEdit(activeArticle)} style={{ fontSize: 11, color: "#f0c040", background: "rgba(240,192,64,0.1)", border: "1px solid rgba(240,192,64,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.1)"; }}>✎ Edit</button>
-                    <button onClick={() => setShowDeleteModal(activeArticle)} style={{ fontSize: 11, color: "#e07050", background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.1)"; }}>🗑 Delete</button>
-                  </div>
-                </div>
-                <p style={{ fontSize: 14, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.6, margin: "8px 0 16px" }}>{activeArticle.summary}</p>
 
-                {/* Portrait */}
-                {activeArticle.portrait && (
-                  <div style={{ float: "right", marginLeft: 20, marginBottom: 16, marginTop: 4 }}>
-                    <div style={{ width: 180, borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[activeArticle.category]?.color || "#f0c040") + "40", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
-                      <img src={activeArticle.portrait} alt={activeArticle.title} style={{ width: "100%", height: "auto", display: "block" }} />
+                {/* Hero header */}
+                <div style={{ position: "relative", marginBottom: 24 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                    {activeArticle.portrait ? (
+                      <div style={{ width: 80, height: 80, borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[activeArticle.category]?.color || theme.accent) + "40", boxShadow: "0 4px 20px rgba(0,0,0,0.4)", flexShrink: 0 }}>
+                        <img src={activeArticle.portrait} alt={activeArticle.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      </div>
+                    ) : (
+                      <div style={{ width: 64, height: 64, borderRadius: 8, background: ta(CATEGORIES[activeArticle.category]?.color || theme.accent, 0.1), border: "1px solid " + ta(CATEGORIES[activeArticle.category]?.color || theme.accent, 0.25), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 30, color: CATEGORIES[activeArticle.category]?.color }}>{CATEGORIES[activeArticle.category]?.icon}</span>
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeArticle.title}</h1>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                        <span style={S.catBadge(CATEGORIES[activeArticle.category]?.color)}>{CATEGORIES[activeArticle.category]?.label}</span>
+                        {activeArticle.temporal && <span style={{ fontSize: 10, color: theme.textDim, padding: "2px 8px", background: ta(theme.textDim, 0.08), borderRadius: 10 }}>⏳ {activeArticle.temporal.type}{activeArticle.temporal.active_start != null ? " · Year " + activeArticle.temporal.active_start : ""}{activeArticle.temporal.active_end != null ? "–" + activeArticle.temporal.active_end : ""}{activeArticle.temporal.death_year ? " · † " + activeArticle.temporal.death_year : ""}</span>}
+                      </div>
+                      <p style={{ fontSize: 14, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.6, margin: "8px 0 0" }}>{activeArticle.summary}</p>
                     </div>
-                    <p style={{ fontSize: 9, color: theme.textDim, textAlign: "center", marginTop: 6, textTransform: "uppercase", letterSpacing: 1 }}>Portrait</p>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button onClick={() => goEdit(activeArticle)} style={{ fontSize: 11, color: theme.accent, background: ta(theme.accent, 0.1), border: "1px solid " + ta(theme.accent, 0.25), borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.2); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }}>✎ Edit</button>
+                      <button onClick={() => setShowDeleteModal(activeArticle)} style={{ fontSize: 11, color: "#e07050", background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.1)"; }}>🗑 Delete</button>
+                    </div>
                   </div>
-                )}
-                <Ornament width={260} />
+                  <Ornament width={260} />
+                </div>
 
+                {/* Conflicts & integrity warnings */}
                 {conflictsFor(activeArticle.id).map((c) => (
                   <WarningBanner key={c.id} severity={c.severity} icon={c.severity === "error" ? "✕" : "⚠"} title="Canon Conflict Detected" style={{ marginTop: 16 }}>
                     <p style={{ margin: "0 0 6px" }}>{c.message}</p>
                     <p style={{ margin: 0, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</p>
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                      <span style={{ fontSize: 11, color: "#f0c040", cursor: "pointer", textDecoration: "underline" }} onClick={() => navigate(c.targetId)}>View {c.targetTitle}</span>
+                      <span style={{ fontSize: 11, color: theme.accent, cursor: "pointer", textDecoration: "underline" }} onClick={() => navigate(c.targetId)}>View {c.targetTitle}</span>
                       <span style={{ fontSize: 11, color: theme.textDim, cursor: "pointer" }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
                     </div>
                   </WarningBanner>
@@ -4258,7 +4479,7 @@ const handleCreateWorld = async () => {
                         const wKey = "av_" + (w.refId || i);
                         return (
                         <div key={wKey} style={{ padding: "4px 0", fontSize: 12 }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "flex-start", color: w.severity === "error" ? "#e07050" : "#f0c040", cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
+                          <div style={{ display: "flex", gap: 6, alignItems: "flex-start", color: w.severity === "error" ? "#e07050" : theme.accent, cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
                             onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === wKey ? null : wKey); }}>
                             <span>{w.severity === "error" ? "⛔" : "⚠"}</span>
                             <div style={{ flex: 1 }}>
@@ -4275,7 +4496,7 @@ const handleCreateWorld = async () => {
                             </div>
                           </div>
                           {expandedWarning === wKey && w.fuzzyMatches && (
-                            <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                            <div style={{ marginLeft: 24, marginTop: 6, background: ta(theme.deepBg, 0.6), border: "1px solid " + theme.divider, borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                               <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
                               {w.fuzzyMatches.map((fm) => (
                                 <div key={fm.article.id}
@@ -4284,35 +4505,32 @@ const handleCreateWorld = async () => {
                                     setArticles((prev) => prev.map((a) => {
                                       if (a.id !== activeArticle.id) return a;
                                       let newBody = a.body || "";
-                                      if (w.rawMention && newBody.includes(w.rawMention)) newBody = newBody.replace(w.rawMention, richMention);
-                                      else { const legacy = "@" + w.refId; if (newBody.includes(legacy)) newBody = newBody.replace(legacy, richMention); }
+                                      // Replace legacy @mention with rich mention
+                                      if (w.rawMention) {
+                                        const legacy = "@" + w.rawMention;
+                                        if (newBody.includes(legacy)) {
+                                          newBody = newBody.replace(legacy, richMention);
+                                        }
+                                      }
                                       const newLinked = [...new Set([...(a.linkedIds || []), fm.article.id])];
                                       return { ...a, body: newBody, linkedIds: newLinked, updatedAt: new Date().toISOString() };
                                     }));
+                                    setExpandedWarning(null);
                                   }}
-                                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", background: "rgba(126,200,227,0.05)", border: "1px solid rgba(126,200,227,0.1)", transition: "all 0.2s" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.15)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.3)"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.05)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.1)"; }}>
+                                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", cursor: "pointer", borderRadius: 6, background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, transition: "all 0.15s" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); e.currentTarget.style.borderColor = ta(theme.accent, 0.3); }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); e.currentTarget.style.borderColor = theme.divider; }}>
                                   <span style={{ fontSize: 14, color: CATEGORIES[fm.article.category]?.color }}>{CATEGORIES[fm.article.category]?.icon}</span>
                                   <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 12, color: "#c8bda0", fontWeight: 500 }}>{fm.article.title}</div>
-                                    <div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[fm.article.category]?.label} · match score: {fm.score}</div>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{fm.article.title}</div>
+                                    <div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[fm.article.category]?.label} · {Math.round(fm.score * 100)}% match</div>
                                   </div>
-                                  <span style={{ fontSize: 10, color: "#8ec8a0", fontWeight: 600 }}>✓ Fix</span>
+                                  <span style={{ fontSize: 11, color: "#8ec8a0" }}>✓ Apply</span>
                                 </div>
                               ))}
-                              <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 4, borderTop: "1px solid #1a2435" }}>
-                                <span style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.7 }}
-                                  onClick={() => {
-                                    setArticles((prev) => prev.map((a) => a.id !== activeArticle.id ? a : { ...a, body: (a.body || "").replace(w.rawMention, ""), updatedAt: new Date().toISOString() }));
-                                  }}>
-                                  🗑 Remove mention
-                                </span>
-                                <span style={{ fontSize: 10, color: "#f0c040", cursor: "pointer", opacity: 0.7 }}
-                                  onClick={() => goEdit(activeArticle)}>
-                                  ✎ Edit in full editor
-                                </span>
-                              </div>
+                              <span onClick={() => goEdit(activeArticle)} style={{ fontSize: 10, color: "#7ec8e3", cursor: "pointer", marginTop: 4, textDecoration: "underline" }}>
+                                ✎ Edit in full editor
+                              </span>
                             </div>
                           )}
                         </div>
@@ -4322,122 +4540,143 @@ const handleCreateWorld = async () => {
                   );
                 })()}
 
-                {activeArticle.fields && Object.keys(activeArticle.fields).length > 0 && (
-                  <div style={{ marginTop: 20, marginBottom: 24, background: "rgba(17,24,39,0.4)", border: "1px solid #151d2e", borderRadius: 8, padding: "12px 18px", overflow: "hidden" }}>
-                    {Object.entries(activeArticle.fields).filter(([_, v]) => v).map(([k, v]) => (
-                      <div key={k} style={{ display: "flex", flexWrap: "wrap", borderBottom: "1px solid #111827", padding: "8px 0", gap: "4px 12px" }}>
-                        <div style={{ width: 160, minWidth: 160, fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, paddingTop: 2 }}>{formatKey(k)}</div>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: "#c8bda0", lineHeight: 1.5, wordWrap: "break-word", overflowWrap: "break-word" }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {activeArticle.temporal && (
-                  <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 16, padding: "6px 12px", background: "rgba(85,102,119,0.08)", borderRadius: 6, display: "inline-flex", gap: 12, flexWrap: "wrap" }}>
-                    <span>⏳ {activeArticle.temporal.type}</span>
-                    {activeArticle.temporal.active_start != null && <span>Active from: Year {activeArticle.temporal.active_start}</span>}
-                    {activeArticle.temporal.active_end != null && <span>Until: Year {activeArticle.temporal.active_end}</span>}
-                    {activeArticle.temporal.death_year && <span style={{ color: "#e07050" }}>† Year {activeArticle.temporal.death_year}</span>}
-                  </div>
-                )}
-
-                <div style={{ fontSize: 14, color: "#b0a890", lineHeight: 1.8 }}>
+                {/* Body content */}
+                <div style={{ fontSize: 14, color: theme.textMuted, lineHeight: 1.8, marginTop: 16 }}>
                   {activeArticle.body?.split("\n").map((p, i) => <p key={i} style={{ margin: "0 0 14px" }}><RenderBody text={p} articles={articles} onNavigate={navigate} /></p>)}
                 </div>
+
+                {/* Tags */}
                 {activeArticle.tags?.length > 0 && (
-                  <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid #151d2e" }}>
+                  <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid " + theme.divider }}>
                     <span style={{ fontSize: 10, color: theme.textDim, marginRight: 8, textTransform: "uppercase", letterSpacing: 1 }}>Tags:</span>
-                    {activeArticle.tags.map((t) => <span key={t} style={{ ...S.tag, fontSize: 11, padding: "3px 10px" }}>#{t}</span>)}
+                    {activeArticle.tags.map((t) => <span key={t} style={{ ...tTag, fontSize: 11, padding: "3px 10px" }}>#{t}</span>)}
                   </div>
                 )}
                 <div style={{ marginTop: 16, fontSize: 11, color: theme.textDim }}>Created {new Date(activeArticle.createdAt).toLocaleDateString()} · Updated {timeAgo(activeArticle.updatedAt)}</div>
               </div>
 
-              {/* SIDEBAR */}
-              <div style={{ width: 280, minWidth: 280, borderLeft: "1px solid #1a2435", overflowY: "auto", padding: "20px 18px", background: "rgba(10,14,26,0.4)" }}>
-                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginTop: 0, marginBottom: 12 }}>Related Articles</p>
-                {activeArticle.linkedIds?.map((lid) => { const lk = articles.find((a) => a.id === lid); if (!lk) return <div key={lid} style={{ ...S.relItem, opacity: 0.5, cursor: "default" }}><span style={{ fontSize: 12, color: theme.textDim }}>✦</span><span style={{ fontStyle: "italic" }}>{lid.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} (unwritten)</span></div>;
-                  return <div key={lid} style={S.relItem} onClick={() => navigate(lid)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.8)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}><span style={{ fontSize: 14, color: CATEGORIES[lk.category]?.color }}>{CATEGORIES[lk.category]?.icon}</span><div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{lk.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[lk.category]?.label}</div></div></div>;
-                })}
+              {/* WORLD ANVIL–STYLE SIDEBAR */}
+              <div style={{ width: 300, minWidth: 300, borderLeft: "1px solid " + theme.divider, overflowY: "auto", padding: 0, background: ta(theme.deepBg, 0.4) }}>
 
-                {(() => { const sugs = findUnlinkedMentions(activeArticle.body, activeArticle.fields, articles, activeArticle.linkedIds || []); if (!sugs.length) return null; return (<>
-                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: "#7ec8e3", letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 8 }}>💡 Suggested Links</p>
-                  <p style={{ fontSize: 10, color: theme.textDim, margin: "0 0 8px" }}>Names found in text that may refer to codex entries. Click ✓ to link in-place.</p>
-                  {sugs.map((s) => <div key={s.article.id} style={{ ...S.relItem, borderLeft: "2px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.4)" : s.confidence === "strong" ? "rgba(126,200,227,0.3)" : "rgba(240,192,64,0.2)"), display: "flex", alignItems: "center" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => navigate(s.article.id)}>
-                      <span style={{ fontSize: 14, color: CATEGORIES[s.article.category]?.color }}>{CATEGORIES[s.article.category]?.icon}</span>
-                      <div><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{s.article.title}</div><div style={{ fontSize: 10, color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : "#f0c040", marginTop: 1 }}>{s.label}</div></div>
+                {/* Portrait (large, in sidebar) */}
+                {activeArticle.portrait && (
+                  <div style={{ padding: "16px 16px 0" }}>
+                    <div style={{ borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[activeArticle.category]?.color || theme.accent) + "40", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
+                      <img src={activeArticle.portrait} alt={activeArticle.title} style={{ width: "100%", height: "auto", display: "block" }} />
                     </div>
-                    <span title={"Link \"" + s.match + "\" to " + s.article.title + " in body text"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const richMention = "@[" + s.article.title + "](" + s.article.id + ")";
-                        setArticles((prev) => prev.map((a) => {
-                          if (a.id !== activeArticle.id) return a;
-                          let newBody = a.body || "";
-                          if (newBody.includes(richMention)) return a;
+                    <p style={{ fontSize: 9, color: theme.textDim, textAlign: "center", margin: "6px 0 0", textTransform: "uppercase", letterSpacing: 1 }}>{activeArticle.title}</p>
+                  </div>
+                )}
 
-                          // Helper: check if a position falls inside an existing @mention and return the full @mention to replace
-                          const findEnclosingMention = (body, pos) => {
-                            // Check for legacy @word mentions
-                            const legacyPattern = /@(?!\[)([\w]+)/g;
-                            let m;
-                            while ((m = legacyPattern.exec(body)) !== null) {
-                              if (pos >= m.index && pos < m.index + m[0].length) return { start: m.index, end: m.index + m[0].length, text: m[0] };
+                {/* At a Glance — fields panel */}
+                {activeArticle.fields && Object.entries(activeArticle.fields).filter(([_, v]) => v).length > 0 && (
+                  <div style={{ margin: "12px 12px 0", borderRadius: 8, border: "1px solid " + theme.divider, overflow: "hidden" }}>
+                    <div style={{ padding: "8px 14px", background: ta(theme.accent, 0.06), borderBottom: "1px solid " + theme.divider }}>
+                      <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: theme.accent, letterSpacing: 1, textTransform: "uppercase" }}>At a Glance</span>
+                    </div>
+                    {Object.entries(activeArticle.fields).filter(([_, v]) => v).map(([k, v], fi) => (
+                      <div key={k} style={{ padding: "7px 14px", borderBottom: fi < Object.entries(activeArticle.fields).filter(([_, v]) => v).length - 1 ? "1px solid " + ta(theme.divider, 0.5) : "none", display: "flex", flexDirection: "column", gap: 1 }}>
+                        <span style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 600 }}>{formatKey(k)}</span>
+                        <span style={{ fontSize: 12, color: theme.text, lineHeight: 1.4, wordBreak: "break-word" }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Temporal info */}
+                {activeArticle.temporal && (
+                  <div style={{ margin: "12px 12px 0", padding: "8px 12px", borderRadius: 8, background: ta(theme.textDim, 0.06), border: "1px solid " + theme.divider }}>
+                    <span style={{ fontFamily: "'Cinzel', serif", fontSize: 9, fontWeight: 600, color: theme.textDim, letterSpacing: 1, textTransform: "uppercase" }}>Timeline</span>
+                    <div style={{ marginTop: 4, fontSize: 11, color: theme.textMuted, lineHeight: 1.6 }}>
+                      <div>⏳ {activeArticle.temporal.type}</div>
+                      {activeArticle.temporal.active_start != null && <div>Active from: <span style={{ color: theme.text }}>Year {activeArticle.temporal.active_start}</span></div>}
+                      {activeArticle.temporal.active_end != null && <div>Until: <span style={{ color: theme.text }}>Year {activeArticle.temporal.active_end}</span></div>}
+                      {activeArticle.temporal.death_year && <div style={{ color: "#e07050" }}>† Year {activeArticle.temporal.death_year}</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Related Articles */}
+                <div style={{ padding: "12px 12px 0" }}>
+                  <div style={{ padding: "8px 0 6px", borderBottom: "1px solid " + theme.divider, marginBottom: 8 }}>
+                    <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase" }}>Related Articles</span>
+                    {activeArticle.linkedIds?.length > 0 && <span style={{ fontSize: 10, color: theme.textDim, marginLeft: 6 }}>({activeArticle.linkedIds.length})</span>}
+                  </div>
+                  {(!activeArticle.linkedIds || activeArticle.linkedIds.length === 0) && (
+                    <p style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic", margin: "4px 0 12px" }}>No linked articles yet.</p>
+                  )}
+                  {activeArticle.linkedIds?.map((lid) => { const lk = articles.find((a) => a.id === lid); if (!lk) return <div key={lid} style={{ ...tRelItem, opacity: 0.5, cursor: "default" }}><span style={{ fontSize: 12, color: theme.textDim }}>✦</span><span style={{ fontStyle: "italic" }}>{lid.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} (unwritten)</span></div>;
+                    return <div key={lid} style={tRelItem} onClick={() => navigate(lid)} onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}><span style={{ fontSize: 14, color: CATEGORIES[lk.category]?.color }}>{CATEGORIES[lk.category]?.icon}</span><div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{lk.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[lk.category]?.label}</div></div></div>;
+                  })}
+                </div>
+
+                {/* Suggested Links */}
+                {(() => { const sugs = findUnlinkedMentions(activeArticle.body, activeArticle.fields, articles, activeArticle.linkedIds || []); if (!sugs.length) return null; return (
+                  <div style={{ padding: "0 12px" }}>
+                    <div style={{ padding: "12px 0 6px", borderBottom: "1px solid " + theme.divider, marginBottom: 8 }}>
+                      <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: "#7ec8e3", letterSpacing: 1, textTransform: "uppercase" }}>💡 Suggested Links</span>
+                    </div>
+                    <p style={{ fontSize: 10, color: theme.textDim, margin: "0 0 8px" }}>Names found in text that may refer to codex entries. Click ✓ to link.</p>
+                    {sugs.map((s) => <div key={s.article.id} style={{ ...tRelItem, borderLeft: "2px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.4)" : s.confidence === "strong" ? "rgba(126,200,227,0.3)" : ta(theme.accent, 0.2)), display: "flex", alignItems: "center" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => navigate(s.article.id)}>
+                        <span style={{ fontSize: 14, color: CATEGORIES[s.article.category]?.color }}>{CATEGORIES[s.article.category]?.icon}</span>
+                        <div><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{s.article.title}</div><div style={{ fontSize: 10, color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : theme.accent, marginTop: 1 }}>{s.label}</div></div>
+                      </div>
+                      <span title={"Link \"" + s.match + "\" to " + s.article.title + " in body text"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const richMention = "@[" + s.article.title + "](" + s.article.id + ")";
+                          setArticles((prev) => prev.map((a) => {
+                            if (a.id !== activeArticle.id) return a;
+                            let newBody = a.body || "";
+                            if (newBody.includes(richMention)) return a;
+                            const titleLower = lower(s?.article?.title);
+                            const bodyLower = lower(newBody);
+                            const titleIdx = bodyLower.indexOf(titleLower);
+                            if (titleIdx !== -1) {
+                              newBody = newBody.substring(0, titleIdx) + richMention + newBody.substring(titleIdx + s.article.title.length);
+                            } else {
+                              const searchText = lower(s?.matchText || s?.match || "");
+                              const matchIdx = searchText ? bodyLower.indexOf(searchText) : -1;
+                              if (matchIdx !== -1) newBody = newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length);
+                              else newBody = newBody + "\n\n" + richMention;
                             }
-                            return null;
-                          };
-
-                          // Strategy 1: Try exact full title match first
-                          const titleLower = lower(s?.article?.title);
-                          const bodyLower = lower(newBody);
-                          const titleIdx = bodyLower.indexOf(titleLower);
-                          if (titleIdx !== -1) {
-                            newBody = newBody.substring(0, titleIdx) + richMention + newBody.substring(titleIdx + s.article.title.length);
                             return { ...a, body: newBody, linkedIds: [...new Set([...(a.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
-                          }
+                          }));
+                        }}
+                        style={{ fontSize: 11, color: "#8ec8a0", cursor: "pointer", padding: "3px 8px", borderRadius: 6, background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.2)", fontWeight: 600, whiteSpace: "nowrap" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.25)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.1)"; }}>
+                        ✓ Link
+                      </span>
+                    </div>)}
+                  </div>
+                ); })()}
 
-                          // Strategy 2: Find where the matched text appears
-                          const searchText = lower(s?.matchText || s?.match || "");
-                          if (searchText) {
-                            const matchIdx = bodyLower.indexOf(searchText);
-                            if (matchIdx !== -1) {
-                              // Check if this match is inside an existing @mention — if so, replace the whole @mention
-                              const enclosing = findEnclosingMention(newBody, matchIdx);
-                              if (enclosing) {
-                                newBody = newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end);
-                              } else {
-                                newBody = newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length);
-                              }
-                              return { ...a, body: newBody, linkedIds: [...new Set([...(a.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
-                            }
-                          }
+                {/* Referenced By (back-links) */}
+                {(() => { const br = articles.filter((a) => a.id !== activeArticle.id && a.linkedIds?.includes(activeArticle.id)); if (!br.length) return null; return (
+                  <div style={{ padding: "0 12px" }}>
+                    <div style={{ padding: "12px 0 6px", borderBottom: "1px solid " + theme.divider, marginBottom: 8 }}>
+                      <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase" }}>Referenced By</span>
+                      <span style={{ fontSize: 10, color: theme.textDim, marginLeft: 6 }}>({br.length})</span>
+                    </div>
+                    {br.map((r) => <div key={r.id} style={tRelItem} onClick={() => navigate(r.id)} onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                      <span style={{ fontSize: 14, color: CATEGORIES[r.category]?.color }}>{CATEGORIES[r.category]?.icon}</span>
+                      <div><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{r.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[r.category]?.label}</div></div>
+                    </div>)}
+                  </div>
+                ); })()}
 
-                          // Fallback: append
-                          newBody = newBody + "\n\n" + richMention;
-                          return { ...a, body: newBody, linkedIds: [...new Set([...(a.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
-                        }));
-                      }}
-                      style={{ fontSize: 11, color: "#8ec8a0", cursor: "pointer", padding: "3px 8px", borderRadius: 6, background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.2)", fontWeight: 600, whiteSpace: "nowrap" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.25)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.1)"; }}>
-                      ✓ Link
-                    </span>
-                  </div>)}
-                </>); })()}
-
-                {(() => { const br = articles.filter((a) => a.id !== activeArticle.id && a.linkedIds?.includes(activeArticle.id)); if (!br.length) return null; return (<>
-                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 12 }}>Referenced By</p>
-                  {br.map((r) => <div key={r.id} style={S.relItem} onClick={() => navigate(r.id)} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.8)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(17,24,39,0.5)"; }}>
-                    <span style={{ fontSize: 14, color: CATEGORIES[r.category]?.color }}>{CATEGORIES[r.category]?.icon}</span>
-                    <div><div style={{ fontWeight: 500, color: "#c8bda0", fontSize: 12 }}>{r.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[r.category]?.label}</div></div>
-                  </div>)}
-                </>); })()}
-
-                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginTop: 24, marginBottom: 12 }}>Tags</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{activeArticle.tags?.map((t) => <span key={t} style={{ ...S.tag, cursor: "pointer", fontSize: 11, padding: "3px 10px" }} onClick={() => { setSearchQuery(t); goCodex("all"); }}>#{t}</span>)}</div>
+                {/* Tags (clickable) */}
+                {activeArticle.tags?.length > 0 && (
+                  <div style={{ padding: "0 12px 16px" }}>
+                    <div style={{ padding: "12px 0 6px", borderBottom: "1px solid " + theme.divider, marginBottom: 8 }}>
+                      <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase" }}>Tags</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{activeArticle.tags.map((t) => <span key={t} style={{ ...tTag, cursor: "pointer", fontSize: 11, padding: "3px 10px" }} onClick={() => { setSearchQuery(t); goCodex("all"); }}>#{t}</span>)}</div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -4480,7 +4719,7 @@ const handleCreateWorld = async () => {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
                   {formData.portrait ? (
                     <div style={{ position: "relative" }}>
-                      <div style={{ width: 120, height: 120, borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[createCat]?.color || "#f0c040") + "40" }}>
+                      <div style={{ width: 120, height: 120, borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[createCat]?.color || theme.accent) + "40" }}>
                         <img src={formData.portrait} alt="Portrait" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       </div>
                       <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
@@ -4490,12 +4729,12 @@ const handleCreateWorld = async () => {
                     </div>
                   ) : (
                     <div onClick={() => portraitFileRef.current?.click()} style={{
-                      width: 120, height: 120, borderRadius: 8, border: "2px dashed rgba(240,192,64,0.2)",
+                      width: 120, height: 120, borderRadius: 8, border: "2px dashed " + ta(theme.accent, 0.2),
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                      cursor: "pointer", background: "rgba(17,24,39,0.4)", transition: "all 0.2s",
+                      cursor: "pointer", background: ta(theme.surface, 0.4), transition: "all 0.2s",
                     }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.5)"; e.currentTarget.style.background = "rgba(240,192,64,0.04)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(240,192,64,0.2)"; e.currentTarget.style.background = "rgba(17,24,39,0.4)"; }}>
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.5); e.currentTarget.style.background = ta(theme.accent, 0.04); }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.2); e.currentTarget.style.background = ta(theme.surface, 0.4); }}>
                       <span style={{ fontSize: 24, color: theme.textDim, marginBottom: 4 }}>📷</span>
                       <span style={{ fontSize: 10, color: theme.textDim }}>Add Image</span>
                     </div>
@@ -4533,10 +4772,10 @@ const handleCreateWorld = async () => {
                 <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{linkSugs.map((s) => (
                   <span key={s.article.id} onClick={() => smartInsertLink(s)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "4px 10px", background: s.confidence === "exact" ? "rgba(142,200,160,0.1)" : s.confidence === "strong" ? "rgba(126,200,227,0.1)" : "rgba(240,192,64,0.08)", border: "1px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.25)" : s.confidence === "strong" ? "rgba(126,200,227,0.2)" : "rgba(240,192,64,0.15)"), borderRadius: 12, cursor: "pointer", color: CATEGORIES[s.article.category]?.color, transition: "all 0.2s" }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "4px 10px", background: s.confidence === "exact" ? "rgba(142,200,160,0.1)" : s.confidence === "strong" ? "rgba(126,200,227,0.1)" : ta(theme.accent, 0.08), border: "1px solid " + (s.confidence === "exact" ? "rgba(142,200,160,0.25)" : s.confidence === "strong" ? "rgba(126,200,227,0.2)" : ta(theme.accent, 0.15)), borderRadius: 12, cursor: "pointer", color: CATEGORIES[s.article.category]?.color, transition: "all 0.2s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = s.confidence === "exact" ? "rgba(142,200,160,0.1)" : "rgba(126,200,227,0.1)"; }}
                     title={s.label + ': "' + s.match + '" — will replace in-place if found in text'}>
-                    <span>{CATEGORIES[s.article.category]?.icon}</span><span>{s.article.title}</span><span style={{ color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : "#f0c040", fontSize: 9 }}>● {s.confidence === "exact" ? "exact" : s.confidence === "strong" ? "likely" : "possible"}</span>
+                    <span>{CATEGORIES[s.article.category]?.icon}</span><span>{s.article.title}</span><span style={{ color: s.confidence === "exact" ? "#8ec8a0" : s.confidence === "strong" ? "#7ec8e3" : theme.accent, fontSize: 9 }}>● {s.confidence === "exact" ? "exact" : s.confidence === "strong" ? "likely" : "possible"}</span>
                   </span>
                 ))}</div>
               </WarningBanner>}
@@ -4550,7 +4789,7 @@ const handleCreateWorld = async () => {
                 {liveIntegrity.filter((w) => w.severity === "warning").map((w, i) => {
                   const warnKey = w.refId || ("w" + i);
                   return (
-                  <div key={warnKey} style={{ padding: "6px 0", fontSize: 12, color: "#f0c040" }}>
+                  <div key={warnKey} style={{ padding: "6px 0", fontSize: 12, color: theme.accent }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "flex-start", cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
                       onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === warnKey ? null : warnKey); }}>
                       <span>⚠</span>
@@ -4569,7 +4808,7 @@ const handleCreateWorld = async () => {
                     </div>
                     {/* Inline suggestion dropdown */}
                     {expandedWarning === warnKey && w.fuzzyMatches && (
-                      <div style={{ marginLeft: 24, marginTop: 6, background: "rgba(10,14,26,0.6)", border: "1px solid #1a2435", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ marginLeft: 24, marginTop: 6, background: ta(theme.deepBg, 0.6), border: "1px solid " + theme.divider, borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                         <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 2 }}>Replace <span style={{ color: "#e07050", fontFamily: "monospace" }}>{(w.rawMention || "").replace(/_/g, " ")}</span> with:</div>
                         {w.fuzzyMatches.map((fm) => (
                           <div key={fm.article.id}
@@ -4586,7 +4825,7 @@ const handleCreateWorld = async () => {
                           </div>
                         ))}
                         {w.type === "broken_ref" && (
-                          <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 4, borderTop: "1px solid #1a2435" }}>
+                          <div style={{ display: "flex", gap: 8, marginTop: 4, paddingTop: 4, borderTop: "1px solid " + theme.divider }}>
                             <span style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.7 }}
                               onClick={() => { setFormData((p) => ({ ...p, body: p.body.replace(w.rawMention, "") })); }}>
                               🗑 Remove mention
@@ -4607,8 +4846,8 @@ const handleCreateWorld = async () => {
 
               <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Tags <span style={{ fontWeight: 400, color: theme.textDim }}>— comma separated</span></label><input style={S.input} value={formData.tags} onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))} placeholder="war, second-age, dragons..." /></div>
               <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
-                <button style={S.btnP} onClick={attemptSave}>{editingId ? "Save Changes" : "Create Entry"}</button>
-                <button style={S.btnS} onClick={() => editingId ? navigate(editingId) : goDash()}>Cancel</button>
+                <button style={tBtnP} onClick={attemptSave}>{editingId ? "Save Changes" : "Create Entry"}</button>
+                <button style={tBtnS} onClick={() => editingId ? navigate(editingId) : goDash()}>Cancel</button>
               </div>
             </div>
           </div>)}
@@ -4616,5 +4855,5 @@ const handleCreateWorld = async () => {
         </div>
       </div>
     </div>
-  );
+    );
 }
