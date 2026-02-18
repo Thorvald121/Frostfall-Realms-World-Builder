@@ -119,7 +119,7 @@ function cleanEntries(entries) {
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 8192,
           system: SYSTEM_PROMPT,
           messages: [{
@@ -130,8 +130,8 @@ function cleanEntries(entries) {
       });
 
       if (!response.ok) {
-        const err = await response.text();
-        return NextResponse.json({ error: "AI API error " + response.status, entries: [] }, { status: 502 });
+        const errText = await response.text();
+        return NextResponse.json({ error: `AI API error ${response.status}`, details: errText, entries: [] }, { status: 502 });
       }
 
       const data = await response.json();
