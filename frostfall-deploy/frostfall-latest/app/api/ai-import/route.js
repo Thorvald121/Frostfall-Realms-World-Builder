@@ -1,4 +1,7 @@
+// frostfall-deploy/frostfall-latest/app/api/ai-import/route.js
 import { NextResponse } from "next/server";
+
+export const runtime = "nodejs"; // ensure Node runtime (fetch + env vars)
 
 const SYSTEM_PROMPT = `You are a worldbuilding document parser for a fantasy codex. Extract structured entries from lore documents.
 
@@ -45,79 +48,85 @@ CRITICAL OUTPUT RULES:
 4. All strings must use double quotes
 5. Clean all title text of markdown artifacts like {#id .unnumbered}`;
 
-// Strip invalid Unicode surrogate code units (common in pasted/converted docs)
+/**
+ * Some imports contain invalid Unicode (unpaired surrogates) which can trigger 400 invalid_request_error.
+ * Strip them so the JSON payload is always valid UTF-8.
+ */
 function sanitizeForJSON(s) {
-  return (s || "").replace(/[\uD800-\uDFFF]/g, "");
+  return String(s || "").replace(/[\uD800-\uDFFF]/g, "");
 }
 
-// Try hard to parse a JSON array from a model response
-function extractJSON(raw, wasTruncated) {
-  let jsonText = String(raw || "");
+/**
+ * Keep requests under conservative character limits to avoid provider/request-size validation errors.
+ * (This is separate from model context; gateways can reject large bodies even if the model could handle it.)
+ */
+function clampText(s, maxChars) {
+  const t = String(s || "");
+  return t.length > maxChars ? t.slice(0, maxChars) : t;
+}
 
-  // Remove common fence wrappers if the model disobeys
-  jsonText = jsonText
-    .replace(/```json\s*/gi, "")
-    .replace(/```\s*/g, "")
+/**
+ * Remove common markdown artifacts from titles.
+ */
+function cleanTitle(title) {
+  return String(title || "")
+    .replace(/\{#[^}]*\}/g, "")
+    .replace(/\.unnumbered\b/g, "")
     .trim();
+}
 
-  // If truncated, try to close the last object and the array
-  if (wasTruncated) {
-    const lastObjClose = jsonText.lastIndexOf("}");
-    if (lastObjClose !== -1) {
-      // Make a best-effort to end with a JSON array
-      jsonText = jsonText.slice(0, lastObjClose + 1);
-      if (!jsonText.trim().endsWith("]")) jsonText += "]";
-      if (!jsonText.trim().startsWith("[")) jsonText = "[" + jsonText;
-    }
-  }
+/**
+ * Best-effort JSON extraction from model output.
+ */
+function extractJSONArray(rawText) {
+  let text = String(rawText || "").trim();
 
-  // 1) Direct parse
+  // Strip code fences if the model disobeys
+  text = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+
+  // First attempt: direct parse
   try {
-    const parsed = JSON.parse(jsonText);
-    return parsed;
-  } catch (_) {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
     // continue
   }
 
-  // 2) Extract the first complete [...] block
-  const start = jsonText.indexOf("[");
+  // Second attempt: locate first balanced [...] region
+  const start = text.indexOf("[");
   if (start !== -1) {
     let depth = 0;
-    let end = -1;
-    for (let i = start; i < jsonText.length; i++) {
-      if (jsonText[i] === "[") depth++;
-      else if (jsonText[i] === "]") depth--;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === "[") depth++;
+      if (ch === "]") depth--;
       if (depth === 0) {
-        end = i;
-        break;
-      }
-    }
-    if (end !== -1) {
-      const slice = jsonText.slice(start, end + 1);
-      try {
-        return JSON.parse(slice);
-      } catch (_) {
-        // try removing trailing commas
+        const slice = text.slice(start, i + 1);
         try {
-          return JSON.parse(slice.replace(/,\s*([\]}])/g, "$1"));
-        } catch (_) {
-          // continue
+          return JSON.parse(slice);
+        } catch {
+          // Try removing trailing commas
+          try {
+            return JSON.parse(slice.replace(/,\s*([\]}])/g, "$1"));
+          } catch {
+            return null;
+          }
         }
       }
     }
   }
 
-  // 3) If it returned a single object, wrap it into an array
-  const objStart = jsonText.indexOf("{");
+  // Third attempt: single object from first '{'
+  const objStart = text.indexOf("{");
   if (objStart !== -1) {
-    const objText = jsonText.slice(objStart).trim();
+    const obj = text.slice(objStart);
     try {
-      return [JSON.parse(objText)];
-    } catch (_) {
+      return [JSON.parse(obj)];
+    } catch {
       try {
-        return [JSON.parse(objText.replace(/,\s*([\]}])/g, "$1"))];
-      } catch (_) {
-        // continue
+        return [JSON.parse(obj.replace(/,\s*([\]}])/g, "$1"))];
+      } catch {
+        return null;
       }
     }
   }
@@ -125,53 +134,75 @@ function extractJSON(raw, wasTruncated) {
   return null;
 }
 
-function cleanEntries(entries) {
+/**
+ * Normalize and filter entries so the frontend always receives consistent shapes.
+ */
+function normalizeEntries(entries) {
   const arr = Array.isArray(entries) ? entries : entries ? [entries] : [];
   return arr
-    .filter((e) => e && typeof e === "object" && e.title && e.category)
+    .filter((e) => e && typeof e === "object")
     .map((e) => ({
-      title: String(e.title || "")
-        .replace(/\{#[^}]*\}/g, "")
-        .replace(/\.unnumbered/g, "")
-        .trim(),
+      title: cleanTitle(e.title),
       category: String(e.category || "").trim(),
       summary: String(e.summary || "").trim(),
       fields: e.fields && typeof e.fields === "object" ? e.fields : {},
       body: String(e.body || ""),
-      tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
+      tags: Array.isArray(e.tags) ? e.tags.map((t) => String(t)) : [],
       temporal: e.temporal && typeof e.temporal === "object" ? e.temporal : null,
-    }));
+    }))
+    .filter((e) => e.title && e.category);
 }
 
 export async function POST(request) {
   try {
     const payload = await request.json().catch(() => ({}));
-    const { text, filename, chunkIndex, totalChunks, existingTitles } = payload;
 
-    const safeText = sanitizeForJSON(text);
-
-    // Local validation: don't even call upstream
-    if (!safeText || safeText.trim().length < 10) {
-      return NextResponse.json({ entries: [], warning: "Empty/too short input" }, { status: 200 });
-    }
+    const {
+      text,
+      filename,
+      chunkIndex = 0,
+      totalChunks = 1,
+      existingTitles = [],
+    } = payload || {};
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "Anthropic API key not configured", entries: [] }, { status: 500 });
+      return NextResponse.json(
+        { error: "Anthropic API key not configured", entries: [] },
+        { status: 500 }
+      );
     }
 
-    let contextNote = "";
-    const tc = Number(totalChunks || 1);
-    const ci = Number.isFinite(Number(chunkIndex)) ? Number(chunkIndex) : 0;
+    // Sanitize + clamp
+    const MAX_CHARS = 120_000; // conservative; increase later if needed
+    const safeText = clampText(sanitizeForJSON(text), MAX_CHARS);
 
+    // Don’t call upstream for empty/too-short inputs
+    if (!safeText || safeText.trim().length < 10) {
+      return NextResponse.json(
+        { entries: [], warning: "Empty/too short input" },
+        { status: 200 }
+      );
+    }
+
+    const tc = Number(totalChunks || 1);
+    const ci = Number(chunkIndex || 0);
+
+    let contextNote = "";
     if (tc > 1) {
-      contextNote = `\n\nThis is section ${ci + 1} of ${tc} from "${filename || "document"}". Extract only NEW distinct entities from THIS section.`;
+      contextNote += `\n\nThis is section ${ci + 1} of ${tc} from "${filename || "document"}". Extract only NEW distinct entities from THIS section.`;
     }
     if (Array.isArray(existingTitles) && existingTitles.length > 0) {
       contextNote += `\n\nEntities already extracted: ${existingTitles.join(
         ", "
       )}. Do NOT create duplicate entries for these — only create new ones or skip if this section adds nothing new.`;
     }
+
+    const userText =
+      "Parse this document section. Return ONLY a JSON array of codex entries." +
+      contextNote +
+      "\n\n" +
+      safeText;
 
     const upstreamBody = {
       model: "claude-sonnet-4-6",
@@ -180,11 +211,8 @@ export async function POST(request) {
       messages: [
         {
           role: "user",
-          content:
-            "Parse this document section. Return ONLY a JSON array of codex entries." +
-            contextNote +
-            "\n\n" +
-            safeText,
+          // Use block format (more robust with validators)
+          content: [{ type: "text", text: userText }],
         },
       ],
     };
@@ -199,35 +227,72 @@ export async function POST(request) {
       body: JSON.stringify(upstreamBody),
     });
 
+    // Surface upstream errors clearly; do NOT mask 4xx as 502
     if (!response.ok) {
       const errText = await response.text().catch(() => "");
-      // Keep your 502 behavior for upstream failures, but include details.
+      let errJson = null;
+      try {
+        errJson = JSON.parse(errText);
+      } catch {
+        // keep as text
+      }
+
+      const upstreamType =
+        errJson?.error?.type || errJson?.type || "unknown_error";
+      const upstreamMessage =
+        errJson?.error?.message ||
+        errJson?.message ||
+        (typeof errText === "string" ? errText.slice(0, 2000) : "Unknown upstream error");
+
       return NextResponse.json(
-        { error: `AI API error ${response.status}`, details: errText, entries: [] },
-        { status: 502 }
+        {
+          error: `Anthropic ${response.status}`,
+          upstreamType,
+          upstreamMessage,
+          details:
+            typeof errText === "string" ? errText.slice(0, 4000) : String(errText),
+          entries: [],
+        },
+        { status: response.status }
       );
     }
 
     const data = await response.json();
+
+    // Anthropic content is typically: [{type:"text", text:"..."}]
     const raw =
-      Array.isArray(data.content) ? data.content.map((c) => c?.text || "").join("") : "";
+      Array.isArray(data?.content)
+        ? data.content.map((c) => c?.text || "").join("")
+        : "";
 
     if (!raw || raw.trim().length === 0) {
-      return NextResponse.json({ entries: [], warning: "Empty response" }, { status: 200 });
-    }
-
-    const parsed = extractJSON(raw, data.stop_reason === "max_tokens");
-    if (!parsed) {
       return NextResponse.json(
-        { entries: [], warning: "Could not parse response", rawPreview: raw.slice(0, 500) },
+        { entries: [], warning: "Empty response from AI" },
         { status: 200 }
       );
     }
 
-    return NextResponse.json({ entries: cleanEntries(parsed) }, { status: 200 });
+    const parsed = extractJSONArray(raw);
+
+    if (!parsed) {
+      // Provide a preview for debugging without dumping everything
+      return NextResponse.json(
+        {
+          entries: [],
+          warning: "Could not parse AI response as JSON array",
+          rawPreview: raw.slice(0, 1200),
+        },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json(
+      { entries: normalizeEntries(parsed) },
+      { status: 200 }
+    );
   } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Unknown error", entries: [] },
+      { error: err?.message || "Unknown server error", entries: [] },
       { status: 500 }
     );
   }
