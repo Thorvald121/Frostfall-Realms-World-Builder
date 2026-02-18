@@ -3027,17 +3027,17 @@ const handleCreateWorld = async () => {
                             <text x={t.points.reduce((s, p) => s + p.x, 0) / t.points.length * mapData.imageW}
                               y={t.points.reduce((s, p) => s + p.y, 0) / t.points.length * mapData.imageH}
                               textAnchor="middle" fill={t.color || theme.accent} fontSize={14 / mapZoom} fontFamily="'Cinzel', serif" fontWeight="700"
-                              stroke={theme.deepBg} strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
+                              stroke=theme.deepBg strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
                           )}
                         </g>
                       ))}
                       {/* Drawing preview */}
                       {mapDrawing && mapDrawing.length > 1 && (
                         <polyline points={mapDrawing.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
-                          fill="none" stroke={theme.accent} strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
+                          fill="none" stroke=theme.accent strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
                       )}
                       {mapDrawing && mapDrawing.map((p, i) => (
-                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill={theme.accent} />
+                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill=theme.accent />
                       ))}
                     </svg>
 
@@ -4855,5 +4855,5 @@ const handleCreateWorld = async () => {
         </div>
       </div>
     </div>
-    );
+  );
 }
