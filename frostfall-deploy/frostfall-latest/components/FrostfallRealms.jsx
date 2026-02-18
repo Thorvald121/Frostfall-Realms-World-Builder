@@ -696,9 +696,9 @@ export default function FrostfallRealms({ user, onLogout }) {
   const theme = THEMES[settings.theme] || THEMES.dark_arcane;
   // Theme-computed style overrides (shadow static S.* defaults)
   const tBtnP = { ...S.btnP, background: "linear-gradient(135deg, " + theme.accent + " 0%, " + ta(theme.accent, 0.7) + " 100%)", color: theme.deepBg || theme.deepBg };
-  const tBtnS = { ...tBtnS, color: theme.textMuted, border: "1px solid " + theme.border };
-  const tTag = { ...tTag, color: theme.textDim, background: ta(theme.textDim, 0.15) };
-  const tRelItem = { ...tRelItem, color: theme.textMuted, background: ta(theme.surface, 0.5) };
+  const tBtnS = { ...S.btnS, color: theme.textMuted, border: "1px solid " + theme.border };
+  const tTag = { ...S.tag, color: theme.textDim, background: ta(theme.textDim, 0.15) };
+  const tRelItem = { ...S.relItem, color: theme.textMuted, background: ta(theme.surface, 0.5) };
   const fontScale = FONT_SIZES[settings.fontSize] || 1.0;
   const editorFontFamily = EDITOR_FONTS[settings.editorFont] || EDITOR_FONTS.georgia;
   const sz = (base) => Math.round(base * fontScale); // UI-wide font scaler
@@ -2333,7 +2333,7 @@ const handleCreateWorld = async () => {
   return (
     <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
       {/* Editor formatting styles */}
-      <style>{`
+      <style suppressHydrationWarning dangerouslySetInnerHTML={{ __html: `
         [contenteditable] h2 { font-family: 'Cinzel', serif; font-size: 1.4em; font-weight: 700; margin: 0.8em 0 0.4em; color: ${theme.text}; letter-spacing: 0.5px; border-bottom: 1px solid ${theme.border}; padding-bottom: 4px; }
         [contenteditable] h3 { font-family: 'Cinzel', serif; font-size: 1.15em; font-weight: 600; margin: 0.6em 0 0.3em; color: ${theme.text}; letter-spacing: 0.3px; }
         [contenteditable] blockquote { border-left: 3px solid ${theme.accent}; margin: 0.5em 0; padding: 4px 16px; color: ${theme.textMuted}; font-style: italic; background: ${ta(theme.accent, 0.04)}; border-radius: 0 6px 6px 0; }
@@ -2342,7 +2342,7 @@ const handleCreateWorld = async () => {
         [contenteditable] hr { border: none; border-top: 1px solid ${theme.border}; margin: 1em 0; }
         [contenteditable] strong, [contenteditable] b { color: ${theme.text}; }
         [contenteditable]:empty::before { content: attr(data-placeholder); color: ${theme.textDim}; opacity: 0.5; white-space: pre-line; pointer-events: none; }
-      `}</style>
+      ` }} />
       <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
       {showDupeModal && <DuplicateModal duplicates={pendingDupes} onOverride={doSave} onCancel={() => { setShowDupeModal(false); setPendingDupes([]); }} onNavigate={navigate} />}
       {showDeleteModal && <DeleteModal article={showDeleteModal} onArchive={() => doArchive(showDeleteModal)} onPermanent={() => doPermanentDelete(showDeleteModal)} onCancel={() => setShowDeleteModal(null)} />}
@@ -3027,17 +3027,17 @@ const handleCreateWorld = async () => {
                             <text x={t.points.reduce((s, p) => s + p.x, 0) / t.points.length * mapData.imageW}
                               y={t.points.reduce((s, p) => s + p.y, 0) / t.points.length * mapData.imageH}
                               textAnchor="middle" fill={t.color || theme.accent} fontSize={14 / mapZoom} fontFamily="'Cinzel', serif" fontWeight="700"
-                              stroke=theme.deepBg strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
+                              stroke={theme.deepBg} strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
                           )}
                         </g>
                       ))}
                       {/* Drawing preview */}
                       {mapDrawing && mapDrawing.length > 1 && (
                         <polyline points={mapDrawing.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
-                          fill="none" stroke=theme.accent strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
+                          fill="none" stroke={theme.accent} strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
                       )}
                       {mapDrawing && mapDrawing.map((p, i) => (
-                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill=theme.accent />
+                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill={theme.accent} />
                       ))}
                     </svg>
 

@@ -4,9 +4,9 @@
   "description": "A dark fantasy worldbuilding engine inspired by World Anvil",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0 -p 5000",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0 -p 5000",
     "lint": "next lint"
   },
   "dependencies": {
@@ -15,9 +15,9 @@
     "@vercel/analytics": "^1.6.1",
     "lodash": "^4.17.21",
     "mammoth": "^1.8.0",
-    "next": "^14.2.0",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0"
+    "next": "14",
+    "react": "18",
+    "react-dom": "18"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.19",
