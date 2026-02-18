@@ -722,22 +722,6 @@ export default function FrostfallRealms({ user, onLogout }) {
   const importFileRef = useRef(null);
   const saveTimer = useRef(null);
 
-  // Accessibility: Escape key closes open modals/dropdowns
-  useEffect(() => {
-    const handleEsc = (e) => {
-      if (e.key === "Escape") {
-        if (showMoreCats) setShowMoreCats(false);
-        else if (worldSwitcherOpen) setWorldSwitcherOpen(false);
-        else if (showDupeModal) { setShowDupeModal(false); setPendingDupes([]); }
-        else if (showDeleteModal) setShowDeleteModal(null);
-        else if (showConfirm) setShowConfirm(null);
-        else if (importConflicts) { setImportConflicts(null); setImportPending(null); }
-      }
-    };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, [showMoreCats, worldSwitcherOpen, showDupeModal, showDeleteModal, showConfirm, importConflicts]);
-
   // === PERSISTENT STORAGE (Supabase → window.storage → localStorage fallback) ===
   useEffect(() => {
     const loadData = async () => {
@@ -1534,6 +1518,9 @@ const handleCreateWorld = async () => {
     if (novelActiveScene?.scId === scId) setNovelActiveScene(null);
   };
 
+  const stripTags = (html) => html ? html.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim() : "";
+  const countWords = (body) => { const t = stripTags(body || ""); return t ? t.split(/\s+/).filter(Boolean).length : 0; };
+
   const getActiveScene = () => {
     if (!activeMs || !novelActiveScene) return null;
     const act = activeMs.acts.find((a) => a.id === novelActiveScene.actId);
@@ -1903,10 +1890,6 @@ const handleCreateWorld = async () => {
     const raw = serializeEditor(novelEditorRef.current);
     updateScene(novelActiveScene.actId, novelActiveScene.chId, novelActiveScene.scId, { body: raw });
   }, [novelActiveScene, serializeEditor, updateScene]);
-
-  // Utility: strip HTML tags for word counting and plain text exports
-  const stripTags = (html) => html ? html.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim() : "";
-  const countWords = (body) => { const t = stripTags(body || ""); return t ? t.split(/\s+/).filter(Boolean).length : 0; };
 
   // Text formatting commands for the editor
   const execFormat = useCallback((cmd, value) => {
@@ -2345,6 +2328,22 @@ const handleCreateWorld = async () => {
   const [showMoreCats, setShowMoreCats] = useState(false);
   const mainCats = Object.entries(CATEGORIES).slice(0, 4);
   const extraCats = Object.entries(CATEGORIES).slice(4);
+
+  // Accessibility: Escape key closes open modals/dropdowns
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === "Escape") {
+        if (showMoreCats) setShowMoreCats(false);
+        else if (worldSwitcherOpen) setWorldSwitcherOpen(false);
+        else if (showDupeModal) { setShowDupeModal(false); setPendingDupes([]); }
+        else if (showDeleteModal) setShowDeleteModal(null);
+        else if (showConfirm) setShowConfirm(null);
+        else if (importConflicts) { setImportConflicts(null); setImportPending(null); }
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [showMoreCats, worldSwitcherOpen, showDupeModal, showDeleteModal, showConfirm, importConflicts]);
 
   return (
     <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
