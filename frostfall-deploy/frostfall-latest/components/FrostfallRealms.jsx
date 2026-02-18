@@ -515,11 +515,11 @@ const WarningBanner = ({ severity = "warning", icon = "⚠", title, children, st
 
 // === MODALS ===
 const DuplicateModal = ({ duplicates, onOverride, onCancel, onNavigate }) => (
-  <div style={MS.overlay}>
+  <div style={MS.overlay} role="dialog" aria-modal="true" aria-labelledby="dupe-modal-title">
     <div style={{ ...MS.box, border: "1px solid #e07050" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <span style={{ fontSize: 28, color: "#e07050" }}>⚠</span>
-        <div><h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Duplicate Detected</h3><p style={{ fontSize: 12, color: "#8899aa", margin: "4px 0 0" }}>This entry appears to match existing articles.</p></div>
+        <span style={{ fontSize: 28, color: "#e07050" }} aria-hidden="true">⚠</span>
+        <div><h3 id="dupe-modal-title" style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Duplicate Detected</h3><p style={{ fontSize: 12, color: "#8899aa", margin: "4px 0 0" }}>This entry appears to match existing articles.</p></div>
       </div>
       <Ornament width={460} />
       <div style={{ margin: "16px 0" }}>{duplicates.map((d) => (
@@ -539,26 +539,26 @@ const DuplicateModal = ({ duplicates, onOverride, onCancel, onNavigate }) => (
 );
 
 const DeleteModal = ({ article, onArchive, onPermanent, onCancel }) => (
-  <div style={MS.overlay}>
+  <div style={MS.overlay} role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
     <div style={{ ...MS.box, border: "1px solid #e07050" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <span style={{ fontSize: 28, color: "#e07050" }}>🗑</span>
-        <div><h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Delete Entry</h3><p style={{ fontSize: 12, color: "#8899aa", margin: "4px 0 0" }}>Choose how to handle "{article.title}"</p></div>
+        <span style={{ fontSize: 28, color: "#e07050" }} aria-hidden="true">🗑</span>
+        <div><h3 id="delete-modal-title" style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Delete Entry</h3><p style={{ fontSize: 12, color: "#8899aa", margin: "4px 0 0" }}>Choose how to handle "{article.title}"</p></div>
       </div>
       <Ornament width={460} />
       <div style={{ margin: "20px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-        <div onClick={onArchive} style={{ padding: "16px 20px", background: "rgba(240,192,64,0.06)", border: "1px solid rgba(240,192,64,0.2)", borderRadius: 8, cursor: "pointer", transition: "all 0.2s" }}
+        <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onArchive(); } }} onClick={onArchive} style={{ padding: "16px 20px", background: "rgba(240,192,64,0.06)", border: "1px solid rgba(240,192,64,0.2)", borderRadius: 8, cursor: "pointer", transition: "all 0.2s" }}
           onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(240,192,64,0.06)"; }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-            <span style={{ fontSize: 18 }}>📦</span>
+            <span style={{ fontSize: 18 }} aria-hidden="true">📦</span>
             <span style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#f0c040", fontWeight: 600, letterSpacing: 0.5 }}>Archive</span>
           </div>
           <p style={{ fontSize: 12, color: "#8899aa", margin: 0, lineHeight: 1.5 }}>Move to the archives. Can be restored or permanently deleted later. Links and references are preserved.</p>
         </div>
-        <div onClick={onPermanent} style={{ padding: "16px 20px", background: "rgba(224,112,80,0.06)", border: "1px solid rgba(224,112,80,0.2)", borderRadius: 8, cursor: "pointer", transition: "all 0.2s" }}
+        <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPermanent(); } }} onClick={onPermanent} style={{ padding: "16px 20px", background: "rgba(224,112,80,0.06)", border: "1px solid rgba(224,112,80,0.2)", borderRadius: 8, cursor: "pointer", transition: "all 0.2s" }}
           onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.06)"; }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-            <span style={{ fontSize: 18 }}>🔥</span>
+            <span style={{ fontSize: 18 }} aria-hidden="true">🔥</span>
             <span style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: "#e07050", fontWeight: 600, letterSpacing: 0.5 }}>Permanently Delete</span>
           </div>
           <p style={{ fontSize: 12, color: "#8899aa", margin: 0, lineHeight: 1.5 }}>Erase this entry forever. This cannot be undone. All links pointing to this article will break.</p>
@@ -570,7 +570,7 @@ const DeleteModal = ({ article, onArchive, onPermanent, onCancel }) => (
 );
 
 const ConfirmModal = ({ title, message, confirmLabel, confirmColor, onConfirm, onCancel }) => (
-  <div style={MS.overlay}>
+  <div style={MS.overlay} role="dialog" aria-modal="true" aria-label="Confirmation">
     <div style={{ ...MS.box, border: "1px solid " + (confirmColor || "#e07050") }}>
       <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: confirmColor || "#e07050", margin: "0 0 12px" }}>{title}</h3>
       <p style={{ fontSize: 13, color: "#8899aa", lineHeight: 1.6, margin: "0 0 24px" }}>{message}</p>
@@ -590,8 +590,8 @@ const ImportConflictModal = ({ conflicts, onResolve, onCancel }) => {
     <div style={MS.overlay}>
       <div style={{ ...MS.box, maxWidth: 700, maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexShrink: 0 }}>
-          <span style={{ fontSize: 28, color: "#f0c040" }}>⚠</span>
-          <div><h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: 0 }}>Import Conflicts</h3>
+          <span style={{ fontSize: 28, color: "#f0c040" }} aria-hidden="true">⚠</span>
+          <div><h3 id="import-conflict-title" style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#f0c040", margin: 0 }}>Import Conflicts</h3>
             <p style={{ fontSize: 12, color: "#8899aa", margin: "4px 0 0" }}>{conflicts.length} article{conflicts.length > 1 ? "s" : ""} already exist. Choose which version to keep for each.</p></div>
         </div>
         <Ornament width={640} />
@@ -721,6 +721,22 @@ export default function FrostfallRealms({ user, onLogout }) {
   const tlSyncing = useRef(false);
   const importFileRef = useRef(null);
   const saveTimer = useRef(null);
+
+  // Accessibility: Escape key closes open modals/dropdowns
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === "Escape") {
+        if (showMoreCats) setShowMoreCats(false);
+        else if (worldSwitcherOpen) setWorldSwitcherOpen(false);
+        else if (showDupeModal) { setShowDupeModal(false); setPendingDupes([]); }
+        else if (showDeleteModal) setShowDeleteModal(null);
+        else if (showConfirm) setShowConfirm(null);
+        else if (importConflicts) { setImportConflicts(null); setImportPending(null); }
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [showMoreCats, worldSwitcherOpen, showDupeModal, showDeleteModal, showConfirm, importConflicts]);
 
   // === PERSISTENT STORAGE (Supabase → window.storage → localStorage fallback) ===
   useEffect(() => {
@@ -2332,7 +2348,7 @@ const handleCreateWorld = async () => {
 
   return (
     <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
-      {/* Editor formatting styles */}
+      {/* Editor formatting + Accessibility styles */}
       <style suppressHydrationWarning dangerouslySetInnerHTML={{ __html: `
         [contenteditable] h2 { font-family: 'Cinzel', serif; font-size: 1.4em; font-weight: 700; margin: 0.8em 0 0.4em; color: ${theme.text}; letter-spacing: 0.5px; border-bottom: 1px solid ${theme.border}; padding-bottom: 4px; }
         [contenteditable] h3 { font-family: 'Cinzel', serif; font-size: 1.15em; font-weight: 600; margin: 0.6em 0 0.3em; color: ${theme.text}; letter-spacing: 0.3px; }
@@ -2342,8 +2358,21 @@ const handleCreateWorld = async () => {
         [contenteditable] hr { border: none; border-top: 1px solid ${theme.border}; margin: 1em 0; }
         [contenteditable] strong, [contenteditable] b { color: ${theme.text}; }
         [contenteditable]:empty::before { content: attr(data-placeholder); color: ${theme.textDim}; opacity: 0.5; white-space: pre-line; pointer-events: none; }
+        /* Accessibility: focus-visible outlines */
+        :focus-visible { outline: 2px solid ${theme.accent}; outline-offset: 2px; border-radius: 4px; }
+        button:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible { outline: 2px solid ${theme.accent}; outline-offset: 2px; }
+        input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid ${theme.accent}; outline-offset: 0px; }
+        /* Skip to content link */
+        .sr-skip { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; z-index: 99999; }
+        .sr-skip:focus { position: fixed; top: 8px; left: 8px; width: auto; height: auto; padding: 8px 16px; background: ${theme.accent}; color: ${theme.deepBg || '#000'}; font-size: 14px; font-weight: 700; border-radius: 6px; z-index: 99999; text-decoration: none; }
+        /* Screen reader only utility */
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
       ` }} />
       <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
+      {/* Skip to content for keyboard users */}
+      <a href="#main-content" className="sr-skip">Skip to main content</a>
       {showDupeModal && <DuplicateModal duplicates={pendingDupes} onOverride={doSave} onCancel={() => { setShowDupeModal(false); setPendingDupes([]); }} onNavigate={navigate} />}
       {showDeleteModal && <DeleteModal article={showDeleteModal} onArchive={() => doArchive(showDeleteModal)} onPermanent={() => doPermanentDelete(showDeleteModal)} onCancel={() => setShowDeleteModal(null)} />}
       {showConfirm && <ConfirmModal {...showConfirm} onCancel={() => setShowConfirm(null)} />}
@@ -2352,7 +2381,7 @@ const handleCreateWorld = async () => {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{ background: theme.surface, border: "1px solid " + theme.border, borderRadius: 12, padding: "28px 32px", maxWidth: 480, width: "90%" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-              <span style={{ fontSize: 24 }}>🛡</span>
+              <span style={{ fontSize: 24 }} aria-hidden="true">🛡</span>
               <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: "#e07050", margin: 0 }}>Lore Integrity Warning</h3>
             </div>
             <p style={{ fontSize: 13, color: theme.textMuted, marginBottom: 16, lineHeight: 1.5 }}>
@@ -2415,7 +2444,7 @@ const handleCreateWorld = async () => {
       )}
 
       {/* SIDEBAR */}
-      <div style={{ ...S.sidebar, background: theme.sidebarBg, borderRight: "1px solid " + theme.border }}>
+      <nav aria-label="Main navigation" style={{ ...S.sidebar, background: theme.sidebarBg, borderRight: "1px solid " + theme.border }}>
         <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid " + theme.divider }}>
           <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: theme.accent, letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
           <p style={{ fontSize: 10, color: theme.textDim, letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
@@ -2437,15 +2466,15 @@ const handleCreateWorld = async () => {
         {/* World switcher */}
         {activeWorld && (
           <div style={{ padding: "8px 16px", borderBottom: "1px solid " + theme.divider }}>
-            <div onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
-              <span style={{ fontSize: 14, color: theme.accent }}>🌍</span>
+            <div role="button" tabIndex={0} aria-expanded={worldSwitcherOpen} aria-label="Switch world" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setWorldSwitcherOpen(!worldSwitcherOpen); } }} onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+              <span style={{ fontSize: 14, color: theme.accent }} aria-hidden="true">🌍</span>
               <span style={{ flex: 1, fontSize: 12, color: theme.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>
               <span style={{ fontSize: 10, color: theme.textDim, transition: "transform 0.2s", transform: worldSwitcherOpen ? "rotate(180deg)" : "none" }}>▾</span>
             </div>
             {worldSwitcherOpen && (
               <div style={{ marginTop: 4, background: ta(theme.surface, 0.5), borderRadius: 6, border: "1px solid " + theme.border, overflow: "hidden" }}>
                 {allWorlds.map((w) => (
-                  <div key={w.id} onClick={() => switchWorld(w)} style={{ padding: "8px 12px", fontSize: 11, color: w.id === activeWorld?.id ? theme.accent : theme.textMuted, cursor: "pointer", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, background: w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent" }}
+                  <div key={w.id} role="option" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchWorld(w); } }} onClick={() => switchWorld(w)} style={{ padding: "8px 12px", fontSize: 11, color: w.id === activeWorld?.id ? theme.accent : theme.textMuted, cursor: "pointer", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, background: w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent"; }}>
                     <span style={{ fontSize: 10 }}>{w.id === activeWorld?.id ? "●" : "○"}</span>
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
@@ -2461,7 +2490,7 @@ const handleCreateWorld = async () => {
         )}
         <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
           {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: theme.divider, margin: "8px 16px" }} /> : (
-            <div key={item.id} style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} onClick={item.action}
+            <div key={item.id} style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.action(); } }} onClick={item.action}
               onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = ta(theme.accent, 0.05); }}
               onMouseLeave={(e) => { if (!isAct(item)) e.currentTarget.style.background = "transparent"; }}>
               <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{item.icon}</span>
@@ -2479,36 +2508,36 @@ const handleCreateWorld = async () => {
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? theme.accent : saveStatus === "error" ? "#e07050" : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px " + ta(theme.accent, 0.4) : "none" }} />
-            <span style={{ fontSize: 9, color: theme.textDim, letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
+            <span aria-live="polite" role="status" style={{ fontSize: 9, color: theme.textDim, letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
           </div>
         </div>
-      </div>
+      </nav>
 
       {/* MAIN */}
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <main id="main-content" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg }}>
           <div style={{ position: "relative" }}>
-            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }}>⌕</span>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }} aria-hidden="true">⌕</span>
             <div style={{ position: "relative" }}>
-              <input style={S.searchBox} placeholder="Search titles, body, fields, tags…" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
-              {searchQuery && <span onClick={() => setSearchQuery("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 12, color: theme.textDim, lineHeight: 1 }}>✕</span>}
+              <input style={S.searchBox} aria-label="Search the codex" placeholder="Search titles, body, fields, tags…" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
+              {searchQuery && <span role="button" tabIndex={0} aria-label="Clear search" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSearchQuery(""); } }} onClick={() => setSearchQuery("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 12, color: theme.textDim, lineHeight: 1 }}>✕</span>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {mainCats.map(([k, c]) => (
-              <div key={k} onClick={() => goCreate(k)} style={{ fontSize: 11, color: c.color, cursor: "pointer", padding: "5px 10px", border: "1px solid " + c.color + "30", borderRadius: 6, transition: "all 0.2s", letterSpacing: 0.5 }}
+              <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} onClick={() => goCreate(k)} style={{ fontSize: 11, color: c.color, cursor: "pointer", padding: "5px 10px", border: "1px solid " + c.color + "30", borderRadius: 6, transition: "all 0.2s", letterSpacing: 0.5 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "15"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ {c.label}</div>
             ))}
-            <div onClick={(e) => { e.stopPropagation(); setShowMoreCats(!showMoreCats); }} style={{ fontSize: 11, color: theme.textMuted, cursor: "pointer", padding: "5px 10px", border: "1px solid " + theme.border, borderRadius: 6, transition: "all 0.2s" }}
+            <div role="button" tabIndex={0} aria-expanded={showMoreCats} aria-haspopup="true" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowMoreCats(!showMoreCats); } }} onClick={(e) => { e.stopPropagation(); setShowMoreCats(!showMoreCats); }} style={{ fontSize: 11, color: theme.textMuted, cursor: "pointer", padding: "5px 10px", border: "1px solid " + theme.border, borderRadius: 6, transition: "all 0.2s" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = theme.accentBg; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ More ▾</div>
           </div>
           {/* More+ dropdown — fixed position so it floats above all content */}
           {showMoreCats && (<>
-            <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoreCats(false)} />
+            <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoreCats(false)} onKeyDown={(e) => { if (e.key === "Escape") setShowMoreCats(false); }} />
             <div style={{ position: "fixed", top: 54, right: 30, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 6, minWidth: 200, zIndex: 901, boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)" }}>
               <div style={{ padding: "6px 12px 8px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>Create New Entry</div>
               {extraCats.map(([k, c]) => (
-                <div key={k} onClick={() => { setShowMoreCats(false); goCreate(k); }} style={{ fontSize: 12, color: c.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
+                <div key={k} role="menuitem" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowMoreCats(false); goCreate(k); } }} onClick={() => { setShowMoreCats(false); goCreate(k); }} style={{ fontSize: 12, color: c.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                   <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{c.icon}</span> <span>{c.label}</span>
                 </div>
@@ -2585,7 +2614,7 @@ const handleCreateWorld = async () => {
             </div>
 
             {totalIntegrityIssues > 0 && (<>
-              <p style={S.sTitle}><span style={{ color: "#e07050" }}>🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{totalIntegrityIssues} issue{totalIntegrityIssues !== 1 ? "s" : ""}</span></p>
+              <p style={S.sTitle}><span style={{ color: "#e07050" }} aria-hidden="true">🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{totalIntegrityIssues} issue{totalIntegrityIssues !== 1 ? "s" : ""}</span></p>
               <div style={{ background: "rgba(224,112,80,0.04)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: 4 }}>
                 {allConflicts.slice(0, 3).map((c) => (
                   <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
@@ -2608,7 +2637,7 @@ const handleCreateWorld = async () => {
             <p style={S.sTitle}>⚒ Quick Create</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {Object.entries(CATEGORIES).map(([k, c]) => (
-                <div key={k} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
+                <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = c.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = c.color + "33"; e.currentTarget.style.transform = "none"; }}>
                   <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div><div style={{ fontSize: 11, color: c.color, fontWeight: 600 }}>New {c.label}</div>
@@ -3341,7 +3370,7 @@ const handleCreateWorld = async () => {
                                   <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}</span>
                                   <div style={{ display: "flex", gap: 4 }}>
                                     {sc.notes && <span style={{ fontSize: 9 }} title="Has notes">📝</span>}
-                                    {sc.snapshots?.length > 0 && <span style={{ fontSize: 9 }}>📸</span>}
+                                    {sc.snapshots?.length > 0 && <span style={{ fontSize: 9 }} aria-hidden="true">📸</span>}
                                   </div>
                                 </div>
                               </div>
@@ -3392,7 +3421,7 @@ const handleCreateWorld = async () => {
                   <div style={{ flex: 1, width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", overflow: "hidden", padding: "60px 0 40px" }}>
                     <div
                       ref={novelEditorRef}
-                      contentEditable suppressContentEditableWarning
+                      contentEditable suppressContentEditableWarning aria-label="Scene editor" role="textbox" aria-multiline="true"
                       onInput={handleNovelInput}
                       onClick={handleEditorClick}
                       onMouseOver={handleEditorMouseOver}
@@ -3683,6 +3712,7 @@ const handleCreateWorld = async () => {
                       <div
                         ref={novelEditorRef}
                         contentEditable suppressContentEditableWarning
+                        aria-label="Scene editor — focus mode" role="textbox" aria-multiline="true"
                         onInput={handleNovelInput}
                         onClick={handleEditorClick}
                         onMouseOver={handleEditorMouseOver}
@@ -3971,7 +4001,7 @@ const handleCreateWorld = async () => {
 
                 {/* Editor settings note */}
                 <div style={{ background: theme.accentBg, border: "1px solid " + theme.accent + "30", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>⚙</span>
+                  <span style={{ fontSize: 16 }} aria-hidden="true">⚙</span>
                   <div>
                     <div style={{ fontSize: 12, color: theme.text, fontWeight: 500 }}>Editor font and size settings have moved</div>
                     <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>Open a scene in the Novel Writing tool and click <b>⚙ Editor</b> in the toolbar to configure font family and size.</div>
@@ -4347,7 +4377,7 @@ const handleCreateWorld = async () => {
             {/* Category filter pills */}
             <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
               {[{ key: "all", label: "All", color: theme.accent }, ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((f) => (
-                <div key={f.key} onClick={() => setCodexFilter(f.key)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, cursor: "pointer", letterSpacing: 0.5, fontWeight: codexFilter === f.key ? 600 : 400, background: codexFilter === f.key ? f.color + "20" : "transparent", color: codexFilter === f.key ? f.color : theme.textDim, border: "1px solid " + (codexFilter === f.key ? f.color + "40" : theme.border), transition: "all 0.15s" }}>{f.label}</div>
+                <div key={f.key} role="button" tabIndex={0} aria-pressed={codexFilter === f.key} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCodexFilter(f.key); } }} onClick={() => setCodexFilter(f.key)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, cursor: "pointer", letterSpacing: 0.5, fontWeight: codexFilter === f.key ? 600 : 400, background: codexFilter === f.key ? f.color + "20" : "transparent", color: codexFilter === f.key ? f.color : theme.textDim, border: "1px solid " + (codexFilter === f.key ? f.color + "40" : theme.border), transition: "all 0.15s" }}>{f.label}</div>
               ))}
             </div>
             {/* Sort options bar */}
@@ -4372,10 +4402,10 @@ const handleCreateWorld = async () => {
               </div>
             </div>
             {filtered.list.map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); const match = filtered.matchMap[a.id]; return (
-              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: ta(theme.surface, 0.6), border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? ta(theme.accent, 0.2) : theme.divider), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
+              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: ta(theme.surface, 0.6), border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? ta(theme.accent, 0.2) : theme.divider), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") navigate(a.id); }} onClick={() => navigate(a.id)}
                 onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.6); }}>
                 {a.portrait ? (
-                  <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid " + (CATEGORIES[a.category]?.color || "#888") + "40", flexShrink: 0, marginTop: 2 }}><img src={a.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
+                  <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid " + (CATEGORIES[a.category]?.color || "#888") + "40", flexShrink: 0, marginTop: 2 }}><img src={a.portrait} alt={a.title + " portrait"} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
                 ) : (
                   <div style={{ fontSize: 22, color: CATEGORIES[a.category]?.color, marginTop: 2 }}>{CATEGORIES[a.category]?.icon}</div>
                 )}
@@ -4420,7 +4450,7 @@ const handleCreateWorld = async () => {
               <div style={{ flex: 1, overflowY: "auto", padding: "0 28px 40px" }}>
                 {/* Breadcrumbs */}
                 <div style={{ fontSize: 11, color: theme.textDim, marginTop: 20, marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ cursor: "pointer", color: theme.textDim }} onClick={goDash}>Dashboard</span><span>›</span>
+                  <span role="link" tabIndex={0} style={{ cursor: "pointer", color: theme.textDim }} onKeyDown={(e) => { if (e.key === "Enter") goDash(); }} onClick={goDash}>Dashboard</span><span>›</span>
                   <span style={{ cursor: "pointer", color: theme.textDim }} onClick={() => goCodex(activeArticle.category)}>{categoryPluralLabel(activeArticle.category)}</span><span>›</span>
                   <span style={{ color: CATEGORIES[activeArticle.category]?.color }}>{activeArticle.title}</span>
                 </div>
@@ -4556,7 +4586,7 @@ const handleCreateWorld = async () => {
               </div>
 
               {/* WORLD ANVIL–STYLE SIDEBAR */}
-              <div style={{ width: 300, minWidth: 300, borderLeft: "1px solid " + theme.divider, overflowY: "auto", padding: 0, background: ta(theme.deepBg, 0.4) }}>
+              <aside aria-label="Article details" style={{ width: 300, minWidth: 300, borderLeft: "1px solid " + theme.divider, overflowY: "auto", padding: 0, background: ta(theme.deepBg, 0.4) }}>
 
                 {/* Portrait (large, in sidebar) */}
                 {activeArticle.portrait && (
@@ -4606,7 +4636,7 @@ const handleCreateWorld = async () => {
                     <p style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic", margin: "4px 0 12px" }}>No linked articles yet.</p>
                   )}
                   {activeArticle.linkedIds?.map((lid) => { const lk = articles.find((a) => a.id === lid); if (!lk) return <div key={lid} style={{ ...tRelItem, opacity: 0.5, cursor: "default" }}><span style={{ fontSize: 12, color: theme.textDim }}>✦</span><span style={{ fontStyle: "italic" }}>{lid.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} (unwritten)</span></div>;
-                    return <div key={lid} style={tRelItem} onClick={() => navigate(lid)} onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}><span style={{ fontSize: 14, color: CATEGORIES[lk.category]?.color }}>{CATEGORIES[lk.category]?.icon}</span><div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{lk.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[lk.category]?.label}</div></div></div>;
+                    return <div key={lid} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") navigate(lid); }} style={tRelItem} onClick={() => navigate(lid)} onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}><span style={{ fontSize: 14, color: CATEGORIES[lk.category]?.color }}>{CATEGORIES[lk.category]?.icon}</span><div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{lk.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[lk.category]?.label}</div></div></div>;
                   })}
                 </div>
 
@@ -4661,7 +4691,7 @@ const handleCreateWorld = async () => {
                       <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase" }}>Referenced By</span>
                       <span style={{ fontSize: 10, color: theme.textDim, marginLeft: 6 }}>({br.length})</span>
                     </div>
-                    {br.map((r) => <div key={r.id} style={tRelItem} onClick={() => navigate(r.id)} onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                    {br.map((r) => <div key={r.id} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") navigate(r.id); }} style={tRelItem} onClick={() => navigate(r.id)} onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
                       <span style={{ fontSize: 14, color: CATEGORIES[r.category]?.color }}>{CATEGORIES[r.category]?.icon}</span>
                       <div><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{r.title}</div><div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[r.category]?.label}</div></div>
                     </div>)}
@@ -4674,10 +4704,10 @@ const handleCreateWorld = async () => {
                     <div style={{ padding: "12px 0 6px", borderBottom: "1px solid " + theme.divider, marginBottom: 8 }}>
                       <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase" }}>Tags</span>
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{activeArticle.tags.map((t) => <span key={t} style={{ ...tTag, cursor: "pointer", fontSize: 11, padding: "3px 10px" }} onClick={() => { setSearchQuery(t); goCodex("all"); }}>#{t}</span>)}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{activeArticle.tags.map((t) => <span key={t} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") { setSearchQuery(t); goCodex("all"); } }} style={{ ...tTag, cursor: "pointer", fontSize: 11, padding: "3px 10px" }} onClick={() => { setSearchQuery(t); goCodex("all"); }}>#{t}</span>)}</div>
                   </div>
                 )}
-              </div>
+              </aside>
             </div>
           )}
 
@@ -4792,7 +4822,7 @@ const handleCreateWorld = async () => {
                   <div key={warnKey} style={{ padding: "6px 0", fontSize: 12, color: theme.accent }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "flex-start", cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
                       onClick={() => { if (w.type === "broken_ref" && w.fuzzyMatches?.length > 0) setExpandedWarning(expandedWarning === warnKey ? null : warnKey); }}>
-                      <span>⚠</span>
+                      <span aria-hidden="true">⚠</span>
                       <div style={{ flex: 1 }}>
                         <div>{w.message}</div>
                         {w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? (
@@ -4844,7 +4874,7 @@ const handleCreateWorld = async () => {
                 ))}
               </WarningBanner>}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Tags <span style={{ fontWeight: 400, color: theme.textDim }}>— comma separated</span></label><input style={S.input} value={formData.tags} onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))} placeholder="war, second-age, dragons..." /></div>
+              <div style={{ marginBottom: 16 }}><label htmlFor="tags-input" style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Tags <span style={{ fontWeight: 400, color: theme.textDim }}>— comma separated</span></label><input style={S.input} id="tags-input" value={formData.tags} onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))} placeholder="war, second-age, dragons..." /></div>
               <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
                 <button style={tBtnP} onClick={attemptSave}>{editingId ? "Save Changes" : "Create Entry"}</button>
                 <button style={tBtnS} onClick={() => editingId ? navigate(editingId) : goDash()}>Cancel</button>
@@ -4853,7 +4883,7 @@ const handleCreateWorld = async () => {
           </div>)}
 
         </div>
-      </div>
+      </main>
     </div>
   );
 }
