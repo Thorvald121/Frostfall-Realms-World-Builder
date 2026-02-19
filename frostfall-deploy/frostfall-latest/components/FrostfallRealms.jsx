@@ -587,7 +587,7 @@ const ImportConflictModal = ({ conflicts, onResolve, onCancel }) => {
   const allResolved = Object.keys(choices).length === conflicts.length;
   const choose = (id, val) => setChoices((p) => ({ ...p, [id]: val }));
   return (
-    <div style={MS.overlay}>
+    <div style={MS.overlay} role="dialog" aria-modal="true" aria-labelledby="import-conflict-title">
       <div style={{ ...MS.box, maxWidth: 700, maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexShrink: 0 }}>
           <span style={{ fontSize: 28, color: "#f0c040" }} aria-hidden="true">⚠</span>
@@ -689,6 +689,20 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [showWorldCreate, setShowWorldCreate] = useState(false);
   const [worldForm, setWorldForm] = useState({ name: "", description: "" });
   const [worldSwitcherOpen, setWorldSwitcherOpen] = useState(false);
+
+  // === RESPONSIVE ===
+  const [screenW, setScreenW] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    const onResize = () => setScreenW(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const isMobile = screenW < 768;
+  const isTablet = screenW >= 768 && screenW < 1024;
+  const isCompact = screenW < 1024;
+  // Close drawer on navigation
+  const closeSidebar = useCallback(() => { if (isMobile) setSidebarOpen(false); }, [isMobile]);
 
   // === SETTINGS ===
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -2057,10 +2071,10 @@ const handleCreateWorld = async () => {
     }
   }, [articles]);
 
-  const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } }, [articles]);
-  const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); };
-  const goDash = () => setView("dashboard");
-  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); };
+  const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } if (isMobile) setSidebarOpen(false); }, [articles, isMobile]);
+  const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); closeSidebar(); };
+  const goDash = () => { setView("dashboard"); closeSidebar(); };
+  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
     setCreateCat(article.category);
     setEditingId(article.id);
@@ -2441,6 +2455,7 @@ const handleCreateWorld = async () => {
 
   // Top bar quick-create: only show first 4 + a "more" dropdown state
   const [showMoreCats, setShowMoreCats] = useState(false);
+  const [showMobileFab, setShowMobileFab] = useState(false);
   const mainCats = Object.entries(CATEGORIES).slice(0, 4);
   const extraCats = Object.entries(CATEGORIES).slice(4);
 
@@ -2449,6 +2464,7 @@ const handleCreateWorld = async () => {
     const handleEsc = (e) => {
       if (e.key === "Escape") {
         if (showMoreCats) setShowMoreCats(false);
+        else if (showMobileFab) setShowMobileFab(false);
         else if (worldSwitcherOpen) setWorldSwitcherOpen(false);
         else if (showDupeModal) { setShowDupeModal(false); setPendingDupes([]); }
         else if (showDeleteModal) setShowDeleteModal(null);
@@ -2458,7 +2474,7 @@ const handleCreateWorld = async () => {
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [showMoreCats, worldSwitcherOpen, showDupeModal, showDeleteModal, showConfirm, importConflicts]);
+  }, [showMoreCats, showMobileFab, worldSwitcherOpen, showDupeModal, showDeleteModal, showConfirm, importConflicts]);
 
   return (
     <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
@@ -2483,6 +2499,16 @@ const handleCreateWorld = async () => {
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
         /* Reduced motion */
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+        /* Responsive overrides */
+        @media (max-width: 1023px) {
+          .fr-topbar-cats { display: none !important; }
+          .fr-search-box { width: 200px !important; }
+        }
+        @media (max-width: 767px) {
+          .fr-search-box { width: 100% !important; max-width: 100% !important; flex: 1 !important; }
+          .fr-topbar { padding: 10px 14px !important; }
+          .fr-content { padding: 0 14px 24px !important; }
+        }
       ` }} />
       <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
       {/* Skip to content for keyboard users */}
@@ -2557,8 +2583,15 @@ const handleCreateWorld = async () => {
         </div>
       )}
 
-      {/* SIDEBAR */}
-      <nav aria-label="Main navigation" style={{ ...S.sidebar, background: theme.sidebarBg, borderRight: "1px solid " + theme.border }}>
+      {/* SIDEBAR — drawer on mobile */}
+      {isMobile && sidebarOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 998 }} onClick={() => setSidebarOpen(false)} />}
+      <nav aria-label="Main navigation" style={{
+        ...S.sidebar,
+        background: theme.sidebarBg,
+        borderRight: "1px solid " + theme.border,
+        ...(isMobile ? { position: "fixed", left: 0, top: 0, zIndex: 999, transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.25s ease", boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.5)" : "none" } : {}),
+        ...(isTablet ? { width: 220, minWidth: 220 } : {}),
+      }}>
         <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid " + theme.divider }}>
           <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: theme.accent, letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
           <p style={{ fontSize: 10, color: theme.textDim, letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
@@ -2629,22 +2662,27 @@ const handleCreateWorld = async () => {
 
       {/* MAIN */}
       <main id="main-content" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <div style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg }}>
-          <div style={{ position: "relative" }}>
+        <div className="fr-topbar" style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg, ...(isMobile ? { padding: "10px 14px", gap: 8 } : {}) }}>
+          {/* Hamburger — mobile only */}
+          {isMobile && (
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle navigation menu" aria-expanded={sidebarOpen}
+              style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 20, cursor: "pointer", padding: "4px 8px", lineHeight: 1, flexShrink: 0 }}>☰</button>
+          )}
+          <div style={{ position: "relative", ...(isMobile ? { flex: 1 } : {}) }}>
             <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }} aria-hidden="true">⌕</span>
             <div style={{ position: "relative" }}>
-              <input style={S.searchBox} aria-label="Search the codex" placeholder="Search titles, body, fields, tags…" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
+              <input className="fr-search-box" style={{ ...S.searchBox, ...(isMobile ? { width: "100%" } : isTablet ? { width: 200 } : {}) }} aria-label="Search the codex" placeholder={isMobile ? "Search…" : "Search titles, body, fields, tags…"} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
               {searchQuery && <span role="button" tabIndex={0} aria-label="Clear search" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSearchQuery(""); } }} onClick={() => setSearchQuery("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 12, color: theme.textDim, lineHeight: 1 }}>✕</span>}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {!isCompact && <div className="fr-topbar-cats" style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {mainCats.map(([k, c]) => (
               <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} onClick={() => goCreate(k)} style={{ fontSize: 11, color: c.color, cursor: "pointer", padding: "5px 10px", border: "1px solid " + c.color + "30", borderRadius: 6, transition: "all 0.2s", letterSpacing: 0.5 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "15"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ {c.label}</div>
             ))}
             <div role="button" tabIndex={0} aria-expanded={showMoreCats} aria-haspopup="true" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowMoreCats(!showMoreCats); } }} onClick={(e) => { e.stopPropagation(); setShowMoreCats(!showMoreCats); }} style={{ fontSize: 11, color: theme.textMuted, cursor: "pointer", padding: "5px 10px", border: "1px solid " + theme.border, borderRadius: 6, transition: "all 0.2s" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = theme.accentBg; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ More ▾</div>
-          </div>
+          </div>}
           {/* More+ dropdown — fixed position so it floats above all content */}
           {showMoreCats && (<>
             <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoreCats(false)} onKeyDown={(e) => { if (e.key === "Escape") setShowMoreCats(false); }} />
@@ -2660,7 +2698,7 @@ const handleCreateWorld = async () => {
           </>)}
         </div>
 
-        <div style={{ ...S.content, opacity: fadeIn ? 1 : 0, transition: "opacity 0.3s ease" }}>
+        <div className="fr-content" style={{ ...S.content, opacity: fadeIn ? 1 : 0, transition: "opacity 0.3s ease", ...(isMobile ? { padding: "0 14px 24px" } : {}) }}>
 
           {/* === WELCOME SCREEN — No world yet === */}
           {!activeWorld && dataLoaded && (
@@ -2749,7 +2787,7 @@ const handleCreateWorld = async () => {
             </>)}
 
             <p style={S.sTitle}>⚒ Quick Create</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : isTablet ? "repeat(3, 1fr)" : "repeat(4, 1fr)", gap: 10 }}>
               {Object.entries(CATEGORIES).map(([k, c]) => (
                 <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = c.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
@@ -3039,7 +3077,7 @@ const handleCreateWorld = async () => {
                 transition: "all 0.3s ease", overflow: "hidden", flexShrink: 0,
               }}>
                 {tlSelected && (
-                  <div style={{ width: 320, padding: "20px 18px 60px", overflowY: "auto", height: "100%", boxSizing: "border-box" }}>
+                  <div style={{ width: isMobile ? "100%" : 320, padding: "20px 18px 60px", overflowY: "auto", height: "100%", boxSizing: "border-box" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                       <span style={S.catBadge(CATEGORIES[tlSelected.category]?.color)}>
                         {CATEGORIES[tlSelected.category]?.icon} {CATEGORIES[tlSelected.category]?.label}
@@ -3202,7 +3240,7 @@ const handleCreateWorld = async () => {
 
               {/* Edit panel */}
               {mapEditPanel && (
-                <div style={{ width: 280, borderLeft: "1px solid " + theme.divider, padding: "16px 14px", overflowY: "auto", flexShrink: 0, background: theme.inputBg }}>
+                <div style={{ width: isMobile ? "100%" : 280, borderLeft: isMobile ? "none" : "1px solid " + theme.divider, borderTop: isMobile ? "1px solid " + theme.divider : "none", padding: "16px 14px", overflowY: "auto", flexShrink: 0, background: theme.inputBg }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                     <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: 0 }}>
                       {mapEditPanel.points ? "Territory" : "Pin"} Properties
@@ -3466,7 +3504,7 @@ const handleCreateWorld = async () => {
                                 onDrop={() => { if (corkboardDragId && corkboardDragId !== sc.id) handleCorkDrop(act.id, ch.id, corkboardDragId, sc.id); setCorkboardDragId(null); }}
                                 onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
                                 style={{
-                                  width: 200, minHeight: 140, padding: "14px 16px",
+                                  width: isMobile ? "100%" : 200, minHeight: 140, padding: "14px 16px",
                                   background: corkboardDragId === sc.id ? ta(theme.accent, 0.15) : ta(theme.surface, 0.6),
                                   border: "1px solid " + (corkboardDragId === sc.id ? ta(theme.accent, 0.4) : theme.border),
                                   borderTop: "3px solid " + (scColor.color !== "transparent" ? scColor.color : theme.border),
@@ -3627,10 +3665,10 @@ const handleCreateWorld = async () => {
                     <button onClick={() => navigateScene(-1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>←</button>
                     <button onClick={() => navigateScene(1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>→</button>
                     <div style={{ width: 1, height: 16, background: theme.border }} />
-                    <button onClick={() => setNovelFocusMode(true)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }} title="Distraction-free writing">⊡ Focus</button>
-                    <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane ? theme.accent : theme.textMuted }}>
+                    <button onClick={() => setNovelFocusMode(true)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }} title="Distraction-free writing">{isMobile ? "⊡" : "⊡ Focus"}</button>
+                    {!isMobile && <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane ? theme.accent : theme.textMuted }}>
                       ◫ Split
-                    </button>
+                    </button>}
                     <div style={{ position: "relative" }}>
                       <button onClick={() => setNovelEditorSettings(!novelEditorSettings)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: novelEditorSettings ? theme.accent : theme.textMuted, background: novelEditorSettings ? theme.accentBg : "transparent" }}>⚙ Editor</button>
                       {novelEditorSettings && (
@@ -3694,8 +3732,8 @@ const handleCreateWorld = async () => {
                   )}
 
                   <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-                    {/* Chapter nav rail */}
-                    <div style={{ width: 180, borderRight: "1px solid " + theme.divider, overflowY: "auto", flexShrink: 0, padding: "12px 0", background: theme.deepBg }}>
+                    {/* Chapter nav rail — hidden on mobile */}
+                    {!isMobile && <div style={{ width: isTablet ? 150 : 180, borderRight: "1px solid " + theme.divider, overflowY: "auto", flexShrink: 0, padding: "12px 0", background: theme.deepBg }}>
                       {activeMs.acts.map((a) => (
                         <div key={a.id}>
                           <div style={{ padding: "6px 14px", fontSize: 10, color: a.color, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
@@ -3722,7 +3760,7 @@ const handleCreateWorld = async () => {
                       <div style={{ padding: "12px 14px", borderTop: "1px solid " + theme.divider, marginTop: 8 }}>
                         <span onClick={() => setNovelShowGoalSet(true)} style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>🎯 {novelGoal.daily > 0 ? novelGoal.daily.toLocaleString() + " word goal" : "Set word goal"}</span>
                       </div>
-                    </div>
+                    </div>}
 
                     {/* Main editor area */}
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -3932,7 +3970,7 @@ const handleCreateWorld = async () => {
                     </div>
 
                     {/* === SPLIT PANE RIGHT SIDE === */}
-                    {novelSplitPane && (
+                    {novelSplitPane && !isMobile && (
                       <div style={{ width: 340, borderLeft: "1px solid " + theme.divider, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, background: theme.inputBg }}>
                         {/* Split pane tabs */}
                         <div style={{ padding: "8px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", gap: 4, flexShrink: 0 }}>
@@ -4132,7 +4170,7 @@ const handleCreateWorld = async () => {
                 <div style={{ marginBottom: 32 }}>
                   <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Category Modules</h3>
                   <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Toggle categories on or off to simplify your sidebar. Disabled categories are hidden from navigation but their data is preserved.</p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
                     {Object.entries(CATEGORIES).map(([cid, cat]) => {
                       const isDisabled = settings.disabledCategories.includes(cid);
                       const count = articles.filter((a) => a.category === cid).length;
@@ -4561,8 +4599,8 @@ const handleCreateWorld = async () => {
 
           {/* === ARTICLE VIEW === */}
           {view === "article" && activeArticle && (
-            <div style={{ display: "flex", gap: 0, overflow: "hidden", margin: "0 -28px", height: "calc(100vh - 56px)" }}>
-              <div style={{ flex: 1, overflowY: "auto", padding: "0 28px 40px" }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 0, overflow: isMobile ? "auto" : "hidden", margin: isMobile ? 0 : "0 -28px", height: isMobile ? "auto" : "calc(100vh - 56px)" }}>
+              <div style={{ flex: 1, overflowY: isMobile ? "visible" : "auto", padding: isMobile ? "0 0 24px" : "0 28px 40px" }}>
                 {/* Breadcrumbs */}
                 <div style={{ fontSize: 11, color: theme.textDim, marginTop: 20, marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
                   <span role="link" tabIndex={0} style={{ cursor: "pointer", color: theme.textDim }} onKeyDown={(e) => { if (e.key === "Enter") goDash(); }} onClick={goDash}>Dashboard</span><span>›</span>
@@ -4572,7 +4610,7 @@ const handleCreateWorld = async () => {
 
                 {/* Hero header */}
                 <div style={{ position: "relative", marginBottom: 24 }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                  <div style={{ display: "flex", alignItems: isMobile ? "center" : "flex-start", gap: isMobile ? 12 : 16, flexWrap: isMobile ? "wrap" : "nowrap" }}>
                     {activeArticle.portrait ? (
                       <div style={{ width: 80, height: 80, borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[activeArticle.category]?.color || theme.accent) + "40", boxShadow: "0 4px 20px rgba(0,0,0,0.4)", flexShrink: 0 }}>
                         <img src={activeArticle.portrait} alt={activeArticle.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -4583,7 +4621,7 @@ const handleCreateWorld = async () => {
                       </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeArticle.title}</h1>
+                      <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: isMobile ? 20 : 24, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeArticle.title}</h1>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                         <span style={S.catBadge(CATEGORIES[activeArticle.category]?.color)}>{CATEGORIES[activeArticle.category]?.label}</span>
                         {activeArticle.temporal && <span style={{ fontSize: 10, color: theme.textDim, padding: "2px 8px", background: ta(theme.textDim, 0.08), borderRadius: 10 }}>⏳ {activeArticle.temporal.type}{activeArticle.temporal.active_start != null ? " · Year " + activeArticle.temporal.active_start : ""}{activeArticle.temporal.active_end != null ? "–" + activeArticle.temporal.active_end : ""}{activeArticle.temporal.death_year ? " · † " + activeArticle.temporal.death_year : ""}</span>}
@@ -4701,7 +4739,7 @@ const handleCreateWorld = async () => {
               </div>
 
               {/* WORLD ANVIL–STYLE SIDEBAR */}
-              <aside aria-label="Article details" style={{ width: 300, minWidth: 300, borderLeft: "1px solid " + theme.divider, overflowY: "auto", padding: 0, background: ta(theme.deepBg, 0.4) }}>
+              <aside aria-label="Article details" style={{ width: isMobile ? "100%" : 300, minWidth: isMobile ? "auto" : 300, borderLeft: isMobile ? "none" : "1px solid " + theme.divider, borderTop: isMobile ? "1px solid " + theme.divider : "none", overflowY: "auto", padding: 0, background: ta(theme.deepBg, 0.4) }}>
 
                 {/* Portrait (large, in sidebar) */}
                 {activeArticle.portrait && (
@@ -4998,6 +5036,25 @@ const handleCreateWorld = async () => {
           </div>)}
 
         </div>
+        {/* Mobile FAB — create entry on compact screens */}
+        {isCompact && activeWorld && (view === "dashboard" || view === "codex" || view === "article") && (
+          <>
+            {showMobileFab && <div style={{ position: "fixed", inset: 0, zIndex: 950 }} onClick={() => setShowMobileFab(false)} />}
+            {showMobileFab && (
+              <div style={{ position: "fixed", bottom: 80, right: 20, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 12, padding: 8, minWidth: 200, zIndex: 951, boxShadow: "0 12px 48px rgba(0,0,0,0.7)" }}>
+                {Object.entries(CATEGORIES).map(([k, c]) => (
+                  <div key={k} onClick={() => { setShowMobileFab(false); goCreate(k); }}
+                    style={{ fontSize: 12, color: c.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10 }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                    <span style={{ fontSize: 15 }}>{c.icon}</span> {c.label}
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setShowMobileFab(!showMobileFab)} aria-label="Create new entry"
+              style={{ position: "fixed", bottom: 24, right: 20, width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, " + theme.accent + " 0%, " + ta(theme.accent, 0.7) + " 100%)", color: theme.deepBg, border: "none", fontSize: 24, cursor: "pointer", zIndex: 951, boxShadow: "0 4px 20px " + ta(theme.accent, 0.4), display: "flex", alignItems: "center", justifyContent: "center", transition: "transform 0.2s", transform: showMobileFab ? "rotate(45deg)" : "none" }}>+</button>
+          </>
+        )}
       </main>
     </div>
   );
