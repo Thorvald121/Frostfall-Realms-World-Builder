@@ -1,6 +1,7 @@
 // app/layout.jsx
 import "./themes.css";
 import { Cinzel, Inter } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const cinzel = Cinzel({
   subsets: ["latin"],
@@ -17,7 +18,10 @@ const inter = Inter({
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${cinzel.variable} ${inter.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <SpeedInsights />
+      </body>
     </html>
   );
 }
