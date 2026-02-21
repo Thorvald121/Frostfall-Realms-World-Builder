@@ -740,6 +740,7 @@ function useIntegrity(articles, settings) {
   const [integrityVisible, setIntegrityVisible] = useState(INTEGRITY_PAGE);
 
   const allConflicts = useMemo(() => detectConflicts(articles), [articles]);
+  const visibleConflicts = useMemo(() => allConflicts.filter((c) => !dismissedConflicts.has(c.id)), [allConflicts, dismissedConcflicts]);
   const conflictsFor = useCallback((id) => allConflicts.filter((c) => c.sourceId === id && !dismissedConflicts.has(c.id)), [allConflicts, dismissedConflicts]);
 
   const filterBySensitivity = useCallback((warnings) => {
@@ -758,9 +759,9 @@ function useIntegrity(articles, settings) {
     return articlesWithIssues;
   }, [articles, filterBySensitivity]);
 
-  const totalIntegrityIssues = allConflicts.length + globalIntegrity.reduce((t, a) => t + a.issues.length, 0);
+  const totalIntegrityIssues = visibleConflicts.length + globalIntegrity.reduce((t, a) => t + a.issues.length, 0);
 
-  return { allConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE };
+  return { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE };
 }
 
 // === MAIN APP ===
@@ -825,7 +826,7 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   // === CUSTOM HOOKS ===
   const { tlZoom, setTlZoom, tlSelected, setTlSelected, tlPanelOpen, setTlPanelOpen, tlData, tlRange, tlPxPerYear, yearToX, tlTotalWidth, tlTicks, tlSelectArticle, tlClosePanel, tlLaneHeights } = useTimeline(articles);
-  const { allConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE } = useIntegrity(articles, settings);
+  const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE } = useIntegrity(articles, settings);
 
   const [codexSort, setCodexSort] = useState("recent");
   // === PAGINATION ===
@@ -2638,18 +2639,18 @@ const handleCreateWorld = async () => {
             ) : (<div style={{ marginTop: 20 }}>
               <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
                 {[
-                  { n: allConflicts.filter((c) => c.severity === "error").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "error").length, 0), l: "Errors", c: "#e07050" },
-                  { n: allConflicts.filter((c) => c.severity === "warning").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "warning").length, 0), l: "Warnings", c: theme.accent },
-                  { n: new Set([...allConflicts.map((c) => c.sourceId), ...globalIntegrity.map((a) => a.article.id)]).size, l: "Articles Affected", c: "#7ec8e3" },
+                  { n: visibleConflicts.filter((c) => c.severity === "error").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "error").length, 0), l: "Errors", c: "#e07050" },
+                  { n: visibleConflicts.filter((c) => c.severity === "warning").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "warning").length, 0), l: "Warnings", c: theme.accent },
+                  { n: new Set([...visibleConflicts.map((c) => c.sourceId), ...globalIntegrity.map((a) => a.article.id)]).size, l: "Articles Affected", c: "#7ec8e3" },
                 ].map((s, i) => (
                   <div key={i} style={{ ...S.statCard, flex: "0 0 auto", padding: "14px 24px" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: s.c, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
                 ))}
               </div>
 
               {/* Cross-article temporal conflicts */}
-              {allConflicts.length > 0 && (<>
+              {visibleConflicts.length > 0 && (<>
                 <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "24px 0 12px", letterSpacing: 1 }}>⏱ Temporal Conflicts</h3>
-                {allConflicts.map((c) => (
+                {visibleConflicts.map((c) => (
                   <div key={c.id} style={{ background: ta(theme.surface, 0.5), border: "1px solid " + (c.severity === "error" ? "rgba(224,112,80,0.25)" : ta(theme.accent, 0.2)), borderLeft: "3px solid " + (c.severity === "error" ? "#e07050" : theme.accent), borderRadius: 6, padding: "16px 20px", marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                       <span style={{ fontSize: 18, color: c.severity === "error" ? "#e07050" : theme.accent }}>{c.severity === "error" ? "✕" : "⚠"}</span>
