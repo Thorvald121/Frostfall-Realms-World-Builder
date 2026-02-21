@@ -740,7 +740,7 @@ function useIntegrity(articles, settings) {
   const [integrityVisible, setIntegrityVisible] = useState(INTEGRITY_PAGE);
 
   const allConflicts = useMemo(() => detectConflicts(articles), [articles]);
-  const visibleConflicts = useMemo(() => allConflicts.filter((c) => !dismissedConflicts.has(c.id)), [allConflicts, dismissedConcflicts]);
+  const visibleConflicts = useMemo(() => allConflicts.filter((c) => !dismissedConflicts.has(c.id)), [allConflicts, dismissedConflicts]);
   const conflictsFor = useCallback((id) => allConflicts.filter((c) => c.sourceId === id && !dismissedConflicts.has(c.id)), [allConflicts, dismissedConflicts]);
 
   const filterBySensitivity = useCallback((warnings) => {
