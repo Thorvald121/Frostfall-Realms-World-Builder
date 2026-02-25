@@ -4,6 +4,7 @@ import _ from "lodash";
 import * as mammoth from "mammoth";
 import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds } from "../lib/supabase";
 import { THEMES } from "@/lib/themes";
+import { findFuzzyMatches } from "@/lib/domain/integrity";
 import { useIntegrity } from "@/features/integrity/useIntegrity";
 import { IntegrityPanel } from "@/features/integrity/IntegrityPanel";
 
@@ -194,36 +195,6 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
 }
 
 // Fuzzy match a broken ref ID against all existing articles — returns scored suggestions
-function findFuzzyMatches(brokenRefId, articles) {
-  const broken = lower(brokenRefId).replace(/_/g, " ");
-  const brokenWords = broken.split(/[\s_]+/).filter((w) => w.length >= 3);
-  const results = [];
-  articles.forEach((a) => {
-    let score = 0;
-    const titleLower = lower(a.title);
-    const idLower = lower(a.id).replace(/_/g, " ");
-    // Exact substring match in ID (azurax in azurax_the_storm_wing)
-    if (idLower.includes(broken)) score += 50;
-    else if (broken.includes(idLower)) score += 40;
-    // Exact substring match in title
-    if (titleLower.includes(broken)) score += 45;
-    else if (broken.includes(titleLower)) score += 35;
-    // Word overlap scoring
-    const titleWords = titleLower.split(/[\s_\-]+/).filter((w) => w.length >= 3);
-    brokenWords.forEach((bw) => {
-      titleWords.forEach((tw) => {
-        if (tw === bw) score += 20;
-        else if (tw.startsWith(bw) || bw.startsWith(tw)) score += 12;
-        else if (tw.includes(bw) || bw.includes(tw)) score += 8;
-      });
-    });
-    // Levenshtein-like: first word match boost (handles "azurax" vs "azurax")
-    if (brokenWords[0] && titleWords[0] && (titleWords[0].startsWith(brokenWords[0]) || brokenWords[0].startsWith(titleWords[0]))) score += 15;
-    if (score > 5) results.push({ article: a, score });
-  });
-  return results.sort((a, b) => b.score - a.score).slice(0, 5);
-}
-
 // Check a single article or form data against all existing articles for integrity violations
 function checkArticleIntegrity(data, articles, excludeId = null) {
   const warnings = [];
