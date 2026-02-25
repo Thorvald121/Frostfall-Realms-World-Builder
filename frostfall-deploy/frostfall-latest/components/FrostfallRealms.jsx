@@ -3,6 +3,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import _ from "lodash";
 import * as mammoth from "mammoth";
 import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds } from "../lib/supabase";
+import { THEMES } from "@/lib/themes";
+import { useIntegrity } from "@/features/integrity/useIntegrity";
+import { IntegrityPanel } from "@/features/integrity/IntegrityPanel";
 
 // === SAFE STRING HELPERS ===
 const safeText = (v) => (v == null ? "" : String(v));
@@ -61,13 +64,6 @@ const ta = (hex, alpha) => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
-const THEMES = {
-  dark_arcane: { name: "Dark Arcane", desc: "The original — deep blacks, gold accents", rootBg: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", sidebarBg: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", border: "#1e2a3a", divider: "#1a2435", surface: "#111827", surfaceHover: "rgba(17,24,39,0.85)", deepBg: "#0a0e1a", text: "#e2d9be", textMuted: "#a8b4c2", textDim: "#7a8da0", accent: "#f0c040", accentBg: "rgba(240,192,64,0.12)", inputBg: "#0d1117", topBarBg: "rgba(10,14,26,0.95)", cardBg: "rgba(17,24,39,0.6)" },
-  midnight_blue: { name: "Midnight Blue", desc: "Cool blues and silver — oceanic depths", rootBg: "linear-gradient(170deg, #0a1628 0%, #0f1f3a 40%, #0a1425 100%)", sidebarBg: "linear-gradient(180deg, #0c1424 0%, #0a1020 100%)", border: "#1a2d4a", divider: "#152640", surface: "#0f1f3a", surfaceHover: "rgba(15,31,58,0.85)", deepBg: "#0a1020", text: "#d8e6f4", textMuted: "#99b4d0", textDim: "#7494b8", accent: "#5ea8d0", accentBg: "rgba(94,168,208,0.12)", inputBg: "#0a1628", topBarBg: "rgba(10,22,40,0.95)", cardBg: "rgba(15,31,58,0.6)" },
-  parchment: { name: "Parchment Light", desc: "Warm cream and ink — like aged paper", rootBg: "linear-gradient(170deg, #f5f0e8 0%, #ece4d4 40%, #f0ead8 100%)", sidebarBg: "linear-gradient(180deg, #e8e0d0 0%, #ddd4c4 100%)", border: "#c8b898", divider: "#d5cbb0", surface: "#f5f0e8", surfaceHover: "rgba(220,210,190,0.5)", deepBg: "#e8e0d0", text: "#2a2010", textMuted: "#50442e", textDim: "#70624c", accent: "#8b6914", accentBg: "rgba(139,105,20,0.12)", inputBg: "#faf6f0", topBarBg: "rgba(245,240,232,0.96)", cardBg: "rgba(236,228,212,0.6)" },
-  frostfall_ice: { name: "Frostfall Ice", desc: "Glacier blues, cold steel accents", rootBg: "linear-gradient(170deg, #06121f 0%, #0a1b2d 45%, #07101b 100%)", sidebarBg: "linear-gradient(180deg, #071628 0%, #05101e 100%)", border: "#1c3450", divider: "#162a42", surface: "#0a1b2d", surfaceHover: "rgba(10,27,45,0.88)", deepBg: "#05101e", text: "#e2edf8", textMuted: "#b4cde2", textDim: "#8aabca", accent: "#7dd3fc", accentBg: "rgba(125,211,252,0.14)", inputBg: "#06121f", topBarBg: "rgba(6,18,31,0.95)", cardBg: "rgba(10,27,45,0.62)" },
-  emberforge: { name: "Emberforge", desc: "Charcoal + ember orange, forge-lit UI", rootBg: "linear-gradient(170deg, #120a0a 0%, #1a1010 40%, #0e0a0a 100%)", sidebarBg: "linear-gradient(180deg, #140c0c 0%, #0f0a0a 100%)", border: "#3a2622", divider: "#2e1e1a", surface: "#1a1010", surfaceHover: "rgba(26,16,16,0.88)", deepBg: "#0f0a0a", text: "#f4eadc", textMuted: "#d4bfa4", textDim: "#aa8e74", accent: "#fb923c", accentBg: "rgba(251,146,60,0.14)", inputBg: "#120a0a", topBarBg: "rgba(18,10,10,0.95)", cardBg: "rgba(26,16,16,0.62)" },
-};
 const FONT_SIZES = { compact: 0.88, default: 1.0, large: 1.14 };
 const EDITOR_FONTS = {
   georgia: "'Georgia', serif",
@@ -732,37 +728,7 @@ function useTimeline(articles) {
 }
 
 // --- useIntegrity: conflict detection, integrity scanning, sensitivity filter ---
-function useIntegrity(articles, settings) {
-  const [dismissedConflicts, setDismissedConflicts] = useState(new Set());
-  const [dismissedTemporals, setDismissedTemporals] = useState(new Set());
-  const [integrityGate, setIntegrityGate] = useState(null);
-  const INTEGRITY_PAGE = 20;
-  const [integrityVisible, setIntegrityVisible] = useState(INTEGRITY_PAGE);
 
-  const allConflicts = useMemo(() => detectConflicts(articles), [articles]);
-  const visibleConflicts = useMemo(() => allConflicts.filter((c) => !dismissedConflicts.has(c.id)), [allConflicts, dismissedConflicts]);
-  const conflictsFor = useCallback((id) => allConflicts.filter((c) => c.sourceId === id && !dismissedConflicts.has(c.id)), [allConflicts, dismissedConflicts]);
-
-  const filterBySensitivity = useCallback((warnings) => {
-    if (settings.integritySensitivity === "strict") return warnings;
-    if (settings.integritySensitivity === "relaxed") return warnings.filter((w) => w.severity === "error" || w.type === "duplicate");
-    return warnings;
-  }, [settings.integritySensitivity]);
-
-  const globalIntegrity = useMemo(() => {
-    const articlesWithIssues = [];
-    articles.forEach((a) => {
-      const issues = filterBySensitivity(checkArticleIntegrity(a, articles, a.id));
-      const serious = issues.filter((w) => w.severity === "error" || w.severity === "warning");
-      if (serious.length > 0) articlesWithIssues.push({ article: a, issues: serious });
-    });
-    return articlesWithIssues;
-  }, [articles, filterBySensitivity]);
-
-  const totalIntegrityIssues = visibleConflicts.length + globalIntegrity.reduce((t, a) => t + a.issues.length, 0);
-
-  return { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE };
-}
 
 // === MAIN APP ===
 export default function FrostfallRealms({ user, onLogout }) {
@@ -826,7 +792,7 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   // === CUSTOM HOOKS ===
   const { tlZoom, setTlZoom, tlSelected, setTlSelected, tlPanelOpen, setTlPanelOpen, tlData, tlRange, tlPxPerYear, yearToX, tlTotalWidth, tlTicks, tlSelectArticle, tlClosePanel, tlLaneHeights } = useTimeline(articles);
-  const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE } = useIntegrity(articles, settings);
+  const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE } = useIntegrity(articles, settings, { detectConflicts, checkArticleIntegrity });
 
   const [codexSort, setCodexSort] = useState("recent");
   // === PAGINATION ===
@@ -2626,89 +2592,30 @@ const handleCreateWorld = async () => {
           </div>)}
   </>);
 
-  const renderIntegrity = () => (<>
-          {/* === LORE INTEGRITY PAGE === */}
-          {view === "integrity" && (<div>
-            <div style={{ marginTop: 24, marginBottom: 20 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: "#e07050", margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>🛡 Lore Integrity Report</h2>
-              <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>Full integrity scan across the codex — temporal conflicts, broken references, contradictions, and missing data.</p>
-            </div>
-            <Ornament width={300} />
-            {totalIntegrityIssues === 0 ? (
-              <div style={{ textAlign: "center", padding: 60, color: "#8ec8a0" }}><div style={{ fontSize: 40, marginBottom: 12 }}>✓</div><p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Canon Conflicts Detected</p><p style={{ fontSize: 12, color: theme.textDim }}>All articles passed integrity checks.</p></div>
-            ) : (<div style={{ marginTop: 20 }}>
-              <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-                {[
-                  { n: visibleConflicts.filter((c) => c.severity === "error").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "error").length, 0), l: "Errors", c: "#e07050" },
-                  { n: visibleConflicts.filter((c) => c.severity === "warning").length + globalIntegrity.reduce((t, a) => t + a.issues.filter((w) => w.severity === "warning").length, 0), l: "Warnings", c: theme.accent },
-                  { n: new Set([...visibleConflicts.map((c) => c.sourceId), ...globalIntegrity.map((a) => a.article.id)]).size, l: "Articles Affected", c: "#7ec8e3" },
-                ].map((s, i) => (
-                  <div key={i} style={{ ...S.statCard, flex: "0 0 auto", padding: "14px 24px" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: s.c, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
-                ))}
-              </div>
+  const renderIntegrity = () => {
+  if (view !== "integrity") return null;
+  return (
+    <IntegrityPanel
+      theme={theme}
+      visibleConflicts={visibleConflicts}
+      globalIntegrity={globalIntegrity}
+      totalIntegrityIssues={totalIntegrityIssues}
+      integrityVisible={integrityVisible}
+      INTEGRITY_PAGE={INTEGRITY_PAGE}
+      setIntegrityVisible={setIntegrityVisible}
+      setDismissedConflicts={setDismissedConflicts}
+      navigate={navigate}
+      goEdit={goEdit}
+      Ornament={Ornament}
+      S={S}
+      ta={ta}
+      CATEGORIES={CATEGORIES}
+      tBtnS={tBtnS}
+    />
+  );
+};
 
-              {/* Cross-article temporal conflicts */}
-              {visibleConflicts.length > 0 && (<>
-                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "24px 0 12px", letterSpacing: 1 }}>⏱ Temporal Conflicts</h3>
-                {visibleConflicts.map((c) => (
-                  <div key={c.id} style={{ background: ta(theme.surface, 0.5), border: "1px solid " + (c.severity === "error" ? "rgba(224,112,80,0.25)" : ta(theme.accent, 0.2)), borderLeft: "3px solid " + (c.severity === "error" ? "#e07050" : theme.accent), borderRadius: 6, padding: "16px 20px", marginBottom: 10 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                      <span style={{ fontSize: 18, color: c.severity === "error" ? "#e07050" : theme.accent }}>{c.severity === "error" ? "✕" : "⚠"}</span>
-                      <div style={{ flex: 1 }}>
-                        <span style={S.catBadge(c.severity === "error" ? "#e07050" : theme.accent)}>{c.severity} · Temporal Conflict</span>
-                        <p style={{ fontSize: 13, color: theme.text, margin: "8px 0", lineHeight: 1.6 }}>{c.message}</p>
-                        <p style={{ fontSize: 12, color: theme.textMuted, margin: 0, fontStyle: "italic" }}>💡 {c.suggestion}</p>
-                        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                          <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "4px 12px", background: "rgba(126,200,227,0.1)", borderRadius: 12 }} onClick={() => navigate(c.sourceId)}>View "{c.sourceTitle}" →</span>
-                          <span style={{ fontSize: 11, color: theme.accent, cursor: "pointer", padding: "4px 12px", background: ta(theme.accent, 0.1), borderRadius: 12 }} onClick={() => navigate(c.targetId)}>View "{c.targetTitle}" →</span>
-                          <span style={{ fontSize: 11, color: theme.textDim, cursor: "pointer", padding: "4px 12px", background: "rgba(85,102,119,0.1)", borderRadius: 12 }} onClick={() => setDismissedConflicts((p) => new Set([...p, c.id]))}>Dismiss</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </>)}
-
-              {/* Per-article integrity issues */}
-              {globalIntegrity.length > 0 && (<>
-                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "24px 0 12px", letterSpacing: 1 }}>📋 Article Integrity Issues <span style={{ fontWeight: 400, fontSize: 11, color: theme.textDim }}>({globalIntegrity.length} articles{globalIntegrity.length > integrityVisible ? " · showing " + integrityVisible : ""})</span></h3>
-                {globalIntegrity.slice(0, integrityVisible).map(({ article: a, issues }) => (
-                  <div key={a.id} style={{ background: ta(theme.surface, 0.5), border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: "14px 18px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }}
-                    onClick={() => navigate(a.id)}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); e.currentTarget.style.borderColor = "rgba(224,112,80,0.35)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); e.currentTarget.style.borderColor = "rgba(224,112,80,0.15)"; }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                      <span style={{ color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{a.title}</span>
-                      <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
-                      <span style={{ ...S.catBadge("#e07050"), marginLeft: "auto" }}>{issues.length} issue{issues.length !== 1 ? "s" : ""}</span>
-                    </div>
-                    {issues.map((w, i) => (
-                      <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0 5px 28px", fontSize: 12, alignItems: "center" }}>
-                        <span style={{ color: w.severity === "error" ? "#e07050" : theme.accent }}>{w.severity === "error" ? "🔴" : "🟡"}</span>
-                        <span style={{ color: theme.textMuted, flex: 1 }}>{w.message}</span>
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
-                      <span style={{ fontSize: 11, color: "#7ec8e3", cursor: "pointer", padding: "3px 10px", background: "rgba(126,200,227,0.08)", borderRadius: 12 }} onClick={(e) => { e.stopPropagation(); navigate(a.id); }}>View article →</span>
-                      <span style={{ fontSize: 11, color: theme.accent, cursor: "pointer", padding: "3px 10px", background: ta(theme.accent, 0.08), borderRadius: 12 }} onClick={(e) => { e.stopPropagation(); goEdit(a); }}>Edit article →</span>
-                    </div>
-                  </div>
-                ))}
-                {globalIntegrity.length > integrityVisible && (
-                  <div style={{ textAlign: "center", padding: "12px 0" }}>
-                    <button onClick={() => setIntegrityVisible((v) => v + INTEGRITY_PAGE)}
-                      style={{ ...tBtnS, padding: "8px 24px", fontSize: 11, borderRadius: 8 }}>
-                      Show more ({globalIntegrity.length - integrityVisible} remaining)
-                    </button>
-                  </div>
-                )}
-              </>)}
-            </div>)}
-          </div>)}
-  </>);
-
-  const renderArchives = () => (<>
+const renderArchives = () => (<>
           {/* === ARCHIVES === */}
           {view === "archives" && (<div>
             <div style={{ marginTop: 24, marginBottom: 20 }}>

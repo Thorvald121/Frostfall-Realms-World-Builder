@@ -1,0 +1,25 @@
+.
+├── app
+│   ├── api
+│   ├── layout.jsx
+│   ├── page.jsx
+│   └── themes.css
+├── components
+│   ├── AuthGate.jsx
+│   ├── FrostfallRealms.jsx
+│   └── ThemeSelect.jsx
+├── jsconfig.json
+├── lib
+│   ├── supabase.js
+│   └── themes.js
+├── next.config.js
+├── package-lock.json
+├── package.json
+├── pnpm-lock.yaml
+├── postcss.config.js
+├── structure.txt
+├── supabase
+│   └── schema.sql
+└── tailwind.config.js
+
+6 directories, 17 files

@@ -1,0 +1,518 @@
+.
+├── _dir_structure.txt
+├── .DS_Store
+├── .env.example
+├── .gitignore
+├── .next
+│   └── dev
+│       ├── build
+│       │   ├── chunks
+│       │   ├── package.json
+│       │   ├── postcss.js
+│       │   └── postcss.js.map
+│       ├── build-manifest.json
+│       ├── cache
+│       │   ├── .rscinfo
+│       │   ├── next-devtools-config.json
+│       │   └── turbopack
+│       ├── fallback-build-manifest.json
+│       ├── lock
+│       ├── logs
+│       │   └── next-development.log
+│       ├── package.json
+│       ├── prerender-manifest.json
+│       ├── routes-manifest.json
+│       ├── server
+│       │   ├── app
+│       │   ├── app-paths-manifest.json
+│       │   ├── chunks
+│       │   ├── interception-route-rewrite-manifest.js
+│       │   ├── middleware-build-manifest.js
+│       │   ├── middleware-manifest.json
+│       │   ├── next-font-manifest.js
+│       │   ├── next-font-manifest.json
+│       │   ├── pages-manifest.json
+│       │   ├── server-reference-manifest.js
+│       │   └── server-reference-manifest.json
+│       ├── static
+│       │   ├── chunks
+│       │   ├── development
+│       │   └── media
+│       ├── trace
+│       └── types
+│           └── routes.d.ts
+├── .npmrc
+├── .vade-report
+├── app
+│   ├── .DS_Store
+│   ├── api
+│   │   ├── .DS_Store
+│   │   └── ai-import
+│   │       └── route.js
+│   ├── layout.jsx
+│   ├── page.jsx
+│   └── themes.css
+├── components
+│   ├── AuthGate.jsx
+│   ├── FrostfallRealms.jsx
+│   └── ThemeSelect.jsx
+├── features
+│   ├── .DS_Store
+│   ├── codex
+│   └── integrity
+│       ├── IntegrityPanel.jsx
+│       └── useIntegrity.js
+├── jsconfig.json
+├── lib
+│   ├── domain
+│   │   └── integrity.js
+│   ├── supabase.js
+│   ├── themes.js
+│   └── ui
+├── next.config.js
+├── node_modules
+│   ├── .bin
+│   │   ├── autoprefixer
+│   │   ├── mammoth
+│   │   ├── next
+│   │   ├── only-allow
+│   │   ├── tailwind
+│   │   └── tailwindcss
+│   ├── .modules.yaml
+│   ├── .pnpm
+│   │   ├── @alloc+quick-lru@5.2.0
+│   │   │   └── node_modules
+│   │   ├── @img+colour@1.0.0
+│   │   │   └── node_modules
+│   │   ├── @img+sharp-darwin-arm64@0.34.5
+│   │   │   └── node_modules
+│   │   ├── @img+sharp-libvips-darwin-arm64@1.2.4
+│   │   │   └── node_modules
+│   │   ├── @jridgewell+gen-mapping@0.3.13
+│   │   │   └── node_modules
+│   │   ├── @jridgewell+resolve-uri@3.1.2
+│   │   │   └── node_modules
+│   │   ├── @jridgewell+sourcemap-codec@1.5.5
+│   │   │   └── node_modules
+│   │   ├── @jridgewell+trace-mapping@0.3.31
+│   │   │   └── node_modules
+│   │   ├── @next+env@16.1.6
+│   │   │   └── node_modules
+│   │   ├── @next+swc-darwin-arm64@16.1.6
+│   │   │   └── node_modules
+│   │   ├── @nodelib+fs.scandir@2.1.5
+│   │   │   └── node_modules
+│   │   ├── @nodelib+fs.stat@2.0.5
+│   │   │   └── node_modules
+│   │   ├── @nodelib+fs.walk@1.2.8
+│   │   │   └── node_modules
+│   │   ├── @supabase+auth-js@2.97.0
+│   │   │   └── node_modules
+│   │   ├── @supabase+functions-js@2.97.0
+│   │   │   └── node_modules
+│   │   ├── @supabase+postgrest-js@2.97.0
+│   │   │   └── node_modules
+│   │   ├── @supabase+realtime-js@2.97.0
+│   │   │   └── node_modules
+│   │   ├── @supabase+ssr@0.5.2_@supabase+supabase-js@2.97.0
+│   │   │   └── node_modules
+│   │   ├── @supabase+storage-js@2.97.0
+│   │   │   └── node_modules
+│   │   ├── @supabase+supabase-js@2.97.0
+│   │   │   └── node_modules
+│   │   ├── @swc+helpers@0.5.15
+│   │   │   └── node_modules
+│   │   ├── @types+cookie@0.6.0
+│   │   │   └── node_modules
+│   │   ├── @types+node@25.2.3
+│   │   │   └── node_modules
+│   │   ├── @types+phoenix@1.6.7
+│   │   │   └── node_modules
+│   │   ├── @types+ws@8.18.1
+│   │   │   └── node_modules
+│   │   ├── @vercel+analytics@1.6.1_next@16.1.6_react-dom@19.2.4_react@19.2.4__react@19.2.4__react@19.2.4
+│   │   │   └── node_modules
+│   │   ├── @vercel+speed-insights@1.3.1_next@16.1.6_react-dom@19.2.4_react@19.2.4__react@19.2.4__react@19.2.4
+│   │   │   └── node_modules
+│   │   ├── @xmldom+xmldom@0.8.11
+│   │   │   └── node_modules
+│   │   ├── any-promise@1.3.0
+│   │   │   └── node_modules
+│   │   ├── anymatch@3.1.3
+│   │   │   └── node_modules
+│   │   ├── arg@5.0.2
+│   │   │   └── node_modules
+│   │   ├── argparse@1.0.10
+│   │   │   └── node_modules
+│   │   ├── autoprefixer@10.4.24_postcss@8.5.6
+│   │   │   └── node_modules
+│   │   ├── base64-js@1.5.1
+│   │   │   └── node_modules
+│   │   ├── baseline-browser-mapping@2.9.19
+│   │   │   └── node_modules
+│   │   ├── binary-extensions@2.3.0
+│   │   │   └── node_modules
+│   │   ├── bluebird@3.4.7
+│   │   │   └── node_modules
+│   │   ├── braces@3.0.3
+│   │   │   └── node_modules
+│   │   ├── browserslist@4.28.1
+│   │   │   └── node_modules
+│   │   ├── camelcase-css@2.0.1
+│   │   │   └── node_modules
+│   │   ├── caniuse-lite@1.0.30001769
+│   │   │   └── node_modules
+│   │   ├── chokidar@3.6.0
+│   │   │   └── node_modules
+│   │   ├── client-only@0.0.1
+│   │   │   └── node_modules
+│   │   ├── commander@4.1.1
+│   │   │   └── node_modules
+│   │   ├── cookie@0.7.2
+│   │   │   └── node_modules
+│   │   ├── core-util-is@1.0.3
+│   │   │   └── node_modules
+│   │   ├── cssesc@3.0.0
+│   │   │   └── node_modules
+│   │   ├── detect-libc@2.1.2
+│   │   │   └── node_modules
+│   │   ├── didyoumean@1.2.2
+│   │   │   └── node_modules
+│   │   ├── dingbat-to-unicode@1.0.1
+│   │   │   └── node_modules
+│   │   ├── dlv@1.1.3
+│   │   │   └── node_modules
+│   │   ├── duck@0.1.12
+│   │   │   └── node_modules
+│   │   ├── electron-to-chromium@1.5.286
+│   │   │   └── node_modules
+│   │   ├── escalade@3.2.0
+│   │   │   └── node_modules
+│   │   ├── fast-glob@3.3.3
+│   │   │   └── node_modules
+│   │   ├── fastq@1.20.1
+│   │   │   └── node_modules
+│   │   ├── fdir@6.5.0_picomatch@4.0.3
+│   │   │   └── node_modules
+│   │   ├── fill-range@7.1.1
+│   │   │   └── node_modules
+│   │   ├── fraction.js@5.3.4
+│   │   │   └── node_modules
+│   │   ├── fsevents@2.3.3
+│   │   │   └── node_modules
+│   │   ├── function-bind@1.1.2
+│   │   │   └── node_modules
+│   │   ├── glob-parent@5.1.2
+│   │   │   └── node_modules
+│   │   ├── glob-parent@6.0.2
+│   │   │   └── node_modules
+│   │   ├── hasown@2.0.2
+│   │   │   └── node_modules
+│   │   ├── iceberg-js@0.8.1
+│   │   │   └── node_modules
+│   │   ├── immediate@3.0.6
+│   │   │   └── node_modules
+│   │   ├── inherits@2.0.4
+│   │   │   └── node_modules
+│   │   ├── is-binary-path@2.1.0
+│   │   │   └── node_modules
+│   │   ├── is-core-module@2.16.1
+│   │   │   └── node_modules
+│   │   ├── is-extglob@2.1.1
+│   │   │   └── node_modules
+│   │   ├── is-glob@4.0.3
+│   │   │   └── node_modules
+│   │   ├── is-number@7.0.0
+│   │   │   └── node_modules
+│   │   ├── isarray@1.0.0
+│   │   │   └── node_modules
+│   │   ├── jiti@1.21.7
+│   │   │   └── node_modules
+│   │   ├── jszip@3.10.1
+│   │   │   └── node_modules
+│   │   ├── lie@3.3.0
+│   │   │   └── node_modules
+│   │   ├── lilconfig@3.1.3
+│   │   │   └── node_modules
+│   │   ├── lines-and-columns@1.2.4
+│   │   │   └── node_modules
+│   │   ├── lock.yaml
+│   │   ├── lodash@4.17.23
+│   │   │   └── node_modules
+│   │   ├── lop@0.4.2
+│   │   │   └── node_modules
+│   │   ├── mammoth@1.11.0
+│   │   │   └── node_modules
+│   │   ├── merge2@1.4.1
+│   │   │   └── node_modules
+│   │   ├── micromatch@4.0.8
+│   │   │   └── node_modules
+│   │   ├── mz@2.7.0
+│   │   │   └── node_modules
+│   │   ├── nanoid@3.3.11
+│   │   │   └── node_modules
+│   │   ├── next@16.1.6_react-dom@19.2.4_react@19.2.4__react@19.2.4
+│   │   │   └── node_modules
+│   │   ├── node_modules
+│   │   │   ├── .bin
+│   │   │   ├── @alloc
+│   │   │   ├── @img
+│   │   │   ├── @jridgewell
+│   │   │   ├── @next
+│   │   │   ├── @nodelib
+│   │   │   ├── @supabase
+│   │   │   ├── @swc
+│   │   │   ├── @types
+│   │   │   ├── @xmldom
+│   │   │   ├── any-promise -> ../any-promise@1.3.0/node_modules/any-promise
+│   │   │   ├── anymatch -> ../anymatch@3.1.3/node_modules/anymatch
+│   │   │   ├── arg -> ../arg@5.0.2/node_modules/arg
+│   │   │   ├── argparse -> ../argparse@1.0.10/node_modules/argparse
+│   │   │   ├── base64-js -> ../base64-js@1.5.1/node_modules/base64-js
+│   │   │   ├── baseline-browser-mapping -> ../baseline-browser-mapping@2.9.19/node_modules/baseline-browser-mapping
+│   │   │   ├── binary-extensions -> ../binary-extensions@2.3.0/node_modules/binary-extensions
+│   │   │   ├── bluebird -> ../bluebird@3.4.7/node_modules/bluebird
+│   │   │   ├── braces -> ../braces@3.0.3/node_modules/braces
+│   │   │   ├── browserslist -> ../browserslist@4.28.1/node_modules/browserslist
+│   │   │   ├── camelcase-css -> ../camelcase-css@2.0.1/node_modules/camelcase-css
+│   │   │   ├── caniuse-lite -> ../caniuse-lite@1.0.30001769/node_modules/caniuse-lite
+│   │   │   ├── chokidar -> ../chokidar@3.6.0/node_modules/chokidar
+│   │   │   ├── client-only -> ../client-only@0.0.1/node_modules/client-only
+│   │   │   ├── commander -> ../commander@4.1.1/node_modules/commander
+│   │   │   ├── cookie -> ../cookie@0.7.2/node_modules/cookie
+│   │   │   ├── core-util-is -> ../core-util-is@1.0.3/node_modules/core-util-is
+│   │   │   ├── cssesc -> ../cssesc@3.0.0/node_modules/cssesc
+│   │   │   ├── detect-libc -> ../detect-libc@2.1.2/node_modules/detect-libc
+│   │   │   ├── didyoumean -> ../didyoumean@1.2.2/node_modules/didyoumean
+│   │   │   ├── dingbat-to-unicode -> ../dingbat-to-unicode@1.0.1/node_modules/dingbat-to-unicode
+│   │   │   ├── dlv -> ../dlv@1.1.3/node_modules/dlv
+│   │   │   ├── duck -> ../duck@0.1.12/node_modules/duck
+│   │   │   ├── electron-to-chromium -> ../electron-to-chromium@1.5.286/node_modules/electron-to-chromium
+│   │   │   ├── escalade -> ../escalade@3.2.0/node_modules/escalade
+│   │   │   ├── fast-glob -> ../fast-glob@3.3.3/node_modules/fast-glob
+│   │   │   ├── fastq -> ../fastq@1.20.1/node_modules/fastq
+│   │   │   ├── fdir -> ../fdir@6.5.0_picomatch@4.0.3/node_modules/fdir
+│   │   │   ├── fill-range -> ../fill-range@7.1.1/node_modules/fill-range
+│   │   │   ├── fraction.js -> ../fraction.js@5.3.4/node_modules/fraction.js
+│   │   │   ├── fsevents -> ../fsevents@2.3.3/node_modules/fsevents
+│   │   │   ├── function-bind -> ../function-bind@1.1.2/node_modules/function-bind
+│   │   │   ├── glob-parent -> ../glob-parent@6.0.2/node_modules/glob-parent
+│   │   │   ├── hasown -> ../hasown@2.0.2/node_modules/hasown
+│   │   │   ├── iceberg-js -> ../iceberg-js@0.8.1/node_modules/iceberg-js
+│   │   │   ├── immediate -> ../immediate@3.0.6/node_modules/immediate
+│   │   │   ├── inherits -> ../inherits@2.0.4/node_modules/inherits
+│   │   │   ├── is-binary-path -> ../is-binary-path@2.1.0/node_modules/is-binary-path
+│   │   │   ├── is-core-module -> ../is-core-module@2.16.1/node_modules/is-core-module
+│   │   │   ├── is-extglob -> ../is-extglob@2.1.1/node_modules/is-extglob
+│   │   │   ├── is-glob -> ../is-glob@4.0.3/node_modules/is-glob
+│   │   │   ├── is-number -> ../is-number@7.0.0/node_modules/is-number
+│   │   │   ├── isarray -> ../isarray@1.0.0/node_modules/isarray
+│   │   │   ├── jiti -> ../jiti@1.21.7/node_modules/jiti
+│   │   │   ├── jszip -> ../jszip@3.10.1/node_modules/jszip
+│   │   │   ├── lie -> ../lie@3.3.0/node_modules/lie
+│   │   │   ├── lilconfig -> ../lilconfig@3.1.3/node_modules/lilconfig
+│   │   │   ├── lines-and-columns -> ../lines-and-columns@1.2.4/node_modules/lines-and-columns
+│   │   │   ├── lop -> ../lop@0.4.2/node_modules/lop
+│   │   │   ├── merge2 -> ../merge2@1.4.1/node_modules/merge2
+│   │   │   ├── micromatch -> ../micromatch@4.0.8/node_modules/micromatch
+│   │   │   ├── mz -> ../mz@2.7.0/node_modules/mz
+│   │   │   ├── nanoid -> ../nanoid@3.3.11/node_modules/nanoid
+│   │   │   ├── node-releases -> ../node-releases@2.0.27/node_modules/node-releases
+│   │   │   ├── normalize-path -> ../normalize-path@3.0.0/node_modules/normalize-path
+│   │   │   ├── object-assign -> ../object-assign@4.1.1/node_modules/object-assign
+│   │   │   ├── object-hash -> ../object-hash@3.0.0/node_modules/object-hash
+│   │   │   ├── option -> ../option@0.2.4/node_modules/option
+│   │   │   ├── pako -> ../pako@1.0.11/node_modules/pako
+│   │   │   ├── path-is-absolute -> ../path-is-absolute@1.0.1/node_modules/path-is-absolute
+│   │   │   ├── path-parse -> ../path-parse@1.0.7/node_modules/path-parse
+│   │   │   ├── picocolors -> ../picocolors@1.1.1/node_modules/picocolors
+│   │   │   ├── picomatch -> ../picomatch@2.3.1/node_modules/picomatch
+│   │   │   ├── pify -> ../pify@2.3.0/node_modules/pify
+│   │   │   ├── pirates -> ../pirates@4.0.7/node_modules/pirates
+│   │   │   ├── postcss-import -> ../postcss-import@15.1.0_postcss@8.5.6/node_modules/postcss-import
+│   │   │   ├── postcss-js -> ../postcss-js@4.1.0_postcss@8.5.6/node_modules/postcss-js
+│   │   │   ├── postcss-load-config -> ../postcss-load-config@6.0.1_jiti@1.21.7_postcss@8.5.6/node_modules/postcss-load-config
+│   │   │   ├── postcss-nested -> ../postcss-nested@6.2.0_postcss@8.5.6/node_modules/postcss-nested
+│   │   │   ├── postcss-selector-parser -> ../postcss-selector-parser@6.1.2/node_modules/postcss-selector-parser
+│   │   │   ├── postcss-value-parser -> ../postcss-value-parser@4.2.0/node_modules/postcss-value-parser
+│   │   │   ├── process-nextick-args -> ../process-nextick-args@2.0.1/node_modules/process-nextick-args
+│   │   │   ├── queue-microtask -> ../queue-microtask@1.2.3/node_modules/queue-microtask
+│   │   │   ├── read-cache -> ../read-cache@1.0.0/node_modules/read-cache
+│   │   │   ├── readable-stream -> ../readable-stream@2.3.8/node_modules/readable-stream
+│   │   │   ├── readdirp -> ../readdirp@3.6.0/node_modules/readdirp
+│   │   │   ├── resolve -> ../resolve@1.22.11/node_modules/resolve
+│   │   │   ├── reusify -> ../reusify@1.1.0/node_modules/reusify
+│   │   │   ├── run-parallel -> ../run-parallel@1.2.0/node_modules/run-parallel
+│   │   │   ├── safe-buffer -> ../safe-buffer@5.1.2/node_modules/safe-buffer
+│   │   │   ├── scheduler -> ../scheduler@0.27.0/node_modules/scheduler
+│   │   │   ├── semver -> ../semver@7.7.4/node_modules/semver
+│   │   │   ├── setimmediate -> ../setimmediate@1.0.5/node_modules/setimmediate
+│   │   │   ├── sharp -> ../sharp@0.34.5/node_modules/sharp
+│   │   │   ├── source-map-js -> ../source-map-js@1.2.1/node_modules/source-map-js
+│   │   │   ├── sprintf-js -> ../sprintf-js@1.0.3/node_modules/sprintf-js
+│   │   │   ├── string_decoder -> ../string_decoder@1.1.1/node_modules/string_decoder
+│   │   │   ├── styled-jsx -> ../styled-jsx@5.1.6_react@19.2.4/node_modules/styled-jsx
+│   │   │   ├── sucrase -> ../sucrase@3.35.1/node_modules/sucrase
+│   │   │   ├── supports-preserve-symlinks-flag -> ../supports-preserve-symlinks-flag@1.0.0/node_modules/supports-preserve-symlinks-flag
+│   │   │   ├── thenify -> ../thenify@3.3.1/node_modules/thenify
+│   │   │   ├── thenify-all -> ../thenify-all@1.6.0/node_modules/thenify-all
+│   │   │   ├── tinyglobby -> ../tinyglobby@0.2.15/node_modules/tinyglobby
+│   │   │   ├── to-regex-range -> ../to-regex-range@5.0.1/node_modules/to-regex-range
+│   │   │   ├── ts-interface-checker -> ../ts-interface-checker@0.1.13/node_modules/ts-interface-checker
+│   │   │   ├── tslib -> ../tslib@2.8.1/node_modules/tslib
+│   │   │   ├── underscore -> ../underscore@1.13.7/node_modules/underscore
+│   │   │   ├── undici-types -> ../undici-types@7.16.0/node_modules/undici-types
+│   │   │   ├── update-browserslist-db -> ../update-browserslist-db@1.2.3_browserslist@4.28.1/node_modules/update-browserslist-db
+│   │   │   ├── util-deprecate -> ../util-deprecate@1.0.2/node_modules/util-deprecate
+│   │   │   ├── which-pm-runs -> ../which-pm-runs@1.1.0/node_modules/which-pm-runs
+│   │   │   ├── ws -> ../ws@8.19.0/node_modules/ws
+│   │   │   └── xmlbuilder -> ../xmlbuilder@10.1.1/node_modules/xmlbuilder
+│   │   ├── node-releases@2.0.27
+│   │   │   └── node_modules
+│   │   ├── normalize-path@3.0.0
+│   │   │   └── node_modules
+│   │   ├── object-assign@4.1.1
+│   │   │   └── node_modules
+│   │   ├── object-hash@3.0.0
+│   │   │   └── node_modules
+│   │   ├── only-allow@1.2.2
+│   │   │   └── node_modules
+│   │   ├── option@0.2.4
+│   │   │   └── node_modules
+│   │   ├── pako@1.0.11
+│   │   │   └── node_modules
+│   │   ├── path-is-absolute@1.0.1
+│   │   │   └── node_modules
+│   │   ├── path-parse@1.0.7
+│   │   │   └── node_modules
+│   │   ├── picocolors@1.1.1
+│   │   │   └── node_modules
+│   │   ├── picomatch@2.3.1
+│   │   │   └── node_modules
+│   │   ├── picomatch@4.0.3
+│   │   │   └── node_modules
+│   │   ├── pify@2.3.0
+│   │   │   └── node_modules
+│   │   ├── pirates@4.0.7
+│   │   │   └── node_modules
+│   │   ├── postcss-import@15.1.0_postcss@8.5.6
+│   │   │   └── node_modules
+│   │   ├── postcss-js@4.1.0_postcss@8.5.6
+│   │   │   └── node_modules
+│   │   ├── postcss-load-config@6.0.1_jiti@1.21.7_postcss@8.5.6
+│   │   │   └── node_modules
+│   │   ├── postcss-nested@6.2.0_postcss@8.5.6
+│   │   │   └── node_modules
+│   │   ├── postcss-selector-parser@6.1.2
+│   │   │   └── node_modules
+│   │   ├── postcss-value-parser@4.2.0
+│   │   │   └── node_modules
+│   │   ├── postcss@8.4.31
+│   │   │   └── node_modules
+│   │   ├── postcss@8.5.6
+│   │   │   └── node_modules
+│   │   ├── process-nextick-args@2.0.1
+│   │   │   └── node_modules
+│   │   ├── queue-microtask@1.2.3
+│   │   │   └── node_modules
+│   │   ├── react-dom@19.2.4_react@19.2.4
+│   │   │   └── node_modules
+│   │   ├── react@19.2.4
+│   │   │   └── node_modules
+│   │   ├── read-cache@1.0.0
+│   │   │   └── node_modules
+│   │   ├── readable-stream@2.3.8
+│   │   │   └── node_modules
+│   │   ├── readdirp@3.6.0
+│   │   │   └── node_modules
+│   │   ├── resolve@1.22.11
+│   │   │   └── node_modules
+│   │   ├── reusify@1.1.0
+│   │   │   └── node_modules
+│   │   ├── run-parallel@1.2.0
+│   │   │   └── node_modules
+│   │   ├── safe-buffer@5.1.2
+│   │   │   └── node_modules
+│   │   ├── scheduler@0.27.0
+│   │   │   └── node_modules
+│   │   ├── semver@7.7.4
+│   │   │   └── node_modules
+│   │   ├── setimmediate@1.0.5
+│   │   │   └── node_modules
+│   │   ├── sharp@0.34.5
+│   │   │   └── node_modules
+│   │   ├── source-map-js@1.2.1
+│   │   │   └── node_modules
+│   │   ├── sprintf-js@1.0.3
+│   │   │   └── node_modules
+│   │   ├── string_decoder@1.1.1
+│   │   │   └── node_modules
+│   │   ├── styled-jsx@5.1.6_react@19.2.4
+│   │   │   └── node_modules
+│   │   ├── sucrase@3.35.1
+│   │   │   └── node_modules
+│   │   ├── supports-preserve-symlinks-flag@1.0.0
+│   │   │   └── node_modules
+│   │   ├── tailwindcss@3.4.19
+│   │   │   └── node_modules
+│   │   ├── thenify-all@1.6.0
+│   │   │   └── node_modules
+│   │   ├── thenify@3.3.1
+│   │   │   └── node_modules
+│   │   ├── tinyglobby@0.2.15
+│   │   │   └── node_modules
+│   │   ├── to-regex-range@5.0.1
+│   │   │   └── node_modules
+│   │   ├── ts-interface-checker@0.1.13
+│   │   │   └── node_modules
+│   │   ├── tslib@2.8.1
+│   │   │   └── node_modules
+│   │   ├── underscore@1.13.7
+│   │   │   └── node_modules
+│   │   ├── undici-types@7.16.0
+│   │   │   └── node_modules
+│   │   ├── update-browserslist-db@1.2.3_browserslist@4.28.1
+│   │   │   └── node_modules
+│   │   ├── util-deprecate@1.0.2
+│   │   │   └── node_modules
+│   │   ├── which-pm-runs@1.1.0
+│   │   │   └── node_modules
+│   │   ├── ws@8.19.0
+│   │   │   └── node_modules
+│   │   └── xmlbuilder@10.1.1
+│   │       └── node_modules
+│   ├── .pnpm-workspace-state-v1.json
+│   ├── @supabase
+│   │   ├── ssr -> ../.pnpm/@supabase+ssr@0.5.2_@supabase+supabase-js@2.97.0/node_modules/@supabase/ssr
+│   │   └── supabase-js -> ../.pnpm/@supabase+supabase-js@2.97.0/node_modules/@supabase/supabase-js
+│   ├── @supabase 2
+│   ├── @vercel
+│   │   ├── analytics -> ../.pnpm/@vercel+analytics@1.6.1_next@16.1.6_react-dom@19.2.4_react@19.2.4__react@19.2.4__react@19.2.4/node_modules/@vercel/analytics
+│   │   └── speed-insights -> ../.pnpm/@vercel+speed-insights@1.3.1_next@16.1.6_react-dom@19.2.4_react@19.2.4__react@19.2.4__react@19.2.4/node_modules/@vercel/speed-insights
+│   ├── @vercel 2
+│   ├── autoprefixer -> .pnpm/autoprefixer@10.4.24_postcss@8.5.6/node_modules/autoprefixer
+│   ├── autoprefixer 2 -> .pnpm/autoprefixer@10.4.24_postcss@8.5.6/node_modules/autoprefixer
+│   ├── lodash -> .pnpm/lodash@4.17.23/node_modules/lodash
+│   ├── lodash 2
+│   ├── mammoth -> .pnpm/mammoth@1.11.0/node_modules/mammoth
+│   ├── mammoth 2
+│   ├── next -> .pnpm/next@16.1.6_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/next
+│   ├── next 2
+│   ├── only-allow -> .pnpm/only-allow@1.2.2/node_modules/only-allow
+│   ├── postcss -> .pnpm/postcss@8.5.6/node_modules/postcss
+│   ├── postcss 2
+│   ├── react -> .pnpm/react@19.2.4/node_modules/react
+│   ├── react 2 -> .pnpm/react@19.2.4/node_modules/react
+│   ├── react-dom -> .pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom
+│   ├── react-dom 2 -> .pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom
+│   ├── tailwindcss -> .pnpm/tailwindcss@3.4.19/node_modules/tailwindcss
+│   └── tailwindcss 2
+├── package.json
+├── pnpm-lock.yaml
+├── postcss.config.js
+├── structure.txt
+├── supabase
+│   └── schema.sql
+└── tailwind.config.js
+
+455 directories, 61 files
