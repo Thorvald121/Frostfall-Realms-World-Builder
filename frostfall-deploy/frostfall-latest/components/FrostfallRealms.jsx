@@ -4,7 +4,8 @@ import _ from "lodash";
 import * as mammoth from "mammoth";
 import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds } from "../lib/supabase";
 import { THEMES } from "@/lib/themes";
-import { findFuzzyMatches } from "@/lib/domain/integrity";
+import { findFuzzyMatches, checkArticleIntegrity } from "@/lib/domain/integrity";
+import { buildTemporalGraph } from "@/lib/domain/truth/temporalGraph";
 import { useIntegrity } from "@/features/integrity/useIntegrity";
 import { IntegrityPanel } from "@/features/integrity/IntegrityPanel";
 
@@ -192,134 +193,6 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
     }
   });
   return suggestions.sort((a, b) => ({ exact: 3, strong: 2, possible: 1 }[b.confidence] || 0) - ({ exact: 3, strong: 2, possible: 1 }[a.confidence] || 0));
-}
-
-// Fuzzy match a broken ref ID against all existing articles — returns scored suggestions
-// Check a single article or form data against all existing articles for integrity violations
-function checkArticleIntegrity(data, articles, excludeId = null) {
-  const warnings = [];
-  const entityMap = {};
-  articles.forEach((a) => { entityMap[a.id] = a; });
-
-  const temporal = data.temporal;
-  const body = data.body || "";
-  const fields = data.fields || {};
-  const allText = body + " " + Object.values(fields).join(" ");
-
-  // 1. Broken @mentions — references to non-existent articles
-  const mentionRefs = (body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => {
-    const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/);
-    return match ? { title: match[1], id: match[2], rawMention: m, isRich: true } : null;
-  }).filter(Boolean);
-  // Legacy @id refs: only flag if they look like real article IDs (contain underscores = generated IDs)
-  const legacyRefs = (body.match(/@(?!\[)([\w]+)/g) || [])
-    .filter((m) => !m.match(/@\[/))
-    .map((m) => ({ id: m.slice(1), rawMention: m, isRich: false }))
-    .filter((ref) => {
-      if (entityMap[ref.id]) return true;
-      if (ref.id.includes("_") && ref.id.length > 5) return true;
-      return false;
-    });
-  const allRefs = [
-    ...mentionRefs.map((r) => ({ id: r.id, rawMention: r.rawMention, isRich: r.isRich })),
-    ...legacyRefs,
-  ];
-
-  allRefs.forEach((ref) => {
-    if (ref.id === excludeId) return;
-    if (!entityMap[ref.id]) {
-      const readableName = ref.id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-      const fuzzyMatches = findFuzzyMatches(ref.id, articles.filter((a) => a.id !== excludeId));
-      warnings.push({
-        type: "broken_ref", severity: "warning",
-        message: "References \"" + readableName + "\" which doesn't exist in the codex.",
-        suggestion: fuzzyMatches.length > 0 ? "Did you mean one of these? Click to fix:" : "Create the referenced article, or remove the @mention if unintended.",
-        refId: ref.id,
-        rawMention: ref.rawMention,
-        fuzzyMatches,
-      });
-    }
-  });
-
-  // 2. Temporal context notes — mentioning historical entities in prose is ALWAYS valid storytelling
-  if (temporal && temporal.active_start != null) {
-    allRefs.forEach((ref) => {
-      const target = entityMap[ref.id];
-      if (!target?.temporal || target.temporal.type === "concept") return;
-      const tt = target.temporal;
-      if (tt.type === "immortal" && !tt.active_end) return;
-      if (tt.active_end != null && temporal.active_start > tt.active_end) {
-        const discrepancy = temporal.active_start - tt.active_end;
-        warnings.push({
-          type: "temporal", severity: "info", refId: ref.id, dismissable: true,
-          message: "📅 \"" + target.title + "\" ended in Year " + tt.active_end + " — " + discrepancy + " year" + (discrepancy !== 1 ? "s" : "") + " before this entry (Year " + temporal.active_start + ").",
-          suggestion: "Timeline note: this is a historical reference in your text. Dismiss if intentional.",
-        });
-      }
-      if (tt.death_year && temporal.active_start > tt.death_year) {
-        const deathGap = temporal.active_start - tt.death_year;
-        warnings.push({
-          type: "temporal", severity: "info", refId: ref.id, dismissable: true,
-          message: "📅 \"" + target.title + "\" died in Year " + tt.death_year + " (" + deathGap + " year" + (deathGap !== 1 ? "s" : "") + " before this entry).",
-          suggestion: "Timeline note: likely a posthumous or historical mention. Dismiss if intentional.",
-        });
-      }
-    });
-  }
-
-  // 3. Orphan detection — article references nothing and nothing references it
-  if (body.length > 100 && allRefs.length === 0) {
-    const referencedByOthers = articles.some((a) => a.id !== excludeId && a.body?.includes("@" + (data.id || "")));
-    if (!referencedByOthers && articles.length > 3) {
-      warnings.push({ type: "orphan", severity: "info", message: "This entry has no cross-references and isn't referenced by other entries.", suggestion: "Consider adding @mentions to connect it with related entries." });
-    }
-  }
-
-  // 4. Missing key fields for category
-  const cat = data.category;
-  const requiredFields = {
-    deity: ["domain"], race: ["lifespan", "homeland"], character: ["char_race"],
-    event: ["date_range"], location: ["region"], organization: ["type", "purpose"],
-    language: ["speakers"], magic: ["type"], item: ["type"],
-  };
-  if (requiredFields[cat]) {
-    requiredFields[cat].forEach((f) => {
-      if (!fields[f] || !String(fields[f]).trim()) {
-        warnings.push({ type: "missing_field", severity: "info", message: "\"" + formatKey(f) + "\" is empty — this field helps with cross-referencing and integrity checks.", suggestion: "Fill in this field for better codex integration." });
-      }
-    });
-  }
-
-  // 5. Contradicting facts — check if two articles claim same unique role
-  if (fields.titles || fields.role) {
-    const roleText = (fields.titles || "") + " " + (fields.role || "");
-    const uniqueRoles = ["king", "queen", "emperor", "empress", "high priest", "archmage", "chieftain", "ruler"];
-    uniqueRoles.forEach((role) => {
-      if (!lower(roleText).includes(role)) return;
-      const region = fields.region || fields.affiliations || fields.homeland || "";
-      articles.forEach((other) => {
-        if (other.id === excludeId || other.category !== data.category) return;
-        const otherRoles = lower((other.fields?.titles || "") + " " + (other.fields?.role || ""));
-        const otherRegion = other.fields?.region || other.fields?.affiliations || other.fields?.homeland || "";
-        if (otherRoles.includes(role) && region && otherRegion && lower(region) === lower(otherRegion)) {
-          // Check temporal overlap
-          const ot = other.temporal;
-          if (temporal && ot && temporal.active_start != null && ot.active_start != null) {
-            const overlap = !(temporal.active_end != null && temporal.active_end < ot.active_start) && !(ot.active_end != null && ot.active_end < temporal.active_start);
-            if (overlap) {
-              warnings.push({
-                type: "contradiction", severity: "warning",
-                message: "Both this entry and \"" + other.title + "\" claim the role of " + role + " in " + region + " during overlapping time periods.",
-                suggestion: "Verify that these roles don't conflict, or adjust time periods.",
-              });
-            }
-          }
-        }
-      });
-    });
-  }
-
-  return warnings;
 }
 
 // Check novel scene for integrity issues (broken mentions, temporal conflicts, and name mismatches)
@@ -763,7 +636,7 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   // === CUSTOM HOOKS ===
   const { tlZoom, setTlZoom, tlSelected, setTlSelected, tlPanelOpen, setTlPanelOpen, tlData, tlRange, tlPxPerYear, yearToX, tlTotalWidth, tlTicks, tlSelectArticle, tlClosePanel, tlLaneHeights } = useTimeline(articles);
-  const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE } = useIntegrity(articles, settings, { detectConflicts, checkArticleIntegrity });
+  const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE } = useIntegrity(articles, settings, { detectConflicts, checkArticleIntegrity, buildTemporalGraph });
 
   const [codexSort, setCodexSort] = useState("recent");
   // === PAGINATION ===
