@@ -1,25 +1,62 @@
 .
+├── _dir_structure.txt
 ├── app
 │   ├── api
+│   │   └── ai-import
+│   │       └── route.js
 │   ├── layout.jsx
 │   ├── page.jsx
 │   └── themes.css
 ├── components
 │   ├── AuthGate.jsx
 │   ├── FrostfallRealms.jsx
+│   ├── FrostfallRealms.jsx.zip
 │   └── ThemeSelect.jsx
+├── features
+│   ├── codex
+│   ├── import
+│   │   └── ImportPage.jsx
+│   ├── integrity
+│   │   ├── IntegrityPanel.jsx
+│   │   └── useIntegrity.js
+│   ├── novel
+│   │   └── NovelWorkspace.jsx
+│   ├── settings
+│   │   └── SettingsPanel.jsx
+│   └── timeline
+│       ├── TimelineView.jsx
+│       └── useTimeline.js
+├── frostfall-realms@1.0.0
 ├── jsconfig.json
 ├── lib
+│   ├── dev
+│   │   ├── devCodex.js
+│   │   └── seedCodex.local.js
+│   ├── domain
+│   │   ├── categories.js
+│   │   ├── documentParser.js
+│   │   ├── integrity.js
+│   │   ├── novelIntegrity.js
+│   │   ├── truth
+│   │   │   └── temporalGraph.js
+│   │   └── writingTools.js
 │   ├── supabase.js
-│   └── themes.js
+│   ├── themes.js
+│   └── ui
+├── next
 ├── next.config.js
-├── package-lock.json
 ├── package.json
 ├── pnpm-lock.yaml
 ├── postcss.config.js
 ├── structure.txt
 ├── supabase
 │   └── schema.sql
-└── tailwind.config.js
+├── tailwind.config.js
+└── tests
+    ├── fixtures
+    │   └── codex.js
+    ├── integrity.test.js
+    ├── novelIntegrity.test.js
+    └── temporalGraph.test.js
 
-6 directories, 17 files
+20 directories, 40 files

@@ -1,0 +1,48 @@
+lib/domain/writingTools.js:15:export const SUGGESTION_STYLES = {
+lib/domain/writingTools.js:95:export function checkWord(word) {
+lib/domain/writingTools.js:136:export async function aiProofread(text, settings) {
+lib/themes.js:16:export const THEMES = {
+lib/themes.js:184:export const DEFAULT_THEME_KEY = "dark_arcane";
+lib/themes.js:193:export function normalizeThemeKey(key) {
+lib/themes.js:200:export function loadThemeKey() {
+lib/themes.js:205:export function saveThemeKey(themeKey) {
+lib/themes.js:211:export function applyThemeToRoot(themeKey) {
+lib/domain/novelIntegrity.js:24:export const HARD_SCENE_TYPES = new Set([
+lib/domain/novelIntegrity.js:28:export function isHardSceneIssue(w) {
+lib/domain/novelIntegrity.js:75:export function checkSceneIntegrity(sceneBody, articles) {
+lib/supabase.js:10:export const supabase = supabaseUrl && supabaseAnonKey
+lib/supabase.js:15:export async function uploadPortrait(userId, file) {
+lib/supabase.js:28:export async function fetchArticles(worldId) {
+lib/supabase.js:40:export async function upsertArticle(worldId, article) {
+lib/supabase.js:53:export async function deleteArticle(articleUuid) {
+lib/supabase.js:60:export async function archiveArticle(articleUuid, archive = true) {
+lib/supabase.js:70:export async function createWorld(userId, name, description) {
+lib/supabase.js:82:export async function fetchWorlds(userId) {
+lib/domain/documentParser.js:37:export function detectCategory(title, body) {
+lib/domain/documentParser.js:286:export function parseDocument(text, filename = "document") {
+lib/domain/integrity.js:26:export const HARD_INTEGRITY_TYPES = new Set([
+lib/domain/integrity.js:33:export function isHardIntegrityIssue(w) {
+lib/domain/integrity.js:75:export function findFuzzyMatches(brokenRefId, articles, limit = 5) {
+lib/domain/integrity.js:244:export function checkArticleIntegrity(data, articles, graphOrExclude = null, maybeExclude = null) {
+lib/domain/integrity.js:630:export function detectConflicts(articles) {
+lib/domain/categories.js:6:export const CATEGORIES = {
+lib/domain/categories.js:20:export function categoryPluralLabel(cat) {
+lib/domain/categories.js:41:export const ERAS = [
+lib/domain/categories.js:48:export const SWIM_LANE_ORDER = [
+lib/domain/categories.js:54:export const FIELD_LABELS = {
+lib/domain/categories.js:94:export function formatKey(k) {
+lib/domain/categories.js:98:export const TEMPLATE_FIELDS = {
+lib/domain/categories.js:114:export const FONT_SIZES = { compact: 0.88, default: 1.0, large: 1.14 };
+lib/domain/categories.js:116:export const EDITOR_FONTS = {
+lib/domain/categories.js:124:export const DEFAULT_SETTINGS = {
+lib/dev/devCodex.js:6:export function isDev() {
+lib/dev/devCodex.js:19:export async function fetchDevRunId() {
+lib/dev/devCodex.js:31:export function makeDevKey(runId) {
+lib/dev/devCodex.js:35:export async function loadSeedCodex() {
+lib/dev/devCodex.js:41:export async function initDevCodex() {
+lib/dev/devCodex.js:63:export function saveDevCodex(key, articles) {
+lib/dev/devCodex.js:71:export async function resetDevCodex(key) {
+lib/domain/truth/temporalGraph.js:36:export function extractMentionIds(body) {
+lib/domain/truth/temporalGraph.js:68:export function isImpossibleReference(sourceId, targetId, graph) {
+lib/domain/truth/temporalGraph.js:101:export function propagateTemporalImpossibilities(sourceId, graph, opts = {}) {
+lib/domain/truth/temporalGraph.js:167:export function buildTemporalGraph(articles) {

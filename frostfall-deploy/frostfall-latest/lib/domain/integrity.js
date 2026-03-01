@@ -274,10 +274,10 @@ export function checkArticleIntegrity(data, articles, graphOrExclude = null, may
   const { rich, legacy } = extractMentionsWithRaw(body);
 
   const legacyFiltered = legacy.filter((ref) => {
-    if (!ref?.id) return false;
-    if (entityMap[ref.id]) return true;
-    if (ref.id.includes("_") && ref.id.length > 5) return true;
-    return false;
+    const id = ref?.id;
+    if (!id) return false;
+    if (id.length < 4) return false;
+    return true;
   });
 
   const allRefs = [
@@ -623,3 +623,97 @@ const FIELD_LABELS = {
   power: "Power / Ability",
   history: "History",
 };
+
+// --- Cross-article temporal conflict detection ---
+// Scans ALL articles pairwise for temporal impossibilities in mentions and key_figures.
+// Returns conflicts shaped for the IntegrityPanel "Temporal Conflicts" section.
+export function detectConflicts(articles) {
+  const conflicts = [];
+  const entityMap = Object.create(null);
+  (articles || []).forEach((a) => { if (a?.id) entityMap[a.id] = a; });
+
+  (articles || []).forEach((source) => {
+    const st = source?.temporal;
+    if (!st || st.active_start == null) return;
+
+    // Extract mentions from body
+    const mentionIds = extractMentionIds(source?.body || "");
+
+    mentionIds.forEach((refId) => {
+      const target = entityMap[refId];
+      if (!target?.temporal) return;
+      const tt = target.temporal;
+      if (tt.type === "concept") return;
+      if (tt.type === "immortal" && !tt.active_end && !tt.faded) return;
+
+      if (tt.active_end != null && st.active_start > tt.active_end) {
+        conflicts.push({
+          id: source.id + "->" + refId + "-post",
+          type: "temporal",
+          severity: "info",
+          dismissable: true,
+          sourceId: source.id,
+          sourceTitle: source.title,
+          targetId: refId,
+          targetTitle: target.title,
+          message:
+            target.title +
+            ' is referenced in "' +
+            source.title +
+            '" (Year ' +
+            st.active_start +
+            "+) but " +
+            (tt.death_year
+              ? "died in Year " + tt.death_year
+              : "ceased to be active after Year " + tt.active_end) +
+            ".",
+          suggestion: tt.death_year
+            ? target.title +
+              " died ~" +
+              (st.active_start - tt.death_year) +
+              " years before this event. Consider removing or noting it as legacy/memory."
+            : target.title + " was no longer active by this time period.",
+        });
+      }
+    });
+
+    // Key Figures cross-check
+    const kf = source?.fields?.key_figures || "";
+    if (kf && st.active_start != null) {
+      (articles || []).forEach((target) => {
+        if (!target?.temporal || target.id === source.id) return;
+        const tt = target.temporal;
+        if (tt.death_year && st.active_start > tt.death_year) {
+          const words = lower(target.title).split(/\s+/);
+          const kfL = lower(kf);
+          const match = words.some((w) => w.length > 3 && kfL.includes(w));
+          if (match && !conflicts.find((c) => c.sourceId === source.id && c.targetId === target.id)) {
+            conflicts.push({
+              id: source.id + "->" + target.id + "-kf",
+              type: "temporal",
+              severity: "info",
+              dismissable: true,
+              sourceId: source.id,
+              sourceTitle: source.title,
+              targetId: target.id,
+              targetTitle: target.title,
+              message:
+                '"' +
+                source.title +
+                '" lists a figure matching "' +
+                target.title +
+                '" in Key Figures, but they died in Year ' +
+                tt.death_year +
+                " — " +
+                (st.active_start - tt.death_year) +
+                " years before.",
+              suggestion: "Verify if this is the same person or perhaps a descendant/namesake.",
+            });
+          }
+        }
+      });
+    }
+  });
+
+  return conflicts;
+}

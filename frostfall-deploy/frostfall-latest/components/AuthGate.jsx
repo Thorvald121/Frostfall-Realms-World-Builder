@@ -115,7 +115,7 @@ export default function AuthGate({ children }) {
             ))}
           </div>
 
-          {error && <div style={{ background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.3)", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#e07050" }}>{error}</div>}
+          {error && <div style={{ background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.3)", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#e07050" }}>{typeof error === "string" ? error : JSON.stringify(error)}</div>}
           {success && <div style={{ background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.3)", borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#8ec8a0" }}>{success}</div>}
 
           {authView === "forgot" ? (

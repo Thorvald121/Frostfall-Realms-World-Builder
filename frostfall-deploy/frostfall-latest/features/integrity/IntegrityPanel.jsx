@@ -253,11 +253,11 @@ export function IntegrityPanel({
                   onClick={() => navigate(a.id)}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = ta(theme.surface, 0.85);
-                    e.currentTarget.style.borderColor = "rgba(224,112,80,0.35)";
+                    e.currentTarget.style.border = "1px solid " + "rgba(224,112,80,0.35)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = ta(theme.surface, 0.5);
-                    e.currentTarget.style.borderColor = "rgba(224,112,80,0.15)";
+                    e.currentTarget.style.border = "1px solid " + "rgba(224,112,80,0.15)";
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>

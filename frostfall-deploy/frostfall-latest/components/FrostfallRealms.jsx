@@ -4,59 +4,22 @@ import _ from "lodash";
 import * as mammoth from "mammoth";
 import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds } from "../lib/supabase";
 import { THEMES } from "@/lib/themes";
-import { findFuzzyMatches, checkArticleIntegrity } from "@/lib/domain/integrity";
+import { findFuzzyMatches, checkArticleIntegrity, detectConflicts } from "@/lib/domain/integrity";
 import { buildTemporalGraph } from "@/lib/domain/truth/temporalGraph";
+import { checkSceneIntegrity } from "@/lib/domain/novelIntegrity";
 import { useIntegrity } from "@/features/integrity/useIntegrity";
 import { IntegrityPanel } from "@/features/integrity/IntegrityPanel";
+import { SettingsPanel } from "@/features/settings/SettingsPanel";
+import { TimelineView } from "@/features/timeline/TimelineView";
+import { useTimeline } from "@/features/timeline/useTimeline";
+import { NovelWorkspace } from "@/features/novel/NovelWorkspace";
+import { CATEGORIES, categoryPluralLabel, ERAS, SWIM_LANE_ORDER, FIELD_LABELS, formatKey, TEMPLATE_FIELDS, FONT_SIZES, EDITOR_FONTS, DEFAULT_SETTINGS } from "@/lib/domain/categories";
+import { ImportPage } from "@/features/import/ImportPage";
 
 // === SAFE STRING HELPERS ===
 const safeText = (v) => (v == null ? "" : String(v));
 const lower = (v) => safeText(v).toLowerCase();
 
-const CATEGORIES = {
-  deity: { label: "Deity", icon: "☀", color: "#f0c040" },
-  race: { label: "Race / Species", icon: "🜃", color: "#7ec8e3" },
-  character: { label: "Character", icon: "👤", color: "#e8a050" },
-  event: { label: "Historical Event", icon: "⚔", color: "#e07050" },
-  location: { label: "Location", icon: "📍", color: "#8ec8a0" },
-  organization: { label: "Organization", icon: "🏛", color: "#a088d0" },
-  item: { label: "Item / Artifact", icon: "⚒", color: "#d4a060" },
-  magic: { label: "Magic / Lore", icon: "✦", color: "#c084fc" },
-  language: { label: "Language", icon: "🗣", color: "#e0c878" },
-  flora_fauna: { label: "Flora & Fauna", icon: "🌿", color: "#6db88f" },
-  laws_customs: { label: "Laws & Customs", icon: "📜", color: "#c8a878" },
-};
-
-const categoryPluralLabel = (cat) => {
-  const base = CATEGORIES?.[cat]?.label ?? "";
-  // Irregular / preferred plurals
-  const special = {
-    deity: "Deities",
-    race: "Races / Species",
-    character: "Characters",
-    event: "Historical Events",
-    location: "Locations",
-    organization: "Organizations",
-    item: "Items / Artifacts",
-    magic: "Magic / Lore",
-    language: "Languages",
-    flora_fauna: "Flora & Fauna",
-    laws_customs: "Laws & Customs",
-  };
-  if (special[cat]) return special[cat];
-  const t = String(base || "").trim();
-  if (!t) return "";
-  return /s$/i.test(t) ? t : t + "s";
-};
-
-const ERAS = [
-  { id: "primordial", label: "Primordial Era", start: -10000, end: 0, color: "#c084fc", bg: "rgba(192,132,252,0.06)" },
-  { id: "first_age", label: "First Age — Awakening", start: 0, end: 1000, color: "#f0c040", bg: "rgba(240,192,64,0.06)" },
-  { id: "second_age", label: "Second Age — Kingdoms", start: 1000, end: 2817, color: "#7ec8e3", bg: "rgba(126,200,227,0.06)" },
-  { id: "third_age", label: "Third Age — Division", start: 2817, end: 4500, color: "#e07050", bg: "rgba(224,112,80,0.06)" },
-];
-
-const SWIM_LANE_ORDER = ["deity", "magic", "race", "character", "event", "location", "organization", "item", "language", "flora_fauna", "laws_customs"];
 
 // Theme-aware alpha helper: ta("#ff0000", 0.5) → "rgba(255,0,0,0.5)"
 const ta = (hex, alpha) => {
@@ -65,23 +28,6 @@ const ta = (hex, alpha) => {
   const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
   return `rgba(${r},${g},${b},${alpha})`;
 };
-
-const FONT_SIZES = { compact: 0.88, default: 1.0, large: 1.14 };
-const EDITOR_FONTS = {
-  georgia: "'Georgia', serif",
-  times: "'Times New Roman', Times, serif",
-  palatino: "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
-  system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  mono: "'Fira Code', 'Consolas', monospace",
-};
-const DEFAULT_SETTINGS = {
-  theme: "dark_arcane", fontSize: "default", editorFont: "georgia",
-  disabledCategories: [], integritySensitivity: "balanced", eraLabel: "Year",
-  customEras: [], // [{name, start, end, color}] — overrides ERAS when present
-  authorName: "", avatarUrl: "",
-};
-
-const SEED_ARTICLES = [];
 
 // === INTEGRITY ENGINES ===
 function similarity(a, b) {
@@ -102,57 +48,6 @@ function findDuplicates(title, articles, excludeId = null) {
     .filter((d) => d.score > 0.45).sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
-function detectConflicts(articles) {
-  const conflicts = [];
-  const entityMap = {};
-  articles.forEach((a) => { entityMap[a.id] = a; });
-  articles.forEach((source) => {
-    const st = source.temporal;
-    if (!st || st.active_start == null) return;
-    const mentions = [
-      ...(source.body?.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean),
-      ...(source.body?.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1)),
-    ];
-    mentions.forEach((refId) => {
-      const target = entityMap[refId];
-      if (!target?.temporal) return;
-      const tt = target.temporal;
-      if (tt.type === "concept") return;
-      if (tt.type === "immortal" && !tt.active_end && !tt.faded) return;
-      if (tt.active_end != null && st.active_start > tt.active_end) {
-        conflicts.push({
-          id: source.id + "->" + refId + "-post", type: "temporal", severity: "info", dismissable: true,
-          sourceId: source.id, sourceTitle: source.title,
-          targetId: refId, targetTitle: target.title,
-          message: target.title + " is referenced in \"" + source.title + "\" (Year " + st.active_start + "+) but " + (tt.death_year ? "died in Year " + tt.death_year : "ceased to be active after Year " + tt.active_end) + ".",
-          suggestion: tt.death_year ? target.title + " died ~" + (st.active_start - tt.death_year) + " years before this event. Consider removing or noting it as legacy/memory." : target.title + " was no longer active by this time period.",
-        });
-      }
-    });
-    const kf = source.fields?.key_figures || "";
-    if (kf && st.active_start != null) {
-      articles.forEach((target) => {
-        if (!target.temporal || target.id === source.id) return;
-        const tt = target.temporal;
-        if (tt.death_year && st.active_start > tt.death_year) {
-          const words = lower(target.title).split(/\s+/);
-          const kfL = lower(kf);
-          const match = words.some((w) => w.length > 3 && kfL.includes(w));
-          if (match && !conflicts.find((c) => c.sourceId === source.id && c.targetId === target.id)) {
-            conflicts.push({
-              id: source.id + "->" + target.id + "-kf", type: "temporal", severity: "info", dismissable: true,
-              sourceId: source.id, sourceTitle: source.title,
-              targetId: target.id, targetTitle: target.title,
-              message: "\"" + source.title + "\" lists a figure matching \"" + target.title + "\" in Key Figures, but they died in Year " + tt.death_year + " — " + (st.active_start - tt.death_year) + " years before.",
-              suggestion: "Verify if this is the same person or perhaps a descendant/namesake.",
-            });
-          }
-        }
-      });
-    }
-  });
-  return conflicts;
-}
 
 function findUnlinkedMentions(text, fields, articles, existingLinks) {
   if (!text && !fields) return [];
@@ -195,100 +90,8 @@ function findUnlinkedMentions(text, fields, articles, existingLinks) {
   return suggestions.sort((a, b) => ({ exact: 3, strong: 2, possible: 1 }[b.confidence] || 0) - ({ exact: 3, strong: 2, possible: 1 }[a.confidence] || 0));
 }
 
-// Check novel scene for integrity issues (broken mentions, temporal conflicts, and name mismatches)
-function checkSceneIntegrity(sceneBody, articles) {
-  const warnings = [];
-  if (!sceneBody) return warnings;
-  // Check rich mentions @[Title](id)
-  const richRefs = (sceneBody.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => {
-    const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/);
-    return match ? { title: match[1], id: match[2] } : null;
-  }).filter(Boolean);
-  // Check legacy @id mentions
-  const legacyRefs = (sceneBody.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
-  const entityMap = {};
-  articles.forEach((a) => { entityMap[a.id] = a; });
-
-  richRefs.forEach((ref) => {
-    if (!entityMap[ref.id]) {
-      warnings.push({ severity: "error", message: "\"" + ref.title + "\" not found in codex.", ref: ref.id });
-    } else {
-      // Check if title changed (stale mention)
-      const art = entityMap[ref.id];
-      if (art.title !== ref.title) {
-        warnings.push({ severity: "warning", message: "\"" + ref.title + "\" was renamed to \"" + art.title + "\" — mention is stale.", ref: ref.id });
-      }
-    }
-  });
-  legacyRefs.forEach((refId) => {
-    if (!entityMap[refId]) {
-      warnings.push({ severity: "warning", message: "\"@" + refId + "\" is a raw mention — not linked to a codex entry.", ref: refId });
-    }
-  });
-
-  // Check if scene references characters from incompatible time periods
-  const mentionedArticles = [...richRefs.map((r) => entityMap[r.id]), ...legacyRefs.map((r) => entityMap[r])].filter(Boolean);
-  const mortals = mentionedArticles.filter((a) => a.temporal && a.temporal.death_year);
-  const events = mentionedArticles.filter((a) => a.category === "event" && a.temporal?.active_start);
-  // If scene mentions both a dead character and an event that happened after their death
-  mortals.forEach((mortal) => {
-    events.forEach((event) => {
-      if (event.temporal.active_start > mortal.temporal.death_year) {
-        warnings.push({
-          severity: "info", dismissable: true,
-          message: "\"" + mortal.title + "\" (died Year " + mortal.temporal.death_year + ") referenced alongside \"" + event.title + "\" (Year " + event.temporal.active_start + ").",
-          ref: mortal.id,
-        });
-      }
-    });
-  });
-
-  return warnings;
-}
 
 // === HELPERS ===
-const FIELD_LABELS = {
-  domain: "Domain", symbol: "Holy Symbol", court: "Divine Court", sacred_time: "Sacred Time",
-  worshippers: "Worshippers", gift_to_mortals: "Gift to Mortals", creators: "Creator Gods",
-  lifespan: "Lifespan", population: "Population", magic_affinity: "Magic Affinity",
-  homeland: "Homeland", capital: "Capital", major_clans: "Major Clans",
-  defining_trait: "Defining Trait", date_range: "Date Range", age: "Age / Era",
-  casualties: "Casualties", key_figures: "Key Figures", outcome: "Outcome",
-  type: "Type", origin: "Origin", scope: "Scope", cost_types: "Cost Types",
-  violation_consequence: "Violation Consequence", counterpart: "Counterpart",
-  current_state: "Current State", legacy: "Legacy", current_age: "Current Age",
-  notable_regions: "Notable Regions", physical_characteristics: "Physical Characteristics",
-  // Character fields
-  char_race: "Race", birth_year: "Birth Year", death_year: "Death Year",
-  titles: "Titles", affiliations: "Affiliations", role: "Role",
-  // Location fields
-  region: "Region", ruler: "Ruler", founding_year: "Founded", notable_features: "Notable Features", status: "Status",
-  // Organization fields
-  founded: "Founded", leader: "Leader", headquarters: "Headquarters", purpose: "Purpose", members: "Key Members",
-  // Item fields
-  creator: "Creator", current_location: "Current Location", power: "Power / Ability", history: "History",
-  // Language fields
-  speakers: "Speakers", script: "Script / Writing System", lang_origin: "Origin", sample_phrases: "Sample Phrases", grammar_notes: "Grammar Notes", lang_status: "Status",
-  // Flora & Fauna fields
-  species_type: "Type", habitat: "Habitat", rarity: "Rarity", uses: "Uses / Properties", danger_level: "Danger Level", description: "Description",
-  // Laws & Customs fields
-  custom_type: "Type", enforced_by: "Enforced By", applies_to: "Applies To", penalties: "Penalties", cultural_significance: "Cultural Significance", exceptions: "Exceptions",
-};
-// Universal field key formatter — never show raw underscored keys to users
-const formatKey = (k) => FIELD_LABELS[k] || k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-const TEMPLATE_FIELDS = {
-  deity: ["domain", "symbol", "court", "sacred_time", "worshippers", "gift_to_mortals"],
-  race: ["creators", "lifespan", "population", "magic_affinity", "homeland", "capital"],
-  character: ["char_race", "birth_year", "death_year", "titles", "affiliations", "role"],
-  event: ["date_range", "age", "casualties", "key_figures", "outcome"],
-  location: ["region", "ruler", "population", "founding_year", "notable_features", "status"],
-  organization: ["type", "founded", "leader", "headquarters", "purpose", "members"],
-  item: ["type", "creator", "current_location", "power", "history"],
-  magic: ["type", "origin", "scope", "cost_types", "violation_consequence"],
-  language: ["speakers", "script", "lang_origin", "sample_phrases", "grammar_notes", "lang_status"],
-  flora_fauna: ["species_type", "habitat", "rarity", "uses", "danger_level", "description"],
-  laws_customs: ["custom_type", "enforced_by", "applies_to", "penalties", "cultural_significance", "exceptions"],
-};
 const timeAgo = (iso) => {
   const d = new Date(iso), now = new Date(), hrs = Math.floor((now - d) / 36e5);
   if (hrs < 1) return "just now"; if (hrs < 24) return hrs + "h ago";
@@ -334,8 +137,8 @@ const RenderBody = ({ text, articles, onNavigate }) => {
     if (target) return (
       <span key={i} onClick={(e) => { e.stopPropagation(); onNavigate(part.id); }}
         style={{ background: catColor + "15", border: "1px solid " + catColor + "35", borderRadius: 4, padding: "1px 6px", margin: "0 1px", color: catColor, cursor: "pointer", fontWeight: 600, fontSize: "0.92em", fontFamily: "'Cinzel', sans-serif", letterSpacing: 0.3, transition: "all 0.15s", display: "inline" }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = catColor + "30"; e.currentTarget.style.borderColor = catColor + "60"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = catColor + "15"; e.currentTarget.style.borderColor = catColor + "35"; }}>
+        onMouseEnter={(e) => { e.currentTarget.style.background = catColor + "30"; e.currentTarget.style.border = "1px solid " + catColor + "60"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = catColor + "15"; e.currentTarget.style.border = "1px solid " + catColor + "35"; }}>
         {catIcon} {displayName}
       </span>
     );
@@ -504,79 +307,14 @@ const S = {
 // ║                      CUSTOM HOOKS                          ║
 // ╚══════════════════════════════════════════════════════════════╝
 
-// --- useTimeline: all timeline state, computations, and callbacks ---
-function useTimeline(articles) {
-  const [tlZoom, setTlZoom] = useState(3);
-  const [tlSelected, setTlSelected] = useState(null);
-  const [tlPanelOpen, setTlPanelOpen] = useState(false);
-
-  const tlData = useMemo(() => {
-    const items = articles.filter((a) => a.temporal && a.temporal.active_start != null);
-    const lanes = {};
-    SWIM_LANE_ORDER.forEach((cat) => {
-      const catItems = items.filter((a) => a.category === cat);
-      if (catItems.length > 0) lanes[cat] = catItems.sort((a, b) => a.temporal.active_start - b.temporal.active_start);
-    });
-    return { items, lanes };
-  }, [articles]);
-
-  const tlRange = useMemo(() => {
-    if (tlData.items.length === 0) return { min: -500, max: 5000 };
-    const starts = tlData.items.map((a) => a.temporal.active_start);
-    const ends = tlData.items.map((a) => a.temporal.active_end ?? a.temporal.active_start);
-    const min = Math.min(...starts), max = Math.max(...ends);
-    const pad = Math.max((max - min) * 0.05, 200);
-    return { min: min - pad, max: max + pad };
-  }, [tlData]);
-
-  const tlPxPerYear = useMemo(() => [0.02, 0.05, 0.12, 0.3, 0.6, 1.2, 2.5][tlZoom] || 0.3, [tlZoom]);
-  const yearToX = useCallback((year) => (year - tlRange.min) * tlPxPerYear, [tlRange, tlPxPerYear]);
-  const tlTotalWidth = useMemo(() => (tlRange.max - tlRange.min) * tlPxPerYear, [tlRange, tlPxPerYear]);
-
-  const tlTicks = useMemo(() => {
-    const range = tlRange.max - tlRange.min;
-    const idealCount = tlTotalWidth / 120;
-    const rawStep = range / idealCount;
-    const magnitudes = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
-    const step = magnitudes.find((m) => m >= rawStep) || 5000;
-    const ticks = [];
-    const start = Math.ceil(tlRange.min / step) * step;
-    for (let y = start; y <= tlRange.max; y += step) ticks.push(y);
-    return { ticks, step };
-  }, [tlRange, tlTotalWidth]);
-
-  const tlSelectArticle = useCallback((a) => { setTlSelected(a); setTlPanelOpen(true); }, []);
-  const tlClosePanel = useCallback(() => { setTlPanelOpen(false); setTimeout(() => setTlSelected(null), 300); }, []);
-
-  const tlLaneHeights = useMemo(() => {
-    const heights = {};
-    SWIM_LANE_ORDER.forEach((cat) => {
-      if (!tlData.lanes[cat]) return;
-      const entries = tlData.lanes[cat];
-      const placed = [];
-      entries.forEach((a) => {
-        const x = yearToX(a.temporal.active_start);
-        const hasEnd = a.temporal.active_end != null && a.temporal.active_end !== a.temporal.active_start;
-        const xEnd = hasEnd ? yearToX(a.temporal.active_end) : x + 28;
-        let row = 0;
-        while (placed.some((p) => p.row === row && p.xEnd > x - 4 && p.x < xEnd + 4)) row++;
-        placed.push({ id: a.id, x, xEnd, row });
-      });
-      const maxRow = Math.max(0, ...placed.map((p) => p.row));
-      heights[cat] = 40 + maxRow * 30;
-    });
-    return heights;
-  }, [tlData, yearToX]);
-
-  return { tlZoom, setTlZoom, tlSelected, setTlSelected, tlPanelOpen, setTlPanelOpen, tlData, tlRange, tlPxPerYear, yearToX, tlTotalWidth, tlTicks, tlSelectArticle, tlClosePanel, tlLaneHeights };
-}
-
 // --- useIntegrity: conflict detection, integrity scanning, sensitivity filter ---
 
 
 // === MAIN APP ===
 export default function FrostfallRealms({ user, onLogout }) {
-  const [articles, setArticles] = useState(SEED_ARTICLES);
+  const [articles, setArticles] = useState([]);
+  // Dedup helper — keeps the LAST entry for each id (newest wins)
+  const dedup = (arr) => { const seen = new Map(); arr.forEach((a) => seen.set(a.id, a)); return [...seen.values()]; };
   const [archived, setArchived] = useState([]);
   const [view, setView] = useState("dashboard");
   const [activeArticle, setActiveArticle] = useState(null);
@@ -589,6 +327,7 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [showDupeModal, setShowDupeModal] = useState(false);
   const [pendingDupes, setPendingDupes] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [showMoveMenu, setShowMoveMenu] = useState(null);
   const [showConfirm, setShowConfirm] = useState(null);
   const [saveStatus, setSaveStatus] = useState("idle");
   const [importConflicts, setImportConflicts] = useState(null);
@@ -601,9 +340,11 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [worldSwitcherOpen, setWorldSwitcherOpen] = useState(false);
 
   // === RESPONSIVE ===
-  const [screenW, setScreenW] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  const [screenW, setScreenW] = useState(1200);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   useEffect(() => {
+    // Ensure SSR + first client render match; update after mount.
+    setScreenW(window.innerWidth);
     const onResize = () => setScreenW(window.innerWidth);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -636,9 +377,12 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   // === CUSTOM HOOKS ===
   const { tlZoom, setTlZoom, tlSelected, setTlSelected, tlPanelOpen, setTlPanelOpen, tlData, tlRange, tlPxPerYear, yearToX, tlTotalWidth, tlTicks, tlSelectArticle, tlClosePanel, tlLaneHeights } = useTimeline(articles);
-  const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, INTEGRITY_PAGE } = useIntegrity(articles, settings, { detectConflicts, checkArticleIntegrity, buildTemporalGraph });
+  const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, temporalGraph, INTEGRITY_PAGE } = useIntegrity(articles, settings, { detectConflicts, checkArticleIntegrity, buildTemporalGraph });
 
   const [codexSort, setCodexSort] = useState("recent");
+  const [codexViewMode, setCodexViewMode] = useState("list"); // "list" or "grid"
+  const [codexBulkMode, setCodexBulkMode] = useState(false);
+  const [codexSelected, setCodexSelected] = useState(new Set());
   // === PAGINATION ===
   const CODEX_PAGE = 30;
   const NOVEL_CODEX_PAGE = 25;
@@ -648,9 +392,6 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   const bodyTextareaRef = useRef(null);
 
-  const tlRef = useRef(null);
-  const tlLabelRef = useRef(null);
-  const tlSyncing = useRef(false);
   const importFileRef = useRef(null);
   const saveTimer = useRef(null);
 
@@ -666,8 +407,8 @@ export default function FrostfallRealms({ user, onLogout }) {
             setActiveWorld(world);
             const dbArticles = await fetchArticles(world.id);
             if (dbArticles.length > 0) {
-              setArticles(dbArticles.filter((a) => !a.isArchived));
-              setArchived(dbArticles.filter((a) => a.isArchived));
+              setArticles(dedup(dbArticles.filter((a) => !a.isArchived)));
+              setArchived(dedup(dbArticles.filter((a) => a.isArchived)));
             }
           }
           // If no worlds, the welcome screen will show
@@ -678,8 +419,8 @@ export default function FrostfallRealms({ user, onLogout }) {
           if (typeof window !== "undefined" && window.storage) {
             const result = await window.storage.get("frostfall-world-v2");
             const data = JSON.parse(result.value);
-            if (data.articles?.length > 0) setArticles(data.articles);
-            if (data.archived) setArchived(data.archived);
+            if (data.articles?.length > 0) setArticles(dedup(data.articles));
+            if (data.archived) setArchived(dedup(data.archived));
             if (data.worldName) setActiveWorld({ name: data.worldName, description: data.worldDesc || "" });
           }
           setSaveStatus("saved");
@@ -726,8 +467,8 @@ const handleCreateWorld = async () => {
     setWorldSwitcherOpen(false);
     try {
       const dbArticles = await fetchArticles(world.id);
-      setArticles(dbArticles.filter((a) => !a.isArchived));
-      setArchived(dbArticles.filter((a) => a.isArchived));
+      setArticles(dedup(dbArticles.filter((a) => !a.isArchived)));
+      setArchived(dedup(dbArticles.filter((a) => a.isArchived)));
     } catch (e) { console.error("Switch world:", e); }
   };
 
@@ -819,7 +560,7 @@ const handleCreateWorld = async () => {
           setImportConflicts(conflicts);
         } else {
           // No conflicts — direct merge
-          setArticles((prev) => [...prev, ...newArticles]);
+          setArticles((prev) => dedup([...prev, ...newArticles]));
           setArchived((prev) => [...prev, ...newArchived]);
           setShowConfirm({ title: "Import Complete", message: `Added ${newArticles.length} article${newArticles.length !== 1 ? "s" : ""}${newArchived.length > 0 ? " and " + newArchived.length + " archived entries" : ""}.`, confirmLabel: "OK", confirmColor: "#8ec8a0", onConfirm: () => setShowConfirm(null) });
         }
@@ -835,7 +576,7 @@ const handleCreateWorld = async () => {
     if (!importPending) return;
     const resolved = importPending.conflicts.map((c) => choices[c.id] === "replace" ? c.imported : null).filter(Boolean);
     const replaceIds = new Set(resolved.map((a) => a.id));
-    setArticles((prev) => [...prev.filter((a) => !replaceIds.has(a.id)), ...resolved, ...importPending.newArticles]);
+    setArticles((prev) => dedup([...prev.filter((a) => !replaceIds.has(a.id)), ...resolved, ...importPending.newArticles]));
     setArchived((prev) => [...prev, ...importPending.newArchived]);
     const added = importPending.newArticles.length;
     const replaced = resolved.length;
@@ -851,6 +592,100 @@ const handleCreateWorld = async () => {
   const [aiSourceName, setAiSourceName] = useState("");
   const [aiProgress, setAiProgress] = useState({ current: 0, total: 0, entries: 0 });
   const [showDonate, setShowDonate] = useState(false);
+  const [scratchpadOpen, setScratchpadOpen] = useState(false);
+  const [scratchpadText, setScratchpadText] = useState("");
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  try { setScratchpadText(localStorage.getItem("ff_scratchpad") || ""); } catch {}
+}, []);
+const saveScratchpad = (text) => { setScratchpadText(text); try { localStorage.setItem("ff_scratchpad", text); } catch {} };
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  // Phase B state
+  const [graphFilter, setGraphFilter] = useState("all");
+  const [graphHover, setGraphHover] = useState(null);
+  const graphRef = useRef(null);
+  const [generatorType, setGeneratorType] = useState("npc");
+  const [generatorResults, setGeneratorResults] = useState([]);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+
+  // ═══ FAMILY TREE / LINEAGE ═══
+  const RELATIONS_KEY = "ff_relationships";
+  const [ftSelected, setFtSelected] = useState(null); // selected character ID
+  const [ftAddingRel, setFtAddingRel] = useState(null); // { fromId, type }
+  const loadRelations = () => {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(RELATIONS_KEY) || "{}"); } catch { return {}; }
+};
+// Hydration-safe: start deterministic, then load after mount
+const [relations, setRelations] = useState({});
+useEffect(() => {
+  const r = loadRelations();
+  setRelations(r);
+}, []);
+const saveRelations = (r) => { setRelations(r); try { localStorage.setItem(RELATIONS_KEY, JSON.stringify(r)); } catch {} };
+  const addRelation = (fromId, toId, type) => {
+    const r = { ...relations };
+    if (!r[fromId]) r[fromId] = [];
+    if (!r[toId]) r[toId] = [];
+    // Prevent duplicates
+    if (r[fromId].find((rel) => rel.targetId === toId && rel.type === type)) return;
+    r[fromId].push({ targetId: toId, type });
+    // Mirror relationship
+    const mirror = type === "parent" ? "child" : type === "child" ? "parent" : type === "spouse" ? "spouse" : "sibling";
+    if (!r[toId].find((rel) => rel.targetId === fromId && rel.type === mirror)) {
+      r[toId].push({ targetId: fromId, type: mirror });
+    }
+    saveRelations(r);
+  };
+  const removeRelation = (fromId, toId, type) => {
+    const r = { ...relations };
+    if (r[fromId]) r[fromId] = r[fromId].filter((rel) => !(rel.targetId === toId && rel.type === type));
+    const mirror = type === "parent" ? "child" : type === "child" ? "parent" : type === "spouse" ? "spouse" : "sibling";
+    if (r[toId]) r[toId] = r[toId].filter((rel) => !(rel.targetId === fromId && rel.type === mirror));
+    saveRelations(r);
+  };
+  const getRelationsFor = (id) => relations[id] || [];
+  const characters = articles.filter((a) => a.category === "character");
+
+  // ═══ SESSION / CAMPAIGN NOTES ═══
+  const SESSIONS_KEY = "ff_sessions";
+  // Hydration-safe: start deterministic, then load after mount
+const [sessions, setSessions] = useState([]);
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  try { setSessions(JSON.parse(localStorage.getItem(SESSIONS_KEY) || "[]")); } catch {}
+}, []);
+const [sessionEdit, setSessionEdit] = useState(null); // session id being edited
+  const [sessionForm, setSessionForm] = useState({ title: "", date: "", summary: "", encounters: "", npcs: "", loot: "", notes: "", tags: "" });
+  const saveSessions = (s) => { setSessions(s); try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(s)); } catch {} };
+  const createSession = () => {
+    const s = { id: "sess_" + Date.now(), ...sessionForm, tags: sessionForm.tags.split(",").map((t) => t.trim()).filter(Boolean), createdAt: new Date().toISOString() };
+    saveSessions([s, ...sessions]); setSessionForm({ title: "", date: "", summary: "", encounters: "", npcs: "", loot: "", notes: "", tags: "" }); setSessionEdit(null);
+  };
+  const updateSession = (id) => {
+    saveSessions(sessions.map((s) => s.id === id ? { ...s, ...sessionForm, tags: sessionForm.tags.split(",").map((t) => t.trim()).filter(Boolean) } : s));
+    setSessionEdit(null); setSessionForm({ title: "", date: "", summary: "", encounters: "", npcs: "", loot: "", notes: "", tags: "" });
+  };
+  const deleteSession = (id) => { if (confirm("Delete this session log?")) saveSessions(sessions.filter((s) => s.id !== id)); };
+
+  // ═══ DASHBOARD WIDGETS ═══
+  const WIDGET_KEY = "ff_dashboard_widgets";
+  const DEFAULT_WIDGETS = ["stats", "integrity", "quick_create", "recent", "writing_progress", "world_links"];
+  // Hydration-safe: start deterministic, then load after mount
+const [dashWidgets, setDashWidgets] = useState(DEFAULT_WIDGETS);
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  try { setDashWidgets(JSON.parse(localStorage.getItem(WIDGET_KEY)) || DEFAULT_WIDGETS); } catch {}
+}, []);
+const [dashCustomizing, setDashCustomizing] = useState(false);
+  const saveDashWidgets = (w) => { setDashWidgets(w); try { localStorage.setItem(WIDGET_KEY, JSON.stringify(w)); } catch {} };
+  const toggleWidget = (id) => { saveDashWidgets(dashWidgets.includes(id) ? dashWidgets.filter((w) => w !== id) : [...dashWidgets, id]); };
+  const moveWidget = (id, dir) => {
+    const i = dashWidgets.indexOf(id); if (i < 0) return;
+    const n = [...dashWidgets]; const j = i + dir;
+    if (j < 0 || j >= n.length) return;
+    [n[i], n[j]] = [n[j], n[i]]; saveDashWidgets(n);
+  };
   const [authView, setAuthView] = useState(null);
   const aiFileRef = useRef(null);
   const avatarFileRef = useRef(null);
@@ -1003,7 +838,10 @@ const handleCreateWorld = async () => {
             filename,
             chunkIndex: i,
             totalChunks: chunks.length,
-            existingTitles: existingTitles.slice(-50), // Last 50 to stay within token limits
+            existingTitles: existingTitles.slice(-50),
+            provider: settings.aiProvider || "anthropic",
+            model: settings.aiModel?.[settings.aiProvider || "anthropic"] || undefined,
+            userApiKey: settings.aiKeys?.[settings.aiProvider || "anthropic"] || "",
           }),
         });
         if (!response.ok) {
@@ -1114,7 +952,7 @@ const handleCreateWorld = async () => {
   const stagingCommit = () => {
     const toAdd = aiStaging.filter((e) => e._status === "approved" || e._status === "edited");
     const cleaned = toAdd.map(({ _stagingId, _status, ...rest }) => rest);
-    setArticles((prev) => [...prev, ...cleaned]);
+    setArticles((prev) => dedup([...prev, ...cleaned]));
     const count = cleaned.length;
     // Keep pending and rejected items — only remove committed ones
     const committedIds = new Set(toAdd.map((e) => e._stagingId));
@@ -2008,7 +1846,110 @@ const handleCreateWorld = async () => {
     setView("create");
   };
 
-  // === TEMPORAL BUILDER ===
+  // Duplicate: copy article data into create form with "(Copy)" suffix, no editingId
+  const goDuplicate = (article) => {
+    setCreateCat(article.category);
+    setEditingId(null);
+    setFormData({
+      title: article.title + " (Copy)",
+      summary: article.summary || "",
+      fields: { ...article.fields },
+      body: article.body || "",
+      tags: (article.tags || []).join(", "),
+      temporal: article.temporal ? { ...article.temporal } : null,
+      portrait: article.portrait || null,
+    });
+    setView("create");
+  };
+
+  // === TEMPLATES ===
+  const TEMPLATES_KEY = "ff_article_templates";
+  const loadTemplates = () => {
+    try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || "[]"); } catch { return []; }
+  };
+  const saveTemplateToStorage = (tmpl) => {
+    const existing = loadTemplates();
+    existing.push(tmpl);
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(existing));
+  };
+  const deleteTemplate = (tmplId) => {
+    const existing = loadTemplates().filter((t) => t.id !== tmplId);
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(existing));
+  };
+  const saveAsTemplate = (article) => {
+    const name = prompt("Template name:", article.title + " Template");
+    if (!name) return;
+    saveTemplateToStorage({
+      id: Date.now() + "-tmpl",
+      name,
+      category: article.category,
+      fields: { ...article.fields },
+      body: article.body || "",
+      tags: (article.tags || []).join(", "),
+      temporal: article.temporal ? { ...article.temporal } : null,
+      createdAt: new Date().toISOString(),
+    });
+  };
+  const applyTemplate = (tmpl) => {
+    setCreateCat(tmpl.category);
+    setEditingId(null);
+    setFormData({
+      title: "",
+      summary: "",
+      fields: { ...tmpl.fields },
+      body: tmpl.body || "",
+      tags: tmpl.tags || "",
+      temporal: tmpl.temporal ? { ...tmpl.temporal } : null,
+      portrait: null,
+    });
+    setView("create");
+  };
+
+  // === EXPORT / IMPORT WORLD ===
+  const exportWorldJSON = () => {
+    const data = { version: 1, exportedAt: new Date().toISOString(), world: activeWorld, articles, settings, mapData };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "world") + "_export.json"; a.click();
+    URL.revokeObjectURL(url);
+  };
+  const importWorldJSON = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.articles || !Array.isArray(data.articles)) { alert("Invalid world file."); return; }
+        if (!confirm("Import " + data.articles.length + " articles from \"" + (data.world?.name || "Unknown") + "\"? This will merge with your current data.")) return;
+        setArticles((prev) => {
+          const existingIds = new Set(prev.map((a) => a.id));
+          const newOnes = data.articles.filter((a) => !existingIds.has(a.id));
+          return [...prev, ...newOnes];
+        });
+        alert("Imported " + data.articles.length + " articles successfully.");
+      } catch { alert("Failed to parse import file."); }
+    };
+    reader.readAsText(file);
+  };
+
+  // === ARTICLE VERSION HISTORY ===
+  const HISTORY_KEY = "ff_article_history";
+  const saveArticleSnapshot = (articleId, article) => {
+    try {
+      const all = JSON.parse(localStorage.getItem(HISTORY_KEY) || "{}");
+      const snaps = all[articleId] || [];
+      snaps.unshift({ savedAt: new Date().toISOString(), title: article.title, summary: article.summary, fields: { ...article.fields }, body: article.body, tags: [...(article.tags || [])], category: article.category });
+      if (snaps.length > 20) snaps.length = 20; // keep last 20
+      all[articleId] = snaps;
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(all));
+    } catch {}
+  };
+  const getArticleHistory = (articleId) => {
+    try { const all = JSON.parse(localStorage.getItem(HISTORY_KEY) || "{}"); return all[articleId] || []; } catch { return []; }
+  };
+  const restoreArticleVersion = (articleId, snapshot) => {
+    setArticles((prev) => prev.map((a) => a.id === articleId ? { ...a, title: snapshot.title, summary: snapshot.summary, fields: { ...snapshot.fields }, body: snapshot.body, tags: [...(snapshot.tags || [])], updatedAt: new Date().toISOString() } : a));
+    setActiveArticle((prev) => prev && prev.id === articleId ? { ...prev, title: snapshot.title, summary: snapshot.summary, fields: { ...snapshot.fields }, body: snapshot.body, tags: [...(snapshot.tags || [])] } : prev);
+  };
   const buildTemporal = (cat, fields, existingTemporal) => {
     if (cat === "character") {
       const by = parseInt(fields.birth_year), dy = parseInt(fields.death_year);
@@ -2103,7 +2044,7 @@ const handleCreateWorld = async () => {
     if (dupes.length > 0) { setPendingDupes(dupes); setShowDupeModal(true); return; }
     // Check integrity — gate on errors/warnings
     const data = { ...formData, id: editingId || lower(formData.title).replace(/[^a-z0-9]+/g, "_"), category: createCat };
-    const warnings = checkArticleIntegrity(data, articles, editingId);
+    const warnings = checkArticleIntegrity(data, articles, temporalGraph, editingId);
     const serious = warnings.filter((w) => w.severity === "error" || w.severity === "warning");
     if (serious.length > 0) {
       setIntegrityGate({ warnings: serious, onProceed: doSave });
@@ -2129,9 +2070,12 @@ const handleCreateWorld = async () => {
       updatedAt: now,
     };
     if (editingId) {
+      // Save version history snapshot before overwriting
+      const prev = articles.find((x) => x.id === editingId);
+      if (prev) saveArticleSnapshot(editingId, prev);
       setArticles((prev) => prev.map((x) => x.id === editingId ? a : x));
     } else {
-      setArticles((prev) => [a, ...prev]);
+      setArticles((prev) => dedup([a, ...prev]));
     }
     setActiveArticle(a); setShowDupeModal(false); setPendingDupes([]); setEditingId(null); setIntegrityGate(null); setView("article");
   };
@@ -2157,7 +2101,7 @@ const handleCreateWorld = async () => {
   };
   const restoreFromArchive = (article) => {
     const { archivedAt, ...clean } = article;
-    setArticles((prev) => [{ ...clean, updatedAt: new Date().toISOString() }, ...prev]);
+    setArticles((prev) => dedup([{ ...clean, updatedAt: new Date().toISOString() }, ...prev]));
     setArchived((prev) => prev.filter((a) => a.id !== article.id));
   };
   const permanentDeleteFromArchive = (article) => {
@@ -2175,7 +2119,7 @@ const handleCreateWorld = async () => {
   const liveIntegrity = useMemo(() => {
     if (view !== "create") return [];
     const data = { ...formData, id: editingId || lower(formData.title).replace(/[^a-z0-9]+/g, "_"), category: createCat };
-    return checkArticleIntegrity(data, articles, editingId);
+    return checkArticleIntegrity(data, articles, temporalGraph, editingId);
   }, [view, formData, articles, editingId, createCat]);
 
   const filtered = useMemo(() => {
@@ -2240,7 +2184,7 @@ const handleCreateWorld = async () => {
     return { list: l, matchMap };
   }, [articles, codexFilter, searchQuery, codexSort]);
   // Reset pagination when filters/sort/search change
-  useEffect(() => { setCodexVisible(CODEX_PAGE); }, [codexFilter, searchQuery, codexSort]);
+  useEffect(() => { setCodexVisible(CODEX_PAGE); setShowCodexCreate(false); }, [codexFilter, searchQuery, codexSort]);
   useEffect(() => { setNovelCodexVisible(NOVEL_CODEX_PAGE); }, [novelCodexFilter, novelCodexSearch]);
 
   const recent = useMemo(() => [...articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 6), [articles]);
@@ -2260,19 +2204,24 @@ const handleCreateWorld = async () => {
     { divider: true },
     ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
       id: k, icon: c.icon, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : categoryPluralLabel(k),
-      action: () => goCodex(k), count: catCounts[k] || undefined,
+      action: () => goCodex(k), count: catCounts[k] || undefined, isCategory: true,
     })),
     { divider: true },
     { id: "timeline", icon: "⏳", label: "Timeline", action: () => { setTlSelected(null); setTlPanelOpen(false); setView("timeline"); } },
+    { id: "graph", icon: "◉", label: "Relationship Web", action: () => setView("graph") },
+    { id: "family_tree", icon: "🌳", label: "Family Tree", action: () => setView("family_tree") },
     { id: "map", icon: "🗺", label: "Map Builder", action: () => setView("map") },
     { id: "novel", icon: "✒", label: "Novel Writing", action: () => setView("novel") },
+    { id: "generator", icon: "🎲", label: "Generators", action: () => setView("generator") },
+    { id: "sessions", icon: "📓", label: "Session Notes", action: () => setView("sessions"), count: sessions.length > 0 ? sessions.length : undefined },
     { id: "integrity", icon: "🛡", label: "Lore Integrity", action: () => setView("integrity"), count: totalIntegrityIssues > 0 ? totalIntegrityIssues : undefined, alert: totalIntegrityIssues > 0 },
     { id: "archives", icon: "📦", label: "Archives", action: () => setView("archives"), count: archived.length > 0 ? archived.length : undefined },
     { divider: true },
-    { id: "ai_import", icon: "🧠", label: "AI Document Import", action: () => setView("ai_import") },
+    { id: "ai_import", icon: "📄", label: "Document Import", action: () => setView("ai_import") },
     { id: "staging", icon: "📋", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length > 0 ? aiStaging.filter((e) => e._status === "pending").length : undefined },
     { divider: true },
     { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
+    { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
     { id: "support", icon: "♥", label: "Support", action: () => setShowDonate(true) },
   ];
 
@@ -2282,6 +2231,10 @@ const handleCreateWorld = async () => {
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "timeline" && view === "timeline") return true;
     if (item.id === "map" && view === "map") return true;
+    if (item.id === "graph" && view === "graph") return true;
+    if (item.id === "family_tree" && view === "family_tree") return true;
+    if (item.id === "generator" && view === "generator") return true;
+    if (item.id === "sessions" && view === "sessions") return true;
     if (item.id === "novel" && view === "novel") return true;
     if (item.id === "archives" && view === "archives") return true;
     if (item.id === "ai_import" && view === "ai_import") return true;
@@ -2294,6 +2247,7 @@ const handleCreateWorld = async () => {
 
   // Top bar quick-create: only show first 4 + a "more" dropdown state
   const [showMoreCats, setShowMoreCats] = useState(false);
+  const [showCodexCreate, setShowCodexCreate] = useState(false);
   const [showMobileFab, setShowMobileFab] = useState(false);
   const mainCats = Object.entries(CATEGORIES).slice(0, 4);
   const extraCats = Object.entries(CATEGORIES).slice(4);
@@ -2303,17 +2257,38 @@ const handleCreateWorld = async () => {
     const handleEsc = (e) => {
       if (e.key === "Escape") {
         if (showMoreCats) setShowMoreCats(false);
+        else if (showCodexCreate) setShowCodexCreate(false);
         else if (showMobileFab) setShowMobileFab(false);
         else if (worldSwitcherOpen) setWorldSwitcherOpen(false);
         else if (showDupeModal) { setShowDupeModal(false); setPendingDupes([]); }
         else if (showDeleteModal) setShowDeleteModal(null);
+        else if (showMoveMenu) setShowMoveMenu(null);
+        else if (showShortcuts) setShowShortcuts(false);
         else if (showConfirm) setShowConfirm(null);
         else if (importConflicts) { setImportConflicts(null); setImportPending(null); }
       }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [showMoreCats, showMobileFab, worldSwitcherOpen, showDupeModal, showDeleteModal, showConfirm, importConflicts]);
+  }, [showMoreCats, showCodexCreate, showMobileFab, worldSwitcherOpen, showDupeModal, showDeleteModal, showMoveMenu, showConfirm, importConflicts]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleShortcut = (e) => {
+      // Skip when typing in inputs/textareas/contentEditable
+      const tag = e.target.tagName;
+      const isEditable = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable;
+      const mod = e.ctrlKey || e.metaKey;
+
+      if (mod && e.key === "k") { e.preventDefault(); document.querySelector("[data-search-input]")?.focus(); }
+      else if (mod && e.key === "/") { e.preventDefault(); setShowShortcuts((v) => !v); }
+      else if (mod && e.key === "n" && !isEditable) { e.preventDefault(); if (activeWorld) goCreate(codexFilter !== "all" ? codexFilter : "character"); }
+      else if (mod && e.key === "d" && !isEditable) { e.preventDefault(); goDash(); }
+      else if (mod && e.key === "j" && !isEditable) { e.preventDefault(); setScratchpadOpen((v) => !v); }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [activeWorld, codexFilter]);
 
 
   // ╔══════════════════════════════════════════════════════════════╗
@@ -2379,60 +2354,182 @@ const handleCreateWorld = async () => {
   const renderDashboard = () => (<>
           {/* === DASHBOARD === */}
           {view === "dashboard" && activeWorld && (<div>
-            <div style={{ marginTop: 28, marginBottom: 8 }}>
-              <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 2 }}>The Archives of {activeWorld?.name || "Your World"}</h1>
-              <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4, fontStyle: "italic" }}>"Creation requires sacrifice. To give form costs essence."</p>
+            <div style={{ marginTop: 28, marginBottom: 8, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div>
+                <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 2 }}>The Archives of {activeWorld?.name || "Your World"}</h1>
+                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4, fontStyle: "italic" }}>"Creation requires sacrifice. To give form costs essence."</p>
+              </div>
+              <button onClick={() => setDashCustomizing((v) => !v)} style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", color: dashCustomizing ? theme.accent : theme.textDim, background: dashCustomizing ? ta(theme.accent, 0.08) : "transparent" }}>
+                {dashCustomizing ? "✓ Done" : "⚙ Customize"}
+              </button>
             </div>
             <Ornament width={300} />
-            <div style={{ display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" }}>
-              {[{ n: stats.total, l: "Total Articles", c: theme.accent }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
-                <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
-              ))}
-            </div>
 
-            {totalIntegrityIssues > 0 && (<>
-              <p style={S.sTitle}><span style={{ color: "#e07050" }} aria-hidden="true">🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{totalIntegrityIssues} issue{totalIntegrityIssues !== 1 ? "s" : ""}</span></p>
-              <div style={{ background: "rgba(224,112,80,0.04)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: 4 }}>
-                {allConflicts.slice(0, 3).map((c) => (
-                  <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
-                    <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : theme.accent, marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
-                    <span style={S.catBadge(c.severity === "error" ? "#e07050" : theme.accent)}>{c.severity}</span>
-                  </div>
-                ))}
-                {globalIntegrity.slice(0, Math.max(0, 4 - allConflicts.length)).map(({ article: a, issues }) => (
-                  <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(a.id)}>
-                    <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: theme.textDim }}>{issues[0].message}</div></div>
-                    <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : theme.accent)}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
-                  </div>
-                ))}
-                <div style={{ padding: "10px 14px", textAlign: "center", fontSize: 12, color: "#e07050", cursor: "pointer" }} onClick={() => setView("integrity")}>View full integrity report →</div>
-              </div>
-            </>)}
-
-            <p style={S.sTitle}>⚒ Quick Create</p>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : isTablet ? "repeat(3, 1fr)" : "repeat(4, 1fr)", gap: 10 }}>
-              {Object.entries(CATEGORIES).map(([k, c]) => (
-                <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = c.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = c.color + "33"; e.currentTarget.style.transform = "none"; }}>
-                  <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div><div style={{ fontSize: 11, color: c.color, fontWeight: 600 }}>New {c.label}</div>
+            {/* Widget customization strip */}
+            {dashCustomizing && (
+              <div style={{ margin: "16px 0", padding: "12px 16px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 10 }}>
+                <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Dashboard Widgets</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {[
+                    { id: "stats", label: "📊 World Stats" },
+                    { id: "integrity", label: "🛡 Integrity" },
+                    { id: "quick_create", label: "⚒ Quick Create" },
+                    { id: "recent", label: "📜 Recent Edits" },
+                    { id: "writing_progress", label: "✒ Writing Progress" },
+                    { id: "world_links", label: "🔗 Quick Links" },
+                    { id: "sessions_preview", label: "📓 Sessions" },
+                    { id: "generators_preview", label: "🎲 Generators" },
+                  ].map((w) => {
+                    const on = dashWidgets.includes(w.id);
+                    const idx = dashWidgets.indexOf(w.id);
+                    return (
+                      <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <button onClick={() => toggleWidget(w.id)}
+                          style={{ fontSize: 11, padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", border: "1px solid " + (on ? ta(theme.accent, 0.3) : theme.border), background: on ? ta(theme.accent, 0.08) : "transparent", color: on ? theme.accent : theme.textDim, fontWeight: on ? 600 : 400 }}>
+                          {w.label}
+                        </button>
+                        {on && idx > 0 && <span onClick={() => moveWidget(w.id, -1)} style={{ fontSize: 9, cursor: "pointer", color: theme.textDim, padding: "0 2px" }}>◀</span>}
+                        {on && idx < dashWidgets.length - 1 && <span onClick={() => moveWidget(w.id, 1)} style={{ fontSize: 9, cursor: "pointer", color: theme.textDim, padding: "0 2px" }}>▶</span>}
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-
-            <p style={S.sTitle}>📜 Recent Edits</p>
-            {recent.map((a) => { const ac = conflictsFor(a.id); return (
-              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + (ac.length > 0 ? "rgba(224,112,80,0.3)" : theme.divider), borderRadius: 6, marginBottom: 6, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
-                onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
-                <span style={{ fontSize: 16, width: 24, textAlign: "center", color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#c8bda0" }}>{a.title}</span>
-                {ac.length > 0 && <span style={{ fontSize: 12, color: "#e07050" }}>⚠ {ac.length}</span>}
-                <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
-                <span style={{ fontSize: 11, color: theme.textDim, minWidth: 60, textAlign: "right" }}>{timeAgo(a.updatedAt)}</span>
               </div>
-            ); })}
+            )}
+
+            {/* Render active widgets in order */}
+            {dashWidgets.map((wid) => {
+              switch (wid) {
+                case "stats": return (
+                  <div key={wid}>
+                    <div style={{ display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" }}>
+                      {[{ n: stats.total, l: "Total Articles", c: theme.accent }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
+                        <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
+                      ))}
+                    </div>
+                  </div>
+                );
+                case "integrity": return totalIntegrityIssues > 0 ? (
+                  <div key={wid}>
+                    <p style={S.sTitle}><span style={{ color: "#e07050" }} aria-hidden="true">🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{totalIntegrityIssues} issue{totalIntegrityIssues !== 1 ? "s" : ""}</span></p>
+                    <div style={{ background: "rgba(224,112,80,0.04)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: 4 }}>
+                      {allConflicts.slice(0, 3).map((c) => (
+                        <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
+                          <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : theme.accent, marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
+                          <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
+                          <span style={S.catBadge(c.severity === "error" ? "#e07050" : theme.accent)}>{c.severity}</span>
+                        </div>
+                      ))}
+                      {globalIntegrity.slice(0, Math.max(0, 4 - allConflicts.length)).map(({ article: a, issues }) => (
+                        <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(a.id)}>
+                          <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
+                          <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: theme.textDim }}>{issues[0].message}</div></div>
+                          <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : theme.accent)}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
+                        </div>
+                      ))}
+                      <div style={{ padding: "10px 14px", textAlign: "center", fontSize: 12, color: "#e07050", cursor: "pointer" }} onClick={() => setView("integrity")}>View full integrity report →</div>
+                    </div>
+                  </div>
+                ) : null;
+                case "quick_create": return (
+                  <div key={wid}>
+                    <p style={S.sTitle}>⚒ Quick Create</p>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : isTablet ? "repeat(3, 1fr)" : "repeat(4, 1fr)", gap: 10 }}>
+                      {Object.entries(CATEGORIES).map(([k, c]) => (
+                        <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
+                          onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + c.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + c.color + "33"; e.currentTarget.style.transform = "none"; }}>
+                          <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div><div style={{ fontSize: 11, color: c.color, fontWeight: 600 }}>New {c.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+                case "recent": return (
+                  <div key={wid}>
+                    <p style={S.sTitle}>📜 Recent Edits</p>
+                    {recent.map((a) => { const ac = conflictsFor(a.id); return (
+                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + (ac.length > 0 ? "rgba(224,112,80,0.3)" : theme.divider), borderRadius: 6, marginBottom: 6, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                        <span style={{ fontSize: 16, width: 24, textAlign: "center", color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#c8bda0" }}>{a.title}</span>
+                        {ac.length > 0 && <span style={{ fontSize: 12, color: "#e07050" }}>⚠ {ac.length}</span>}
+                        <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
+                        <span style={{ fontSize: 11, color: theme.textDim, minWidth: 60, textAlign: "right" }}>{timeAgo(a.updatedAt)}</span>
+                      </div>
+                    ); })}
+                  </div>
+                );
+                case "writing_progress": return (
+                  <div key={wid}>
+                    <p style={S.sTitle}>✒ Writing Progress</p>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12 }}>
+                      {manuscripts.slice(0, 3).map((ms) => {
+                        const wc = ms.acts?.reduce((s, a) => s + a.chapters?.reduce((s2, c) => s2 + c.scenes?.reduce((s3, sc) => { const div = document.createElement("div"); div.innerHTML = sc.body || ""; return s3 + (div.textContent || "").split(/\s+/).filter(Boolean).length; }, 0), 0), 0) || 0;
+                        const sceneCount = ms.acts?.reduce((s, a) => s + a.chapters?.reduce((s2, c) => s2 + (c.scenes?.length || 0), 0), 0) || 0;
+                        return (
+                          <div key={ms.id} onClick={() => { setActiveMs(ms); setView("novel"); }} style={{ background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 10, padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + theme.accent + "40"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + theme.divider; }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", marginBottom: 6 }}>{ms.title}</div>
+                            <div style={{ fontSize: 11, color: theme.textDim }}>{wc.toLocaleString()} words · {sceneCount} scenes</div>
+                            <div style={{ marginTop: 8, height: 4, background: theme.divider, borderRadius: 2 }}>
+                              <div style={{ height: "100%", width: Math.min(100, (wc / 50000) * 100) + "%", background: theme.accent, borderRadius: 2, transition: "width 0.3s" }} />
+                            </div>
+                            <div style={{ fontSize: 9, color: theme.textDim, marginTop: 4, textAlign: "right" }}>{Math.round((wc / 50000) * 100)}% of 50k goal</div>
+                          </div>
+                        );
+                      })}
+                      {manuscripts.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: 12 }}>No manuscripts yet. Start one in Novel Writing!</div>}
+                    </div>
+                  </div>
+                );
+                case "world_links": return (
+                  <div key={wid}>
+                    <p style={S.sTitle}>🔗 Quick Links</p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {[
+                        { label: "Timeline", icon: "⏳", action: () => setView("timeline") },
+                        { label: "Relationship Web", icon: "◉", action: () => setView("graph") },
+                        { label: "Family Tree", icon: "🌳", action: () => setView("family_tree") },
+                        { label: "Map Builder", icon: "🗺", action: () => setView("map") },
+                        { label: "Generators", icon: "🎲", action: () => setView("generator") },
+                        { label: "Session Notes", icon: "📓", action: () => setView("sessions") },
+                        { label: "Import Docs", icon: "📄", action: () => setView("ai_import") },
+                      ].map((lnk, i) => (
+                        <button key={i} onClick={lnk.action} style={{ ...tBtnS, fontSize: 11, padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 14 }}>{lnk.icon}</span> {lnk.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+                case "sessions_preview": return sessions.length > 0 ? (
+                  <div key={wid}>
+                    <p style={S.sTitle}>📓 Recent Sessions</p>
+                    {sessions.slice(0, 3).map((s) => (
+                      <div key={s.id} onClick={() => setView("sessions")} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 6, marginBottom: 6, cursor: "pointer" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                        <span style={{ fontSize: 14 }}>📓</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: theme.text }}>{s.title}</span>
+                        {s.date && <span style={{ fontSize: 10, color: theme.textDim }}>{s.date}</span>}
+                      </div>
+                    ))}
+                    <div style={{ textAlign: "center", fontSize: 11, color: theme.accent, cursor: "pointer", padding: 8 }} onClick={() => setView("sessions")}>View all sessions →</div>
+                  </div>
+                ) : null;
+                case "generators_preview": return (
+                  <div key={wid}>
+                    <p style={S.sTitle}>🎲 Quick Generate</p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {Object.entries(GENERATORS).map(([k, g]) => (
+                        <button key={k} onClick={() => { setGeneratorType(k); setView("generator"); }} style={{ ...tBtnS, fontSize: 11, padding: "6px 14px" }}>{g.icon} {g.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+                default: return null;
+              }
+            })}
           </div>)}
   </>);
 
@@ -2497,226 +2594,713 @@ const renderArchives = () => (<>
   </>);
 
   const renderTimeline = () => (<>
-          {/* === TIMELINE === */}
-          {view === "timeline" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {/* Timeline Header */}
-            <div style={{ padding: "20px 28px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          {view === "timeline" && (
+            <TimelineView
+              theme={theme} articles={articles} activeWorld={activeWorld}
+              activeEras={activeEras} isMobile={isMobile} navigate={navigate}
+              goEdit={goEdit} conflictsFor={conflictsFor}
+              tlZoom={tlZoom} setTlZoom={setTlZoom} tlSelected={tlSelected}
+              tlData={tlData} tlRange={tlRange} yearToX={yearToX}
+              tlTotalWidth={tlTotalWidth} tlTicks={tlTicks}
+              tlSelectArticle={tlSelectArticle} tlClosePanel={tlClosePanel}
+              tlLaneHeights={tlLaneHeights} tlPanelOpen={tlPanelOpen}
+              ta={ta} tBtnS={tBtnS} tBtnP={tBtnP} tTag={tTag}
+              Ornament={Ornament} WarningBanner={WarningBanner}
+              RenderBody={RenderBody} S={S}
+            />
+          )}
+  </>);
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  RELATIONSHIP GRAPH                                        ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  const renderGraph = () => (<>
+          {view === "graph" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "16px 28px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexShrink: 0, flexDirection: isMobile ? "column" : "row", gap: 10 }}>
               <div>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⏳ Timeline of {activeWorld?.name || "Your World"}</h2>
-                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{tlData.items.length} temporal entries across {Object.keys(tlData.lanes).length} categories</p>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>◉ Relationship Web</h2>
+                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{articles.length} entries · {articles.reduce((s, a) => s + (a.linkedIds?.length || 0), 0)} connections — click a node to view</p>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: theme.textDim, letterSpacing: 0.5 }}>ZOOM</span>
-                <button onClick={() => setTlZoom((z) => Math.max(0, z - 1))} style={{ ...tBtnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom <= 0}>−</button>
-                <div style={{ width: 80, height: 4, background: theme.border, borderRadius: 2, position: "relative" }}>
-                  <div style={{ position: "absolute", left: `${(tlZoom / 6) * 100}%`, top: -4, width: 12, height: 12, background: theme.accent, borderRadius: "50%", transform: "translateX(-50%)", boxShadow: "0 0 8px " + ta(theme.accent, 0.4) }} />
-                </div>
-                <button onClick={() => setTlZoom((z) => Math.min(6, z + 1))} style={{ ...tBtnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom >= 6}>+</button>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {[{ key: "all", label: "All", color: theme.accent }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((f) => (
+                  <div key={f.key} onClick={() => setGraphFilter(f.key)} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 14, cursor: "pointer", fontWeight: graphFilter === f.key ? 600 : 400, background: graphFilter === f.key ? f.color + "20" : "transparent", color: graphFilter === f.key ? f.color : theme.textDim, border: "1px solid " + (graphFilter === f.key ? f.color + "40" : "transparent"), transition: "all 0.15s" }}>{f.label}</div>
+                ))}
               </div>
             </div>
-
-            {/* Timeline Body */}
-            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-              {/* Swim Lane Labels */}
-              <div ref={tlLabelRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlRef.current) tlRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ width: 160, minWidth: 160, borderRight: "1px solid " + theme.divider, background: ta(theme.deepBg, 0.6), flexShrink: 0, overflowY: "auto" }}>
-                {/* Era header spacer */}
-                <div style={{ height: 52, borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontSize: 10, color: theme.textDim, letterSpacing: 2, textTransform: "uppercase" }}>Categories</span>
-                </div>
-                {/* Tick row spacer */}
-                <div style={{ height: 28, borderBottom: "1px solid " + theme.divider }} />
-                {SWIM_LANE_ORDER.map((cat) => {
-                  if (!tlData.lanes[cat]) return null;
-                  const c = CATEGORIES[cat];
-                  const h = tlLaneHeights[cat] || 50;
-                  return (
-                    <div key={cat} style={{ height: h, minHeight: 50, borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8, padding: "0 16px" }}>
-                      <span style={{ fontSize: 16, color: c.color }}>{c.icon}</span>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: c.color, letterSpacing: 0.5 }}>{categoryPluralLabel(cat)}</div>
-                        <div style={{ fontSize: 10, color: theme.textDim }}>{tlData.lanes[cat].length} entries</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Scrollable Timeline Canvas */}
-              <div ref={tlRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlLabelRef.current) tlLabelRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ flex: 1, overflowX: "auto", overflowY: "auto", position: "relative" }}>
-                <div style={{ width: Math.max(tlTotalWidth + 100, 800), minHeight: "100%", position: "relative" }}>
-                  {/* Era Bands */}
-                  <div style={{ height: 52, position: "sticky", top: 0, zIndex: 10, display: "flex", background: ta(theme.deepBg, 0.95), borderBottom: "1px solid " + theme.divider, backdropFilter: "blur(8px)" }}>
-                    {activeEras.map((era, ei) => {
-                      const x = yearToX(Math.max(era.start, tlRange.min));
-                      const xEnd = yearToX(Math.min(era.end, tlRange.max));
-                      const w = xEnd - x;
-                      if (w <= 0) return null;
+            <div ref={graphRef} style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+              {(() => {
+                const gArticles = graphFilter === "all" ? articles : articles.filter((a) => a.category === graphFilter);
+                const ids = new Set(gArticles.map((a) => a.id));
+                const svgW = 900;
+                const svgH = 650;
+                const cx = svgW / 2;
+                const cy = svgH / 2;
+                const nodes = gArticles.map((a, i) => {
+                  const angle = i * 2.39996; // golden angle in radians
+                  const r = 60 + Math.sqrt(i) * 42;
+                  return { ...a, gx: cx + r * Math.cos(angle), gy: cy + r * Math.sin(angle) };
+                });
+                const nodeMap = {};
+                nodes.forEach((n) => { nodeMap[n.id] = n; });
+                const edges = [];
+                nodes.forEach((n) => {
+                  (n.linkedIds || []).forEach((lid) => {
+                    if (nodeMap[lid]) edges.push({ from: n.id, to: lid });
+                  });
+                });
+                const hNode = graphHover ? nodeMap[graphHover] : null;
+                const hConnected = hNode ? new Set([...(hNode.linkedIds || []), ...articles.filter((a) => a.linkedIds?.includes(hNode.id)).map((a) => a.id)]) : new Set();
+                return (
+                  <svg viewBox={"0 0 " + svgW + " " + svgH} style={{ width: "100%", height: "100%", background: ta(theme.deepBg, 0.5) }} preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                      <radialGradient id="graph-glow"><stop offset="0%" stopColor={theme.accent} stopOpacity="0.1" /><stop offset="100%" stopColor={theme.accent} stopOpacity="0" /></radialGradient>
+                    </defs>
+                    <circle cx={cx} cy={cy} r={280} fill="url(#graph-glow)" />
+                    {edges.map((e, i) => {
+                      const from = nodeMap[e.from];
+                      const to = nodeMap[e.to];
+                      if (!from || !to) return null;
+                      const isHovered = graphHover && (graphHover === e.from || graphHover === e.to);
+                      return <line key={i} x1={from.gx} y1={from.gy} x2={to.gx} y2={to.gy}
+                        stroke={isHovered ? theme.accent : theme.textDim} strokeWidth={isHovered ? 1.8 : 0.6} opacity={isHovered ? 0.8 : (graphHover ? 0.08 : 0.2)} />;
+                    })}
+                    {nodes.map((n) => {
+                      const cat = CATEGORIES[n.category] || {};
+                      const isH = graphHover === n.id;
+                      const isConn = graphHover && hConnected.has(n.id);
+                      const linkCount = (n.linkedIds || []).filter((l) => nodeMap[l]).length;
+                      const backLinks = nodes.filter((o) => o.linkedIds?.includes(n.id)).length;
+                      const totalConns = linkCount + backLinks;
+                      const r = Math.max(7, Math.min(22, 5 + totalConns * 1.5));
+                      const dimmed = graphHover && !isH && !isConn;
                       return (
-                        <div key={era.id || "era_" + ei} style={{ position: "absolute", left: x, width: w, height: "100%", background: era.bg || era.color + "0f", borderRight: "1px solid " + era.color + "30", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                          <span style={{ fontFamily: "'Cinzel', serif", fontSize: w > 200 ? 12 : 9, color: era.color, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600, whiteSpace: "nowrap", opacity: w > 60 ? 1 : 0.5 }}>{w > 140 ? (era.label || era.name) : (era.label || era.name || "").split("—")[0]?.trim()}</span>
+                        <g key={n.id} style={{ cursor: "pointer" }}
+                          onMouseEnter={() => setGraphHover(n.id)}
+                          onMouseLeave={() => setGraphHover(null)}
+                          onClick={() => navigate(n.id)}>
+                          {isH && <circle cx={n.gx} cy={n.gy} r={r + 8} fill={cat.color || theme.accent} opacity={0.15} />}
+                          <circle cx={n.gx} cy={n.gy} r={r}
+                            fill={isH ? (cat.color || theme.accent) : (cat.color || theme.accent) + (dimmed ? "20" : "50")}
+                            stroke={isH ? "#fff" : isConn ? cat.color || theme.accent : (cat.color || theme.accent) + (dimmed ? "30" : "80")}
+                            strokeWidth={isH ? 2.5 : isConn ? 1.5 : 0.8} />
+                          <text x={n.gx} y={n.gy + r + 13} textAnchor="middle"
+                            fill={isH ? theme.text : dimmed ? theme.textDim + "40" : theme.textMuted}
+                            fontSize={isH ? 11 : 9} fontWeight={isH ? 700 : 400}
+                            fontFamily="'Cinzel', serif">{n.title.length > 20 ? n.title.slice(0, 18) + "…" : n.title}</text>
+                        </g>
+                      );
+                    })}
+                    {hNode && (
+                      <foreignObject x={Math.min(hNode.gx + 24, svgW - 210)} y={Math.max(hNode.gy - 70, 10)} width="200" height="90">
+                        <div xmlns="http://www.w3.org/1999/xhtml" style={{ background: theme.surface, border: "1px solid " + theme.border, borderRadius: 8, padding: "8px 12px", boxShadow: "0 4px 20px rgba(0,0,0,0.4)", pointerEvents: "none" }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 3 }}>{(CATEGORIES[hNode.category]?.icon || "") + " " + hNode.title}</div>
+                          <div style={{ fontSize: 10, color: CATEGORIES[hNode.category]?.color || theme.textDim }}>{CATEGORIES[hNode.category]?.label} · {(hNode.linkedIds || []).length} outgoing · {articles.filter((a) => a.linkedIds?.includes(hNode.id)).length} incoming</div>
+                          {hNode.summary && <div style={{ fontSize: 9, color: theme.textDim, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hNode.summary}</div>}
+                        </div>
+                      </foreignObject>
+                    )}
+                    {nodes.length === 0 && <text x={cx} y={cy} textAnchor="middle" fill={theme.textDim} fontSize="14" fontFamily="'Cinzel', serif">No entries to graph</text>}
+                  </svg>
+                );
+              })()}
+            </div>
+          </div>)}
+  </>);
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  FAMILY TREE / LINEAGE                                     ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  const renderFamilyTree = () => (<>
+          {view === "family_tree" && (<div style={{ marginTop: 24 }}>
+            <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexDirection: isMobile ? "column" : "row" }}>
+              <div>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🌳 Family Tree & Lineage</h2>
+                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{characters.length} characters · {Object.values(relations).reduce((s, r) => s + r.length, 0)} relationships</p>
+              </div>
+            </div>
+            <Ornament width={300} />
+
+            {characters.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}><div style={{ fontSize: 36, marginBottom: 12 }}>🌳</div><p>No characters yet. Create some character entries in the Codex first.</p></div>
+            ) : (
+              <div style={{ display: "flex", gap: 20, marginTop: 20, flexDirection: isMobile ? "column" : "row" }}>
+                {/* Character list panel */}
+                <div style={{ width: isMobile ? "100%" : 260, flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Characters</div>
+                  <div style={{ maxHeight: 500, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                    {characters.map((ch) => {
+                      const rels = getRelationsFor(ch.id);
+                      const relCount = rels.length;
+                      return (
+                        <div key={ch.id} onClick={() => { setFtSelected(ftSelected === ch.id ? null : ch.id); setFtAddingRel(null); }}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: ftSelected === ch.id ? ta(theme.accent, 0.1) : ta(theme.surface, 0.5), border: "1px solid " + (ftSelected === ch.id ? ta(theme.accent, 0.3) : theme.divider), transition: "all 0.15s" }}
+                          onMouseEnter={(e) => { if (ftSelected !== ch.id) e.currentTarget.style.background = ta(theme.surface, 0.7); }}
+                          onMouseLeave={(e) => { if (ftSelected !== ch.id) e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                          {ch.portrait ? (
+                            <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", border: "1px solid " + CATEGORIES.character.color + "40", flexShrink: 0 }}><img src={ch.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
+                          ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: "50%", background: ta(CATEGORIES.character.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: CATEGORIES.character.color, flexShrink: 0 }}>🧙</div>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: ftSelected === ch.id ? theme.accent : theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.title}</div>
+                            <div style={{ fontSize: 10, color: theme.textDim }}>{ch.fields?.char_race || "Unknown"}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
+                          </div>
+                          {relCount > 0 && <span style={{ fontSize: 9, color: theme.textDim, background: ta(theme.accent, 0.06), padding: "2px 6px", borderRadius: 8 }}>{relCount}</span>}
                         </div>
                       );
                     })}
                   </div>
-
-                  {/* Year Ticks */}
-                  <div style={{ height: 28, position: "relative", borderBottom: "1px solid " + theme.divider }}>
-                    {tlTicks.ticks.map((y) => (
-                      <div key={y} style={{ position: "absolute", left: yearToX(y), top: 0, height: "100%" }}>
-                        <div style={{ width: 1, height: "100%", background: theme.divider }} />
-                        <span style={{ position: "absolute", top: 6, left: 4, fontSize: 9, color: theme.textDim, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{y < 0 ? `${Math.abs(y)} BA` : `Year ${y.toLocaleString()}`}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Swim Lanes */}
-                  {SWIM_LANE_ORDER.map((cat) => {
-                    if (!tlData.lanes[cat]) return null;
-                    const c = CATEGORIES[cat];
-                    // Compute stagger rows to avoid overlap
-                    const entries = tlData.lanes[cat];
-                    const placed = [];
-                    const entryRows = {};
-                    entries.forEach((a) => {
-                      const x = yearToX(a.temporal.active_start);
-                      const hasEnd = a.temporal.active_end != null && a.temporal.active_end !== a.temporal.active_start;
-                      const xEnd = hasEnd ? yearToX(a.temporal.active_end) : x + 28;
-                      let row = 0;
-                      while (placed.some((p) => p.row === row && p.xEnd > x - 4 && p.x < xEnd + 4)) row++;
-                      placed.push({ id: a.id, x, xEnd, row });
-                      entryRows[a.id] = row;
-                    });
-                    const maxRow = Math.max(0, ...Object.values(entryRows));
-                    const laneH = 40 + maxRow * 30;
-                    return (
-                      <div key={cat} style={{ height: laneH, minHeight: 50, borderBottom: "1px solid " + theme.divider, position: "relative" }}>
-                        {tlTicks.ticks.map((y) => (
-                          <div key={y} style={{ position: "absolute", left: yearToX(y), top: 0, width: 1, height: "100%", background: "rgba(30,42,58,0.4)" }} />
-                        ))}
-                        {entries.map((a) => {
-                          const x = yearToX(a.temporal.active_start);
-                          const hasEnd = a.temporal.active_end != null && a.temporal.active_end !== a.temporal.active_start;
-                          const w = hasEnd ? Math.max(yearToX(a.temporal.active_end) - x, 8) : null;
-                          const isSelected = tlSelected?.id === a.id;
-                          const isDead = a.temporal.death_year != null;
-                          const row = entryRows[a.id] || 0;
-                          const topOff = 6 + row * 30;
-
-                          if (w && w > 3) {
-                            return (
-                              <div key={a.id} onClick={() => tlSelectArticle(a)} title={a.title} style={{
-                                position: "absolute", left: x, top: topOff, height: 26, width: w,
-                                background: isSelected ? c.color + "40" : c.color + "18",
-                                border: "1px solid " + (isSelected ? c.color : c.color + "50"),
-                                borderRadius: 4, cursor: "pointer", transition: "all 0.2s",
-                                display: "flex", alignItems: "center", overflow: "hidden", padding: "0 6px",
-                                boxShadow: isSelected ? "0 0 12px " + c.color + "30" : "none",
-                                zIndex: isSelected ? 5 : 1,
-                              }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "35"; e.currentTarget.style.borderColor = c.color; e.currentTarget.style.zIndex = "10"; }}
-                                onMouseLeave={(e) => { if (!isSelected) { e.currentTarget.style.background = c.color + "18"; e.currentTarget.style.borderColor = c.color + "50"; e.currentTarget.style.zIndex = "1"; } }}>
-                                <span style={{ fontSize: 10, color: isSelected ? "#e8dcc8" : c.color, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.3 }}>
-                                  {a.title}{isDead ? " †" : ""}
-                                </span>
-                              </div>
-                            );
-                          }
-                          // Point marker — label on hover only
-                          return (
-                            <div key={a.id} onClick={() => tlSelectArticle(a)} className="tl-node" style={{
-                              position: "absolute", left: x - 7, top: topOff, width: 28, height: 26,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              cursor: "pointer", zIndex: isSelected ? 5 : 1, transition: "all 0.2s",
-                            }}>
-                              <style>{`.tl-node .tl-tip { opacity: 0; transition: opacity 0.15s; pointer-events: none; } .tl-node:hover .tl-tip { opacity: 1; }`}</style>
-                              <div style={{
-                                width: isSelected ? 14 : 10, height: isSelected ? 14 : 10,
-                                background: isSelected ? c.color : c.color + "80",
-                                borderRadius: "50%", border: "2px solid " + c.color,
-                                boxShadow: isSelected ? "0 0 12px " + c.color + "60" : "0 0 6px " + c.color + "20",
-                                transition: "all 0.2s",
-                              }}
-                                onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.3)"; e.currentTarget.style.boxShadow = "0 0 12px " + c.color + "60"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; if (!isSelected) e.currentTarget.style.boxShadow = "0 0 6px " + c.color + "20"; }}
-                              />
-                              <div className="tl-tip" style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: theme.text, whiteSpace: "nowrap", background: ta(theme.deepBg, 0.95), padding: "2px 8px", borderRadius: 4, border: "1px solid " + c.color + "40", zIndex: 20 }}>{a.title}{isDead ? " †" : ""}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
                 </div>
-              </div>
 
-              {/* Side Panel */}
-              <div style={{
-                width: tlPanelOpen ? 320 : 0, minWidth: tlPanelOpen ? 320 : 0,
-                borderLeft: tlPanelOpen ? "1px solid " + theme.divider : "none",
-                background: ta(theme.deepBg, 0.95), backdropFilter: "blur(10px)",
-                transition: "all 0.3s ease", overflow: "hidden", flexShrink: 0,
-              }}>
-                {tlSelected && (
-                  <div style={{ width: isMobile ? "100%" : 320, padding: "20px 18px 60px", overflowY: "auto", height: "100%", boxSizing: "border-box" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                      <span style={S.catBadge(CATEGORIES[tlSelected.category]?.color)}>
-                        {CATEGORIES[tlSelected.category]?.icon} {CATEGORIES[tlSelected.category]?.label}
-                      </span>
-                      <span onClick={tlClosePanel} style={{ fontSize: 16, color: theme.textDim, cursor: "pointer", padding: "4px 8px", borderRadius: 4 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>✕</span>
-                    </div>
-                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>{tlSelected.title}</h3>
-                    <p style={{ fontSize: 12, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.5, margin: "0 0 16px" }}>{tlSelected.summary}</p>
-                    <Ornament width={280} />
+                {/* Detail / relationship panel */}
+                <div style={{ flex: 1 }}>
+                  {ftSelected ? (() => {
+                    const ch = articles.find((a) => a.id === ftSelected);
+                    if (!ch) return <div style={{ color: theme.textDim }}>Character not found.</div>;
+                    const rels = getRelationsFor(ch.id);
+                    const parents = rels.filter((r) => r.type === "parent").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const children = rels.filter((r) => r.type === "child").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const spouses = rels.filter((r) => r.type === "spouse").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const siblings = rels.filter((r) => r.type === "sibling").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const REL_TYPES = [
+                      { key: "parent", label: "Parents", icon: "👑", list: parents, color: "#d4a060" },
+                      { key: "spouse", label: "Spouses", icon: "💍", list: spouses, color: "#f472b6" },
+                      { key: "sibling", label: "Siblings", icon: "👥", list: siblings, color: "#7ec8e3" },
+                      { key: "child", label: "Children", icon: "🌱", list: children, color: "#8ec8a0" },
+                    ];
 
-                    {/* Temporal badge */}
-                    <div style={{ fontSize: 11, color: theme.textDim, margin: "14px 0", padding: "6px 10px", background: "rgba(85,102,119,0.08)", borderRadius: 6, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <span>⏳ {tlSelected.temporal?.type}</span>
-                      {tlSelected.temporal?.active_start != null && <span>From: Year {tlSelected.temporal.active_start}</span>}
-                      {tlSelected.temporal?.active_end != null && <span>To: Year {tlSelected.temporal.active_end}</span>}
-                      {tlSelected.temporal?.death_year && <span style={{ color: "#e07050" }}>† Year {tlSelected.temporal.death_year}</span>}
-                    </div>
+                    return (
+                      <div>
+                        {/* Character header */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
+                          {ch.portrait ? (
+                            <div style={{ width: 56, height: 56, borderRadius: "50%", overflow: "hidden", border: "2px solid " + CATEGORIES.character.color + "40" }}><img src={ch.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
+                          ) : (
+                            <div style={{ width: 56, height: 56, borderRadius: "50%", background: ta(CATEGORIES.character.color, 0.1), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: CATEGORIES.character.color }}>🧙</div>
+                          )}
+                          <div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif" }}>{ch.title}</div>
+                            <div style={{ fontSize: 12, color: theme.textMuted }}>{ch.fields?.char_race || ""}{ch.fields?.titles ? " · " + ch.fields.titles : ""}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
+                          </div>
+                          <button onClick={() => navigate(ch.id)} style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", marginLeft: "auto" }}>View Article</button>
+                        </div>
 
-                    {/* Key fields */}
-                    {tlSelected.fields && Object.keys(tlSelected.fields).length > 0 && (
-                      <div style={{ marginBottom: 16 }}>
-                        {Object.entries(tlSelected.fields).slice(0, 4).map(([k, v]) => (
-                          <div key={k} style={{ display: "flex", padding: "5px 0", borderBottom: "1px solid " + theme.surface }}>
-                            <div style={{ width: 100, fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{formatKey(k)}</div>
-                            <div style={{ flex: 1, fontSize: 12, color: "#c8bda0", lineHeight: 1.4 }}>{v}</div>
+                        {/* Relationship groups */}
+                        {REL_TYPES.map((rt) => (
+                          <div key={rt.key} style={{ marginBottom: 16 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 14 }}>{rt.icon}</span>
+                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: rt.color, letterSpacing: 0.5 }}>{rt.label}</span>
+                              <span style={{ fontSize: 10, color: theme.textDim }}>({rt.list.length})</span>
+                              <button onClick={() => setFtAddingRel(ftAddingRel?.type === rt.key ? null : { fromId: ch.id, type: rt.key })}
+                                style={{ fontSize: 10, color: rt.color, background: ftAddingRel?.type === rt.key ? ta(rt.color, 0.15) : ta(rt.color, 0.06), border: "1px solid " + ta(rt.color, 0.2), borderRadius: 6, padding: "2px 10px", cursor: "pointer", fontFamily: "inherit", marginLeft: "auto" }}>
+                                {ftAddingRel?.type === rt.key ? "Cancel" : "+ Add"}
+                              </button>
+                            </div>
+                            {/* Add relationship picker */}
+                            {ftAddingRel?.type === rt.key && (
+                              <div style={{ marginBottom: 10, padding: "8px 12px", background: ta(theme.surface, 0.5), border: "1px solid " + ta(rt.color, 0.2), borderRadius: 8, maxHeight: 180, overflowY: "auto" }}>
+                                <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 6 }}>Select a character:</div>
+                                {characters.filter((c) => c.id !== ch.id && !rt.list.find((r) => r.id === c.id)).map((c) => (
+                                  <div key={c.id} onClick={() => { addRelation(ch.id, c.id, rt.key); setFtAddingRel(null); }}
+                                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 6, cursor: "pointer", transition: "background 0.1s" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = ta(rt.color, 0.1); }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                                    <span style={{ fontSize: 12, color: CATEGORIES.character.color }}>🧙</span>
+                                    <span style={{ fontSize: 12, color: theme.text }}>{c.title}</span>
+                                    <span style={{ fontSize: 10, color: theme.textDim }}>{c.fields?.char_race || ""}</span>
+                                  </div>
+                                ))}
+                                {characters.filter((c) => c.id !== ch.id && !rt.list.find((r) => r.id === c.id)).length === 0 && (
+                                  <div style={{ fontSize: 11, color: theme.textDim, padding: 4 }}>No available characters.</div>
+                                )}
+                              </div>
+                            )}
+                            {/* Listed relations */}
+                            {rt.list.length > 0 ? (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {rt.list.map((rel) => (
+                                  <div key={rel.id} style={{ display: "flex", alignItems: "center", gap: 6, background: ta(rt.color, 0.06), border: "1px solid " + ta(rt.color, 0.15), borderRadius: 8, padding: "6px 10px" }}>
+                                    {rel.portrait ? (
+                                      <div style={{ width: 22, height: 22, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}><img src={rel.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
+                                    ) : (
+                                      <span style={{ fontSize: 12, color: rt.color }}>🧙</span>
+                                    )}
+                                    <span onClick={() => setFtSelected(rel.id)} style={{ fontSize: 12, color: theme.text, fontWeight: 500, cursor: "pointer" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.color = rt.color; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.text; }}>{rel.title}</span>
+                                    <span onClick={(e) => { e.stopPropagation(); removeRelation(ch.id, rel.id, rt.key); }} title="Remove relationship" style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.5, marginLeft: 2 }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}>✕</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic", padding: "4px 0" }}>None</div>
+                            )}
                           </div>
                         ))}
+
+                        {/* Mini visual tree */}
+                        {(parents.length > 0 || children.length > 0 || spouses.length > 0) && (
+                          <div style={{ marginTop: 24, padding: "16px 20px", background: ta(theme.surface, 0.4), border: "1px solid " + theme.divider, borderRadius: 10 }}>
+                            <div style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>Lineage View</div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
+                              {/* Parents row */}
+                              {parents.length > 0 && (<>
+                                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+                                  {parents.map((p) => (
+                                    <div key={p.id} onClick={() => setFtSelected(p.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#d4a060", 0.06), border: "1px solid " + ta("#d4a060", 0.15), transition: "all 0.15s" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#d4a060"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#d4a060", 0.15); }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: "#d4a060" }}>{p.title}</div>
+                                      <div style={{ fontSize: 9, color: theme.textDim }}>{p.fields?.char_race || "Parent"}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ width: 2, height: 20, background: theme.divider }} />
+                              </>)}
+
+                              {/* Center: selected character + spouses */}
+                              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                {spouses.length > 0 && spouses.map((sp) => (<React.Fragment key={sp.id}>
+                                  <div onClick={() => setFtSelected(sp.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#f472b6", 0.06), border: "1px solid " + ta("#f472b6", 0.15) }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#f472b6"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#f472b6", 0.15); }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#f472b6" }}>{sp.title}</div>
+                                    <div style={{ fontSize: 9, color: theme.textDim }}>Spouse</div>
+                                  </div>
+                                  <span style={{ fontSize: 12, color: "#f472b6" }}>💍</span>
+                                </React.Fragment>))}
+                                <div style={{ textAlign: "center", padding: "10px 20px", borderRadius: 10, background: ta(theme.accent, 0.12), border: "2px solid " + ta(theme.accent, 0.4) }}>
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.accent, fontFamily: "'Cinzel', serif" }}>{ch.title}</div>
+                                  <div style={{ fontSize: 10, color: theme.textMuted }}>{ch.fields?.char_race || ""}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
+                                </div>
+                              </div>
+
+                              {/* Children row */}
+                              {children.length > 0 && (<>
+                                <div style={{ width: 2, height: 20, background: theme.divider }} />
+                                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+                                  {children.map((kid) => (
+                                    <div key={kid.id} onClick={() => setFtSelected(kid.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#8ec8a0", 0.06), border: "1px solid " + ta("#8ec8a0", 0.15), transition: "all 0.15s" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#8ec8a0"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#8ec8a0", 0.15); }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: "#8ec8a0" }}>{kid.title}</div>
+                                      <div style={{ fontSize: 9, color: theme.textDim }}>{kid.fields?.char_race || "Child"}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>)}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    );
+                  })() : (
+                    <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}>
+                      <div style={{ fontSize: 36, marginBottom: 12 }}>🌳</div>
+                      <p>Select a character to view and manage their family relationships.</p>
+                      <p style={{ fontSize: 11 }}>Click a name, then use the + Add buttons to link parents, spouses, siblings, and children.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>)}
+  </>);
 
-                    {/* Conflict warnings */}
-                    {conflictsFor(tlSelected.id).map((c) => (
-                      <WarningBanner key={c.id} severity={c.severity} icon={c.severity === "error" ? "✕" : "⚠"} title="Canon Conflict" style={{ marginBottom: 8 }}>
-                        <p style={{ margin: 0, fontSize: 11 }}>{c.message}</p>
-                      </WarningBanner>
-                    ))}
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  RANDOM GENERATORS                                         ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  const GENERATORS = {
+    npc: {
+      label: "NPC Generator", icon: "👤", category: "character",
+      generate: () => {
+        const pick = (arr) => arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+        const firstNames = ["Aldric","Brenna","Cedric","Dahlia","Eira","Fenris","Gwendolyn","Hadrian","Isolde","Jareth","Kira","Lysander","Mira","Nyx","Orin","Priya","Quintus","Ravenna","Soren","Thalia","Ulric","Vesper","Wren","Xara","Ysbel","Zephyr"];
+        const surnames = ["Ashford","Blackwood","Crowley","Duskwalker","Emberheart","Frostwind","Grimshaw","Holloway","Ironforge","Jadecrest","Kindlefire","Loreweaver","Moonbane","Nightshade","Oathkeeper","Pellagor","Quicksilver","Ravenmark","Shadowmere","Thornwall","Underwood","Vexmire","Winterborn","Yarrow"];
+        const traits = ["scarred face","missing finger","speaks in riddles","carries a locket","nervous laugh","one glass eye","tattooed arms","whispers when angry","hoards books","afraid of water","obsessed with honor","pathological liar","former noble","ex-convict","poet at heart","silent observer","haunted by visions","collects teeth","never sits down","hums constantly"];
+        const motivations = ["seeks revenge for a lost sibling","hunts a legendary beast","protects a dangerous secret","owes a debt to a powerful mage","searching for a cure","building a new guild","atoning for past crimes","trying to find a lost city","collecting ancient relics","fleeing a prophecy"];
+        const roles = ["blacksmith","herbalist","sellsword","scholar","innkeeper","ranger","spy","priest","merchant","bard","alchemist","bounty hunter","diplomat","scribe","smuggler","healer","assassin","cartographer","shepherd","gravedigger"];
+        // Pull from codex
+        const codexRaces = articles.filter((a) => a.category === "race").map((a) => a.title);
+        const codexOrgs = articles.filter((a) => a.category === "organization").map((a) => a.title);
+        const codexLocations = articles.filter((a) => a.category === "location").map((a) => a.title);
+        const fallbackRaces = ["Human","Elf","Dwarf","Halfling","Orc","Gnome","Tiefling","Dragonborn"];
+        const racePool = codexRaces.length > 0 ? codexRaces : fallbackRaces;
+        const name = pick(firstNames) + " " + pick(surnames);
+        const race = pick(racePool);
+        const role = pick(roles);
+        const trait1 = pick(traits);
+        let trait2 = pick(traits); while (trait2 === trait1) trait2 = pick(traits);
+        const motivation = pick(motivations);
+        const affiliation = codexOrgs.length > 0 ? pick(codexOrgs) : null;
+        const homeland = codexLocations.length > 0 ? pick(codexLocations) : null;
+        return {
+          display: name + " — " + role + "\nRace: " + race + (affiliation ? "\nAffiliation: " + affiliation : "") + (homeland ? "\nFrom: " + homeland : "") + "\nTraits: " + trait1 + ", " + trait2 + "\nMotivation: " + motivation,
+          fields: { char_race: race, role, titles: "", affiliations: affiliation || "", },
+          title: name,
+          summary: race + " " + role + ". " + trait1 + ", " + trait2 + ".",
+          body: "Motivation: " + motivation + (homeland ? "\n\nHails from " + homeland + "." : ""),
+        };
+      }
+    },
+    location: {
+      label: "Location Generator", icon: "🏰", category: "location",
+      generate: () => {
+        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const prefixes = ["The","Old","Lost","Fallen","Shadow","Iron","Crystal","Hollow","Crimson","Silver","Storm","Ember","Frost","Dark","Golden","Whispering","Ancient","Cursed","Hidden","Sacred"];
+        const cores = ["Tower","Keep","Gate","Vale","Bridge","Crossing","Hollow","Peak","Cavern","Ruins","Falls","Shore","Grove","Hearth","Spire","Throne","Forge","Sanctum","Den","Reach"];
+        const features = ["shrouded in perpetual mist","built upon the bones of an older civilization","home to a secretive order","known for its healing springs","surrounded by petrified trees","where the veil between worlds is thin","abandoned after a great plague","carved into a living glacier","floating on an underground lake","overrun with luminous fungi","guarded by ancient wards","a crossroads for smugglers and spies"];
+        const statuses = ["thriving","in decline","recently abandoned","under siege","hidden from maps","contested territory","sacred ground","quarantined"];
+        const codexRegions = articles.filter((a) => a.category === "location").map((a) => a.title);
+        const name = pick(prefixes) + " " + pick(cores);
+        const feature = pick(features);
+        const status = pick(statuses);
+        const region = codexRegions.length > 0 ? pick(codexRegions) : null;
+        return {
+          display: name + "\n" + feature + "\nStatus: " + status + (region ? "\nNear: " + region : ""),
+          fields: { region: region || "", notable_features: feature, status, ruler: "", population: "" },
+          title: name,
+          summary: feature,
+          body: "Status: " + status + "." + (region ? "\n\nLocated near " + region + "." : ""),
+        };
+      }
+    },
+    tavern: {
+      label: "Tavern Name", icon: "🍺", category: "location",
+      generate: () => {
+        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const adj = ["Drunken","Golden","Rusty","Prancing","Wailing","Jolly","Crimson","Silver","Laughing","Wandering","Broken","Lucky","Dancing","Sleeping","Howling","Leaky","Gilded","Shattered","Merry"];
+        const nouns = ["Dragon","Griffin","Stag","Raven","Serpent","Unicorn","Bear","Fox","Kraken","Wolf","Basilisk","Phoenix","Owl","Goat","Badger","Troll","Imp","Wyvern","Pegasus"];
+        const extras = ["Inn","Tavern","Alehouse","Lodge","Brewhouse","Taproom","Rest","Hearth","Hall"];
+        const vibes = ["rowdy and warm, popular with adventurers","quiet and dimly lit, favored by locals","upscale with an elven wine list","cramped but legendary for its stew","built inside a hollowed-out tree","floating on a barge that never docks","run by a retired war hero","haunted by its previous owner"];
+        const codexLocations = articles.filter((a) => a.category === "location").map((a) => a.title);
+        const name = "The " + pick(adj) + " " + pick(nouns) + " " + pick(extras);
+        const vibe = pick(vibes);
+        const region = codexLocations.length > 0 ? pick(codexLocations) : null;
+        return {
+          display: name + "\n" + vibe + (region ? "\nLocated in: " + region : ""),
+          fields: { region: region || "", notable_features: vibe, status: "thriving" },
+          title: name,
+          summary: vibe,
+          body: "A tavern " + vibe + "." + (region ? "\n\nLocated in " + region + "." : ""),
+        };
+      }
+    },
+    plot_hook: {
+      label: "Plot Hook", icon: "📜", category: "event",
+      generate: () => {
+        const pick = (arr) => arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+        // Pull from codex
+        const chars = articles.filter((a) => a.category === "character").map((a) => a.title);
+        const locs = articles.filter((a) => a.category === "location").map((a) => a.title);
+        const orgs = articles.filter((a) => a.category === "organization").map((a) => a.title);
+        const items = articles.filter((a) => a.category === "item").map((a) => a.title);
+        const deities = articles.filter((a) => a.category === "deity").map((a) => a.title);
+        const races = articles.filter((a) => a.category === "race").map((a) => a.title);
+        // Fallbacks
+        const fChar = ["a wandering stranger","the innkeeper's daughter","a scarred mercenary","a hooded scholar","an exiled noble","a street urchin"];
+        const fLoc = ["the old ruins","the capital city","the northern wastes","the merchant quarter","the forbidden forest","the harbor district"];
+        const fOrg = ["a secretive guild","the king's council","a band of rebels","the merchant consortium","a religious order","the thieves' network"];
+        const fItem = ["an ancient relic","a cursed amulet","a sealed tome","a shattered crown","a black dagger","a glowing shard"];
+        const fDeity = ["the Sleeping God","the Weaver of Fate","the Lord of Ash","the Lady of Thorns","the Void Mother"];
+        const fRace = ["elven","dwarven","orcish","fey","draconic","human"];
+        const c = () => pick(chars) || pick(fChar);
+        const l = () => pick(locs) || pick(fLoc);
+        const o = () => pick(orgs) || pick(fOrg);
+        const it = () => pick(items) || pick(fItem);
+        const d = () => pick(deities) || pick(fDeity);
+        const r = () => pick(races) || pick(fRace);
+        const adj = () => pick(["ancient","bloodstained","whispering","shattered","sealed","burning","frozen","cursed","golden","silver","iron","crystal","shadowed","forgotten","living"]);
+        const obj = () => pick(["letter","map","blade","mask","coin","ring","skull","mirror","key","book","pendant","scroll","compass","bell","lantern"]);
+        // Themed templates: [tag, template_fn, outcome_fn]
+        const templates = [
+          // Mystery
+          ["Mystery", () => c() + " has vanished from " + l() + ". The only clue: a " + adj() + " " + obj() + " left where they slept.", () => "The disappearance is connected to " + o() + " and a plot that reaches far deeper than anyone suspects."],
+          ["Mystery", () => "Bodies are appearing in " + l() + ", each holding a " + adj() + " " + obj() + " and a smile on their face.", () => "A " + r() + " ritual gone wrong is binding souls to objects of power."],
+          ["Mystery", () => "Every mirror in " + l() + " has begun showing the same face — and no one recognizes it.", () => "The face belongs to a prisoner trapped between worlds by " + d() + "."],
+          // Betrayal
+          ["Betrayal", () => c() + " has been secretly feeding intelligence to " + o() + ", and the evidence points to someone close to power.", () => "The betrayal was orchestrated to expose a far greater traitor within the ranks."],
+          ["Betrayal", () => "A trusted advisor to the ruler of " + l() + " is found dead clutching a " + adj() + " " + obj() + " — and the killer left a calling card from " + o() + ".", () => "The advisor discovered something they shouldn't have about " + d() + "'s true nature."],
+          ["Betrayal", () => o() + " has offered a fortune for " + it() + ", but " + c() + " knows the item's real purpose — and it's nothing good.", () => "The item can break the seal on something ancient and dangerous beneath " + l() + "."],
+          // Prophecy
+          ["Prophecy", () => "A " + r() + " seer in " + l() + " has spoken a prophecy naming " + c() + " as the one who will either save or destroy " + l() + ".", () => "The prophecy is a manipulation by " + d() + ", who needs a mortal pawn."],
+          ["Prophecy", () => "An " + adj() + " " + obj() + " unearthed in " + l() + " bears an inscription that matches a verse from a lost " + r() + " prophecy.", () => "The artifact is one of several needed to prevent — or cause — a cataclysm."],
+          // Discovery
+          ["Discovery", () => "Miners in " + l() + " broke through into a vast chamber containing a " + adj() + " " + obj() + " and the remains of a " + r() + " civilization.", () => "The civilization didn't die — they're in stasis, and something is waking them."],
+          ["Discovery", () => c() + " found a " + adj() + " " + obj() + " in a shipwreck near " + l() + ". Since touching it, they've been hearing " + d() + "'s voice.", () => "The item is a shard of " + d() + "'s broken prison, and each piece found weakens the seal."],
+          ["Discovery", () => "A new island has appeared overnight off the coast of " + l() + ". " + o() + " has already sent an expedition.", () => "The island is alive — a slumbering titan that rises every thousand years."],
+          // War
+          ["War", () => o() + " has blockaded " + l() + " and is demanding the surrender of " + it() + ". " + c() + " is the only one who knows where it's hidden.", () => "The item is the only thing keeping " + d() + " from walking the mortal world."],
+          ["War", () => "Refugees from " + l() + " are flooding into neighboring territories, whispering of " + r() + " soldiers who fight without breathing.", () => "A necromancer allied with " + o() + " has raised an undead army from ancient battlefields."],
+          // Supernatural
+          ["Supernatural", () => "Every night for a week, " + c() + " has woken with a new " + adj() + " mark on their skin. The marks form a map to " + l() + ".", () => d() + " is guiding a chosen vessel toward a ritual site."],
+          ["Supernatural", () => "The dead in " + l() + "'s graveyard have started whispering. Those who listen too long don't come back the same.", () => "A rift between the living and the dead has cracked open, and " + o() + " is exploiting it."],
+          ["Supernatural", () => "Rain hasn't fallen on " + l() + " in months, yet a single garden owned by " + c() + " flourishes. Locals are getting suspicious.", () => c() + " unknowingly made a pact with " + d() + " as a child."],
+          // Political
+          ["Political", () => "The leader of " + o() + " has publicly accused " + c() + " of treason during a summit in " + l() + ". No trial — just exile.", () => "The accusation is a cover. The real crime is what was discovered inside " + it() + "."],
+          ["Political", () => "Three factions are vying for control of " + l() + " after its ruler vanished. " + o() + " claims rightful succession, but " + c() + " holds a " + adj() + " " + obj() + " that proves otherwise.", () => "The ruler didn't vanish — they were transformed by " + r() + " magic and are hiding in plain sight."],
+          ["Political", () => "A marriage alliance between " + c() + " and a noble of " + l() + " threatens to shift the balance of power. " + o() + " wants it stopped at any cost.", () => "The marriage would unite bloodlines that fulfill an ancient " + r() + " prophecy."],
+          // Heist
+          ["Heist", () => it() + " is locked inside " + o() + "'s vault beneath " + l() + ". " + c() + " knows the way in — but the price they're asking is steep.", () => "The item isn't what it appears. It's a key to something far more valuable — and far more dangerous."],
+          ["Heist", () => c() + " needs " + it() + " stolen from " + l() + " before the next full moon, or " + d() + "'s curse will claim them.", () => "The curse is a test. " + d() + " is searching for a mortal worthy of a divine task."],
+        ];
+        const [tag, textFn, outcomeFn] = pick(templates);
+        const text = textFn();
+        const outcome = outcomeFn();
+        const keyFigure = pick(chars) || "";
+        return {
+          display: "⟨" + tag + "⟩ " + text + "\n\nPossible outcome: " + outcome + (keyFigure ? "\nKey figure: " + keyFigure : ""),
+          tag,
+          fields: { key_figures: keyFigure, outcome },
+          title: text.split(/[.!?]/)[0].slice(0, 60),
+          summary: text,
+          body: text + "\n\nPossible outcome: " + outcome,
+        };
+      }
+    },
+    name_list: {
+      label: "Name List", icon: "📋", category: "character",
+      generate: () => {
+        const sets = [
+          ["Aelindra","Boreas","Caelum","Draven","Eirlys","Faolan","Gael","Hesper","Ivor","Jorah"],
+          ["Kaelen","Liora","Maelis","Niamh","Odhran","Phaedra","Quillan","Rhiannon","Sable","Theron"],
+          ["Ursa","Vaelen","Wynter","Xanthis","Ysabel","Zarek","Arden","Briar","Cressida","Dune"],
+          ["Ashwin","Bethany","Corvin","Delara","Emeric","Fianna","Garrick","Helene","Idris","Jessamine"],
+        ];
+        const codexRaces = articles.filter((a) => a.category === "race").map((a) => a.title);
+        const set = sets[Math.floor(Math.random() * sets.length)];
+        return {
+          display: set.join(", "),
+          names: set, // individual names for per-name creation
+          defaultRace: codexRaces.length > 0 ? codexRaces[Math.floor(Math.random() * codexRaces.length)] : "",
+        };
+      }
+    }
+  };
 
-                    {/* Body preview */}
-                    {tlSelected.body && (
-                      <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.7, marginTop: 12, maxHeight: 200, overflow: "hidden", position: "relative" }}>
-                        <RenderBody text={tlSelected.body.split("\n")[0]} articles={articles} onNavigate={(id) => { tlClosePanel(); navigate(id); }} />
-                        {tlSelected.body.split("\n").length > 1 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 40, background: "linear-gradient(transparent, " + ta(theme.deepBg, 0.95) + ")" }} />}
-                      </div>
-                    )}
+  // Helper: create entry from structured generator result
+  const createFromGenerator = (result, genType) => {
+    const gen = GENERATORS[genType];
+    if (!gen) return;
+    goCreate(gen.category);
+    // Use setTimeout to let goCreate's setFormData run first, then override
+    setTimeout(() => {
+      setFormData((p) => ({
+        ...p,
+        title: result.title || "",
+        summary: result.summary || "",
+        body: result.body || "",
+        fields: { ...p.fields, ...(result.fields || {}) },
+      }));
+    }, 0);
+  };
 
-                    {/* Tags */}
-                    {tlSelected.tags?.length > 0 && (
-                      <div style={{ marginTop: 14 }}>{tlSelected.tags.map((t) => <span key={t} style={{ ...tTag, fontSize: 10, padding: "2px 8px" }}>#{t}</span>)}</div>
-                    )}
+  const createNameEntry = (name, defaultRace) => {
+    goCreate("character");
+    setTimeout(() => {
+      setFormData((p) => ({
+        ...p,
+        title: name,
+        summary: "",
+        body: "",
+        fields: { ...p.fields, char_race: defaultRace || "" },
+      }));
+    }, 0);
+  };
 
-                    {/* Action buttons */}
-                    <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-                      <button onClick={() => { tlClosePanel(); navigate(tlSelected.id); }} style={{ ...tBtnP, padding: "8px 16px", fontSize: 11 }}>View Full Entry →</button>
-                      <button onClick={() => { tlClosePanel(); goEdit(tlSelected); }} style={{ ...tBtnS, padding: "7px 14px", fontSize: 11 }}>✎ Edit</button>
+  const renderGenerator = () => (<>
+          {view === "generator" && (<div style={{ marginTop: 24, maxWidth: 700 }}>
+            <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🎲 Random Generators</h2>
+            <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>
+              Spark ideas for your world. Results pull from your codex
+              {articles.filter((a) => a.category === "race").length > 0 ? " (" + articles.filter((a) => a.category === "race").length + " races" : " (no races yet"}
+              {articles.filter((a) => a.category === "organization").length > 0 ? ", " + articles.filter((a) => a.category === "organization").length + " orgs" : ""}
+              {articles.filter((a) => a.category === "location").length > 0 ? ", " + articles.filter((a) => a.category === "location").length + " locations" : ""}
+              ).
+            </p>
+            <Ornament width={300} />
+            <div style={{ display: "flex", gap: 8, marginTop: 20, flexWrap: "wrap" }}>
+              {Object.entries(GENERATORS).map(([k, g]) => (
+                <button key={k} onClick={() => setGeneratorType(k)}
+                  style={{ padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "'Cinzel', serif", fontWeight: generatorType === k ? 700 : 400, border: "1px solid " + (generatorType === k ? theme.accent + "50" : theme.border), background: generatorType === k ? theme.accentBg : ta(theme.surface, 0.5), color: generatorType === k ? theme.accent : theme.textMuted, transition: "all 0.15s", letterSpacing: 0.5 }}>
+                  {g.icon} {g.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: 24 }}>
+              <button onClick={() => {
+                const gen = GENERATORS[generatorType];
+                if (!gen) return;
+                setGeneratorResults((prev) => [{ id: Date.now(), result: gen.generate(), type: generatorType }, ...prev].slice(0, 20));
+              }} style={{ ...tBtnP, fontSize: 14, padding: "12px 32px", letterSpacing: 1 }}>🎲 Generate</button>
+            </div>
+            <div style={{ marginTop: 24 }}>
+              {generatorResults.filter((r) => r.type === generatorType).map((r) => (
+                <div key={r.id} style={{ background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 8, padding: "14px 18px", marginBottom: 10 }}>
+                  {/* Name list: special rendering with per-name buttons */}
+                  {r.type === "name_list" && r.result.names ? (<>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {r.result.names.map((name, ni) => (
+                        <div key={ni} style={{ display: "flex", alignItems: "center", gap: 4, background: ta(theme.accent, 0.06), border: "1px solid " + ta(theme.accent, 0.15), borderRadius: 8, padding: "6px 10px" }}>
+                          <span style={{ fontSize: 13, color: theme.text, fontWeight: 500 }}>{name}</span>
+                          <span onClick={() => createNameEntry(name, r.result.defaultRace)} title={"Create " + name + " as character entry"} style={{ fontSize: 11, color: "#8ec8a0", cursor: "pointer", fontWeight: 700, marginLeft: 2, padding: "0 2px" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "#a0e8c0"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#8ec8a0"; }}>+</span>
+                        </div>
+                      ))}
+                    </div>
+                    {r.result.defaultRace && <div style={{ fontSize: 10, color: theme.textDim, marginTop: 8 }}>Default race: {r.result.defaultRace}</div>}
+                    <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                      <button onClick={() => { navigator.clipboard?.writeText(r.result.names.join(", ")); }} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>📋 Copy All</button>
+                      <button onClick={() => {
+                        if (!confirm("Create " + r.result.names.length + " character entries?")) return;
+                        r.result.names.forEach((name, i) => {
+                          setTimeout(() => {
+                            const id = lower(name).replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
+                            if (articles.find((a) => a.id === id)) return;
+                            const a = { id, title: name, category: "character", summary: "", fields: { char_race: r.result.defaultRace || "" }, body: "", tags: [], linkedIds: [], portrait: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+                            setArticles((prev) => prev.find((x) => x.id === id) ? prev : dedup([a, ...prev]));
+                          }, i * 50);
+                        });
+                      }} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px", color: "#8ec8a0", border: "1px solid rgba(142,200,160,0.2)" }}>↑ Create All ({r.result.names.length})</button>
+                    </div>
+                  </>) : (<>
+                    {/* Standard generators: structured display */}
+                    <div style={{ whiteSpace: "pre-line", fontSize: 13, color: theme.text, lineHeight: 1.6 }}>
+                      {r.result.tag && <span style={{ fontSize: 10, fontWeight: 700, color: theme.accent, background: ta(theme.accent, 0.08), padding: "2px 8px", borderRadius: 10, marginRight: 8, letterSpacing: 0.5 }}>{r.result.tag}</span>}
+                      {r.result.display || r.result}
+                    </div>
+                    <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                      <button onClick={() => { navigator.clipboard?.writeText(r.result.display || r.result); }} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>📋 Copy</button>
+                      <button onClick={() => createFromGenerator(r.result, r.type)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px", color: "#8ec8a0", border: "1px solid rgba(142,200,160,0.2)" }}>↑ Create {CATEGORIES[GENERATORS[r.type]?.category]?.label || "Entry"}</button>
+                    </div>
+                  </>)}
+                </div>
+              ))}
+              {generatorResults.filter((r) => r.type === generatorType).length === 0 && (
+                <div style={{ textAlign: "center", padding: 40, color: theme.textDim }}><div style={{ fontSize: 32, marginBottom: 8 }}>🎲</div><p>Click Generate to roll results</p></div>
+              )}
+            </div>
+          </div>)}
+  </>);
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  SESSION / CAMPAIGN NOTES                                  ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  const renderSessions = () => (<>
+          {view === "sessions" && (<div style={{ marginTop: 24, maxWidth: 800 }}>
+            <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, flexDirection: isMobile ? "column" : "row" }}>
+              <div>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>📓 Session Notes</h2>
+                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{sessions.length} session{sessions.length !== 1 ? "s" : ""} logged</p>
+              </div>
+              <button onClick={() => { setSessionEdit("new"); setSessionForm({ title: "Session " + (sessions.length + 1), date: new Date().toISOString().split("T")[0], summary: "", encounters: "", npcs: "", loot: "", notes: "", tags: "" }); }}
+                style={{ ...tBtnP, fontSize: 12, padding: "8px 20px" }}>+ New Session</button>
+            </div>
+            <Ornament width={300} />
+
+            {/* Session form (create or edit) */}
+            {sessionEdit && (
+              <div style={{ marginTop: 20, padding: "20px 24px", background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", marginBottom: 16 }}>{sessionEdit === "new" ? "New Session Log" : "Edit Session"}</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Title</label>
+                    <input value={sessionForm.title} onChange={(e) => setSessionForm((p) => ({ ...p, title: e.target.value }))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Date</label>
+                    <input type="date" value={sessionForm.date} onChange={(e) => setSessionForm((p) => ({ ...p, date: e.target.value }))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }} />
+                  </div>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Summary</label>
+                  <textarea value={sessionForm.summary} onChange={(e) => setSessionForm((p) => ({ ...p, summary: e.target.value }))} rows={3} style={{ ...S.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} placeholder="What happened this session?" />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginTop: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>⚔ Encounters</label>
+                    <textarea value={sessionForm.encounters} onChange={(e) => setSessionForm((p) => ({ ...p, encounters: e.target.value }))} rows={2} style={{ ...S.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} placeholder="Combat, puzzles, challenges..." />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>👤 NPCs Met</label>
+                    <textarea value={sessionForm.npcs} onChange={(e) => setSessionForm((p) => ({ ...p, npcs: e.target.value }))} rows={2} style={{ ...S.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} placeholder="Names and roles..." />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>💎 Loot & Rewards</label>
+                    <textarea value={sessionForm.loot} onChange={(e) => setSessionForm((p) => ({ ...p, loot: e.target.value }))} rows={2} style={{ ...S.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} placeholder="Items, gold, information..." />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>📝 DM Notes (private)</label>
+                    <textarea value={sessionForm.notes} onChange={(e) => setSessionForm((p) => ({ ...p, notes: e.target.value }))} rows={2} style={{ ...S.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} placeholder="Foreshadowing, hooks planted, player reactions..." />
+                  </div>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Tags (comma-separated)</label>
+                  <input value={sessionForm.tags} onChange={(e) => setSessionForm((p) => ({ ...p, tags: e.target.value }))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }} placeholder="combat, mystery, arc-2..." />
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                  <button onClick={() => { sessionEdit === "new" ? createSession() : updateSession(sessionEdit); }}
+                    style={{ ...tBtnP, fontSize: 12, padding: "8px 24px" }}>{sessionEdit === "new" ? "Create Session" : "Save Changes"}</button>
+                  <button onClick={() => { setSessionEdit(null); setSessionForm({ title: "", date: "", summary: "", encounters: "", npcs: "", loot: "", notes: "", tags: "" }); }}
+                    style={{ ...tBtnS, fontSize: 12, padding: "8px 16px" }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Session list */}
+            <div style={{ marginTop: 24 }}>
+              {sessions.length === 0 && !sessionEdit && (
+                <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}>
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>📓</div>
+                  <p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Sessions Logged</p>
+                  <p style={{ fontSize: 12 }}>Click "+ New Session" to record your first session.</p>
+                </div>
+              )}
+              {sessions.map((s) => (
+                <div key={s.id} style={{ background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 10, padding: "16px 20px", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif" }}>{s.title}</div>
+                      {s.date && <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>📅 {s.date}</div>}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => { setSessionEdit(s.id); setSessionForm({ title: s.title, date: s.date || "", summary: s.summary || "", encounters: s.encounters || "", npcs: s.npcs || "", loot: s.loot || "", notes: s.notes || "", tags: (s.tags || []).join(", ") }); }}
+                        style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>✎ Edit</button>
+                      <button onClick={() => deleteSession(s.id)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px", color: "#e07050", border: "1px solid rgba(224,112,80,0.2)" }}>✕</button>
                     </div>
                   </div>
-                )}
-              </div>
+                  {s.summary && <div style={{ fontSize: 13, color: theme.text, lineHeight: 1.6, marginBottom: 10, whiteSpace: "pre-line" }}>{s.summary}</div>}
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 10 }}>
+                    {s.encounters && (
+                      <div style={{ padding: "8px 12px", background: ta("#e07050", 0.04), border: "1px solid " + ta("#e07050", 0.12), borderRadius: 8 }}>
+                        <div style={{ fontSize: 10, color: "#e07050", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>⚔ Encounters</div>
+                        <div style={{ fontSize: 12, color: theme.textMuted, whiteSpace: "pre-line" }}>{s.encounters}</div>
+                      </div>
+                    )}
+                    {s.npcs && (
+                      <div style={{ padding: "8px 12px", background: ta(CATEGORIES.character.color, 0.04), border: "1px solid " + ta(CATEGORIES.character.color, 0.12), borderRadius: 8 }}>
+                        <div style={{ fontSize: 10, color: CATEGORIES.character.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>👤 NPCs Met</div>
+                        <div style={{ fontSize: 12, color: theme.textMuted, whiteSpace: "pre-line" }}>{s.npcs}</div>
+                      </div>
+                    )}
+                    {s.loot && (
+                      <div style={{ padding: "8px 12px", background: ta("#d4a060", 0.04), border: "1px solid " + ta("#d4a060", 0.12), borderRadius: 8 }}>
+                        <div style={{ fontSize: 10, color: "#d4a060", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>💎 Loot & Rewards</div>
+                        <div style={{ fontSize: 12, color: theme.textMuted, whiteSpace: "pre-line" }}>{s.loot}</div>
+                      </div>
+                    )}
+                    {s.notes && (
+                      <div style={{ padding: "8px 12px", background: ta("#c084fc", 0.04), border: "1px solid " + ta("#c084fc", 0.12), borderRadius: 8 }}>
+                        <div style={{ fontSize: 10, color: "#c084fc", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>📝 DM Notes</div>
+                        <div style={{ fontSize: 12, color: theme.textMuted, whiteSpace: "pre-line" }}>{s.notes}</div>
+                      </div>
+                    )}
+                  </div>
+                  {s.tags?.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 10 }}>
+                      {s.tags.map((t) => <span key={t} style={{ ...tTag, fontSize: 10, padding: "2px 8px" }}>#{t}</span>)}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>)}
   </>);
@@ -2880,7 +3464,7 @@ const renderArchives = () => (<>
                       if (mapEditPanel.points) setMapData((prev) => ({ ...prev, territories: prev.territories.filter((t) => t.id !== mapEditPanel.id) }));
                       else setMapData((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== mapEditPanel.id) }));
                       setMapEditPanel(null); setMapSelected(null);
-                    }} style={{ ...tBtnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", width: "100%" }}>Delete {mapEditPanel.points ? "Territory" : "Pin"}</button>
+                    }} style={{ ...tBtnS, fontSize: 11, color: "#e07050", border: "1px solid rgba(224,112,80,0.3)", width: "100%" }}>Delete {mapEditPanel.points ? "Territory" : "Pin"}</button>
                   </div>
                 </div>
               )}
@@ -2889,1151 +3473,102 @@ const renderArchives = () => (<>
   </>);
 
   const renderNovel = () => (<>
-          {/* === NOVEL WRITING === */}
-          {view === "novel" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-            {/* Manuscript Selector */}
-            {novelView === "select" && (
-              <div style={{ padding: "40px 28px", overflowY: "auto", flex: 1 }}>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 24, color: theme.text, margin: 0, letterSpacing: 1 }}>✒ Manuscripts</h2>
-                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6, lineHeight: 1.6, maxWidth: 520 }}>Write your novels with full access to your codex. Organize by Acts, Chapters, and Scenes.</p>
-                <Ornament width={300} />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 24 }}>
-                  {manuscripts.map((ms) => {
-                    const wc = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.reduce((ts, s) => ts + countWords(s.body), 0), 0), 0);
-                    const chCount = ms.acts.reduce((t, a) => t + a.chapters.length, 0);
-                    const scCount = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.length, 0), 0);
-                    return (
-                      <div key={ms.id} onClick={() => { setActiveMs(ms); setNovelView("outline"); }} style={{ width: 240, padding: "20px 18px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.border, borderRadius: 10, cursor: "pointer", transition: "all 0.2s", position: "relative" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); e.currentTarget.style.transform = "translateY(-2px)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.transform = "none"; }}>
-                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #f0c040, #e07050)", borderRadius: "10px 10px 0 0" }} />
-                        <div style={{ fontSize: 28, marginBottom: 10 }}>📖</div>
-                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, fontWeight: 600, letterSpacing: 0.5 }}>{ms.title}</div>
-                        {ms.description && <div style={{ fontSize: 11, color: theme.textDim, marginTop: 4, lineHeight: 1.4 }}>{ms.description.slice(0, 80)}</div>}
-                        <div style={{ display: "flex", gap: 8, marginTop: 12, fontSize: 10, color: theme.textDim, flexWrap: "wrap" }}>
-                          <span style={{ background: ta(theme.accent, 0.08), padding: "2px 8px", borderRadius: 8 }}>{ms.acts.length} act{ms.acts.length !== 1 ? "s" : ""}</span>
-                          <span style={{ background: "rgba(126,200,227,0.08)", padding: "2px 8px", borderRadius: 8 }}>{chCount} ch</span>
-                          <span style={{ background: "rgba(142,200,160,0.08)", padding: "2px 8px", borderRadius: 8 }}>{scCount} scenes</span>
-                          <span style={{ background: "rgba(192,132,252,0.08)", padding: "2px 8px", borderRadius: 8 }}>{wc.toLocaleString()} words</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div onClick={() => setShowMsCreate(true)} style={{ width: 240, padding: "20px 18px", background: "transparent", border: "2px dashed #1e2a3a", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 140, transition: "all 0.2s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
-                    <div style={{ fontSize: 32, color: "#334455" }}>+</div>
-                    <div style={{ fontSize: 12, color: theme.textDim, marginTop: 6 }}>New Manuscript</div>
-                  </div>
-                </div>
-                {showMsCreate && (
-                  <div style={{ marginTop: 20, background: ta(theme.surface, 0.6), border: "1px solid " + theme.border, borderRadius: 10, padding: "20px 24px", maxWidth: 400 }}>
-                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.accent, margin: "0 0 14px" }}>New Manuscript</h3>
-                    <input style={S.input} placeholder="Title" value={novelMsForm.title} onChange={(e) => setNovelMsForm((f) => ({ ...f, title: e.target.value }))} autoFocus />
-                    <textarea style={{ ...S.textarea, minHeight: 50, marginTop: 8 }} placeholder="Description (optional)" value={novelMsForm.description} onChange={(e) => setNovelMsForm((f) => ({ ...f, description: e.target.value }))} />
-                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                      <button onClick={createManuscript} disabled={!novelMsForm.title.trim()} style={{ ...tBtnP, fontSize: 11, opacity: novelMsForm.title.trim() ? 1 : 0.4 }}>Create</button>
-                      <button onClick={() => setShowMsCreate(false)} style={{ ...tBtnS, fontSize: 11 }}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Outline Mode — Enhanced */}
-            {novelView === "outline" && activeMs && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ padding: "14px 28px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span onClick={() => { setNovelView("select"); setActiveMs(null); }} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Manuscripts</span>
-                    <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeMs.title}</h2>
-                    <span style={{ fontSize: 11, color: theme.textDim }}>{msWordCount.total.toLocaleString()} words</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => setNovelView("corkboard")} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px" }}>🗂 Corkboard</button>
-                    <div style={{ position: "relative" }}>
-                      <button onClick={() => setNovelExportOpen(!novelExportOpen)} disabled={novelCompiling} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export ▾"}</button>
-                      {novelExportOpen && (
-                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 8, padding: 4, minWidth: 180, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
-                          {[
-                            { id: "txt", label: "Plain Text (.txt)", icon: "📝", desc: "Simple, universal format" },
-                            { id: "docx", label: "Word Document (.doc)", icon: "📄", desc: "Microsoft Word compatible" },
-                            { id: "pdf", label: "PDF (Print Dialog)", icon: "📋", desc: "Opens print-to-PDF dialog" },
-                            { id: "html", label: "E-Book HTML (.html)", icon: "📖", desc: "Formatted, e-reader friendly" },
-                          ].map((fmt) => (
-                            <div key={fmt.id} onClick={() => compileManuscript(fmt.id)}
-                              style={{ padding: "8px 12px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "background 0.1s" }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.08)"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                              <span style={{ fontSize: 14 }}>{fmt.icon}</span>
-                              <div>
-                                <div style={{ fontSize: 11, color: theme.text, fontWeight: 500 }}>{fmt.label}</div>
-                                <div style={{ fontSize: 9, color: theme.textDim }}>{fmt.desc}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <button onClick={addAct} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px" }}>+ Act</button>
-                    <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>Delete</button>
-                  </div>
-                </div>
-                <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
-                  {activeMs.acts.map((act, ai) => (
-                    <div key={act.id} style={{ marginBottom: 20 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}
-                        onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(act.id) ? n.delete(act.id) : n.add(act.id); return n; })}>
-                        <div style={{ width: 4, height: 28, background: act.color, borderRadius: 2 }} />
-                        <span style={{ fontSize: 10, color: theme.textDim, transform: novelOutlineCollapsed.has(act.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
-                        <input style={{ background: "none", border: "none", fontFamily: "'Cinzel', serif", fontSize: 16, color: act.color, fontWeight: 700, letterSpacing: 1, outline: "none", flex: 1, cursor: "text", minWidth: 0 }}
-                          value={act.title} onClick={(e) => e.stopPropagation()} onChange={(e) => updateAct(act.id, { title: e.target.value })} />
-                        <span style={{ fontSize: 10, color: theme.textDim }}>{(msWordCount.acts[act.id] || 0).toLocaleString()} words</span>
-                        <button onClick={(e) => { e.stopPropagation(); addChapter(act.id); }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px" }}>+ Ch</button>
-                        {activeMs.acts.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteAct(act.id); }} style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}>✕</button>}
-                      </div>
-                      {!novelOutlineCollapsed.has(act.id) && (
-                        <div style={{ marginLeft: 20 }}>
-                          {act.chapters.map((ch) => (
-                            <div key={ch.id} style={{ marginBottom: 10, background: ta(theme.surface, 0.4), border: "1px solid " + theme.divider, borderRadius: 8, overflow: "hidden" }}>
-                              <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid " + theme.surface }}>
-                                <span onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(ch.id) ? n.delete(ch.id) : n.add(ch.id); return n; })}
-                                  style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", transform: novelOutlineCollapsed.has(ch.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
-                                <input style={{ background: "none", border: "none", fontSize: 13, color: theme.text, fontWeight: 600, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit" }}
-                                  value={ch.title} onChange={(e) => updateChapter(act.id, ch.id, { title: e.target.value })} />
-                                <select value={ch.status} onChange={(e) => updateChapter(act.id, ch.id, { status: e.target.value })}
-                                  style={{ background: theme.inputBg, border: "1px solid " + theme.border, borderRadius: 4, fontSize: 9, color: STATUS_COLORS[ch.status], padding: "2px 6px", cursor: "pointer", outline: "none", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
-                                  <option value="draft">Draft</option><option value="revised">Revised</option><option value="final">Final</option>
-                                </select>
-                                <span style={{ fontSize: 10, color: theme.textDim, minWidth: 50, textAlign: "right" }}>{chapterWordCount(ch).toLocaleString()} w</span>
-                                <button onClick={() => addScene(act.id, ch.id)} style={{ ...tBtnS, fontSize: 8, padding: "2px 8px" }}>+ Scene</button>
-                                {act.chapters.length > 1 && <button onClick={() => deleteChapter(act.id, ch.id)} style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 11 }}>✕</button>}
-                              </div>
-                              <div style={{ padding: "0 14px" }}>
-                                <input style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: theme.textDim, padding: "6px 0", outline: "none", fontStyle: "italic", fontFamily: "inherit", boxSizing: "border-box" }}
-                                  placeholder="Chapter synopsis..." value={ch.synopsis || ""} onChange={(e) => updateChapter(act.id, ch.id, { synopsis: e.target.value })} />
-                              </div>
-                              {!novelOutlineCollapsed.has(ch.id) && (
-                                <div style={{ padding: "4px 14px 10px" }}>
-                                  {ch.scenes.map((sc) => {
-                                    const scWords = countWords(sc.body);
-                                    const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
-                                    return (
-                                      <div key={sc.id} onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
-                                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: ta(theme.accent, 0.02), borderLeft: scColor.color !== "transparent" ? "3px solid " + scColor.color : "3px solid transparent" }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.08); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.02); }}>
-                                        <span style={{ fontSize: 10, color: theme.accent }}>▸</span>
-                                        <input style={{ background: "none", border: "none", fontSize: 12, color: theme.textMuted, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit", cursor: "pointer" }}
-                                          value={sc.title} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); updateScene(act.id, ch.id, sc.id, { title: e.target.value }); }} />
-                                        {sc.povCharacter && <span style={{ fontSize: 9, color: "#c084fc", background: "rgba(192,132,252,0.1)", padding: "1px 6px", borderRadius: 8 }}>{sc.povCharacter}</span>}
-                                        {sc.label && <span style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : theme.textDim, background: (scColor.color !== "transparent" ? scColor.color : theme.textDim) + "18", padding: "1px 6px", borderRadius: 8 }}>{sc.label || scColor.label}</span>}
-                                        <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + " w" : "empty"}</span>
-                                        {sc.notes && <span style={{ fontSize: 9, color: theme.accent }} title="Has notes">📝</span>}
-                                        {sc.snapshots?.length > 0 && <span style={{ fontSize: 9, color: "#7ec8e3" }} title={sc.snapshots.length + " snapshot(s)"}>📸{sc.snapshots.length}</span>}
-                                        {ch.scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(act.id, ch.id, sc.id); }} style={{ background: "none", border: "none", color: "#334455", cursor: "pointer", fontSize: 10 }}>✕</button>}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* === CORKBOARD VIEW === */}
-            {novelView === "corkboard" && activeMs && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ padding: "14px 28px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-                  <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Outline</span>
-                  <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.text, margin: 0, letterSpacing: 1 }}>🗂 Corkboard</h2>
-                  <div style={{ flex: 1 }} />
-                  {/* Chapter filter */}
-                  <select value={corkboardChapter ? corkboardChapter.actId + "|" + corkboardChapter.chId : "all"}
-                    onChange={(e) => {
-                      if (e.target.value === "all") setCorkboardChapter(null);
-                      else { const [a, c] = e.target.value.split("|"); setCorkboardChapter({ actId: a, chId: c }); }
-                    }}
-                    style={{ background: theme.inputBg, border: "1px solid " + theme.border, borderRadius: 6, fontSize: 11, color: theme.text, padding: "4px 10px", outline: "none" }}>
-                    <option value="all">All Chapters</option>
-                    {activeMs.acts.map((a) => a.chapters.map((c) => (
-                      <option key={c.id} value={a.id + "|" + c.id}>{a.title} › {c.title}</option>
-                    )))}
-                  </select>
-                </div>
-                <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
-                  {activeMs.acts.filter((a) => !corkboardChapter || a.id === corkboardChapter.actId).map((act) => (
-                    act.chapters.filter((c) => !corkboardChapter || c.id === corkboardChapter.chId).map((ch) => (
-                      <div key={ch.id} style={{ marginBottom: 28 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                          <div style={{ width: 3, height: 16, background: act.color, borderRadius: 2 }} />
-                          <span style={{ fontSize: 13, color: act.color, fontWeight: 700, fontFamily: "'Cinzel', serif" }}>{act.title}</span>
-                          <span style={{ color: "#334455" }}>›</span>
-                          <span style={{ fontSize: 13, color: theme.text, fontWeight: 600 }}>{ch.title}</span>
-                          <span style={{ fontSize: 10, color: theme.textDim }}>{chapterWordCount(ch).toLocaleString()} words</span>
-                        </div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-                          {ch.scenes.map((sc, si) => {
-                            const scWords = countWords(sc.body);
-                            const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
-                            return (
-                              <div key={sc.id}
-                                draggable onDragStart={() => setCorkboardDragId(sc.id)}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => { if (corkboardDragId && corkboardDragId !== sc.id) handleCorkDrop(act.id, ch.id, corkboardDragId, sc.id); setCorkboardDragId(null); }}
-                                onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
-                                style={{
-                                  width: isMobile ? "100%" : 200, minHeight: 140, padding: "14px 16px",
-                                  background: corkboardDragId === sc.id ? ta(theme.accent, 0.15) : ta(theme.surface, 0.6),
-                                  border: "1px solid " + (corkboardDragId === sc.id ? ta(theme.accent, 0.4) : theme.border),
-                                  borderTop: "3px solid " + (scColor.color !== "transparent" ? scColor.color : theme.border),
-                                  borderRadius: 8, cursor: "grab", transition: "all 0.2s", position: "relative",
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
-                                <div style={{ fontSize: 13, color: theme.text, fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>{sc.title}</div>
-                                {sc.povCharacter && <div style={{ fontSize: 9, color: "#c084fc", marginBottom: 4 }}>POV: {sc.povCharacter}</div>}
-                                {sc.label && <div style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", marginBottom: 4 }}>{sc.label}</div>}
-                                <div style={{ fontSize: 10, color: theme.textDim, lineHeight: 1.4, overflow: "hidden", maxHeight: 52 }}>
-                                  {sc.body ? stripTags(sc.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1")).slice(0, 120) + (stripTags(sc.body).length > 120 ? "..." : "") : <span style={{ fontStyle: "italic", color: theme.textDim }}>Empty scene</span>}
-                                </div>
-                                <div style={{ position: "absolute", bottom: 10, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                  <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}</span>
-                                  <div style={{ display: "flex", gap: 4 }}>
-                                    {sc.notes && <span style={{ fontSize: 9 }} title="Has notes">📝</span>}
-                                    {sc.snapshots?.length > 0 && <span style={{ fontSize: 9 }} aria-hidden="true">📸</span>}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                          <div onClick={() => addScene(act.id, ch.id)}
-                            style={{ width: 200, minHeight: 140, border: "2px dashed #1e2a3a", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
-                            <span style={{ color: theme.textDim, fontSize: 24 }}>+</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* === WRITING MODE — Enhanced === */}
-            {novelView === "write" && activeMs && (() => {
-              const scene = getActiveScene();
-              const act = activeMs.acts.find((a) => a.id === novelActiveScene?.actId);
-              const ch = act?.chapters.find((c) => c.id === novelActiveScene?.chId);
-              if (!scene || !act || !ch) return <div style={{ padding: 40, color: theme.textDim }}>No scene selected.</div>;
-              const scWords = countWords(scene.body);
-              const scColor = SCENE_COLORS.find((c) => c.id === (scene.color || "none")) || SCENE_COLORS[0];
-              const mentionMatches = novelMention ? articles.filter((a) => {
-                if (!novelMention.query) return true;
-                const q = lower(novelMention?.query);
-                return lower(a.title).includes(q) || lower(a.id).startsWith(q);
-              }).slice(0, 8) : [];
-
-              // Focus mode — fullscreen overlay
-              if (novelFocusMode) return (
-                <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: theme.deepBg, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <div style={{ position: "absolute", top: 16, right: 20, display: "flex", gap: 10, opacity: 0.3, transition: "opacity 0.3s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}>
-                    <span style={{ fontSize: 11, color: theme.textDim }}>{scWords.toLocaleString()} words</span>
-                    {novelGoal.daily > 0 && <span style={{ fontSize: 11, color: goalProgress >= 100 ? "#8ec8a0" : theme.accent }}>{sessionWords}/{novelGoal.daily} today</span>}
-                    <button onClick={() => setNovelFocusMode(false)} style={{ background: "none", border: "1px solid " + theme.border, color: theme.textDim, borderRadius: 6, padding: "3px 12px", cursor: "pointer", fontSize: 10 }}>Exit Focus</button>
-                  </div>
-                  <div style={{ position: "absolute", top: 16, left: 20, opacity: 0.15 }}>
-                    <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: theme.textDim }}>{act.title} › {ch.title} › {scene.title}</span>
-                  </div>
-                  {/* Typewriter progress bar */}
-                  {novelGoal.daily > 0 && <div style={{ position: "absolute", top: 0, left: 0, height: 2, background: goalProgress >= 100 ? "#8ec8a0" : theme.accent, width: goalProgress + "%", transition: "width 0.5s", borderRadius: 1 }} />}
-                  <div style={{ flex: 1, width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", overflow: "hidden", padding: "60px 0 40px" }}>
-                    <div
-                      ref={novelEditorRef}
-                      contentEditable suppressContentEditableWarning aria-label="Scene editor" role="textbox" aria-multiline="true"
-                      onInput={handleNovelInput}
-                      onClick={handleEditorClick}
-                      onMouseOver={handleEditorMouseOver}
-                      onMouseLeave={() => setMentionTooltip(null)}
-                      onCompositionStart={() => { isComposingRef.current = true; }}
-                      onCompositionEnd={() => { isComposingRef.current = false; handleNovelInput(); }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") { if (novelMention) setNovelMention(null); else setNovelFocusMode(false); }
-                        if (novelMention && mentionMatches.length > 0 && (e.key === "Tab" || e.key === "Enter")) { e.preventDefault(); insertMention(mentionMatches[0]); }
-                        if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-                          if (e.key === "b") { e.preventDefault(); execFormat("bold"); }
-                          if (e.key === "i") { e.preventDefault(); execFormat("italic"); }
-                          if (e.key === "u") { e.preventDefault(); execFormat("underline"); }
-                        }
-                        handleMentionKeyDown(e);
-                      }}
-                      onBlur={() => setTimeout(() => setNovelMention(null), 200)}
-                      data-placeholder={"Begin writing...\nType @ to reference codex entries."}
-                      style={{
-                        flex: 1, width: "100%", background: "transparent", border: "none",
-                        color: theme.text, caretColor: theme.accent,
-                        fontSize: 18, fontFamily: editorFontFamily,
-                        lineHeight: 2.2, padding: "0 20px", outline: "none", resize: "none",
-                        letterSpacing: 0.4, overflowY: "auto", whiteSpace: "pre-wrap", wordWrap: "break-word",
-                      }}
-                    />
-                    {/* Minimal focus mode formatting bar */}
-                    <div style={{ display: "flex", justifyContent: "center", gap: 2, padding: "8px 0 0", opacity: 0.25, transition: "opacity 0.3s" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.25"; }}>
-                      {[
-                        { cmd: "bold", icon: "B", style: { fontWeight: 800 } },
-                        { cmd: "italic", icon: "I", style: { fontStyle: "italic" } },
-                        { cmd: "underline", icon: "U", style: { textDecoration: "underline" } },
-                        { cmd: "strikeThrough", icon: "S", style: { textDecoration: "line-through" } },
-                      ].map((b) => (
-                        <button key={b.cmd}
-                          onMouseDown={(e) => { e.preventDefault(); execFormat(b.cmd); }}
-                          style={{ width: 26, height: 24, border: "none", borderRadius: 4, background: "transparent", color: theme.textDim, cursor: "pointer", fontSize: 12, fontFamily: "Georgia, serif", display: "flex", alignItems: "center", justifyContent: "center", ...b.style }}>
-                          {b.icon}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* @mention autocomplete in focus mode */}
-                  {novelMention && mentionMatches.length > 0 && (
-                    <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: theme.surface, border: "1px solid " + ta(theme.accent, 0.3), borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 10000, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
-                      <div style={{ padding: "4px 10px 6px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
-                      {mentionMatches.map((a, idx) => (
-                        <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
-                          style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? ta(theme.accent, 0.08) : "transparent" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.12); }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? ta(theme.accent, 0.08) : "transparent"; }}>
-                          <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                          <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{a.title}</div></div>
-                          <span style={{ fontSize: 9, color: theme.textDim }}>{CATEGORIES[a.category]?.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {mentionTooltip && mentionTooltip.article && (
-                    <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 10001, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color, fontFamily: "'Cinzel', serif" }}>{CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}</div>
-                      <div style={{ fontSize: 11, color: theme.textMuted, lineHeight: 1.5, marginTop: 4 }}>{mentionTooltip.article.summary?.slice(0, 120) || "No summary."}</div>
-                    </div>
-                  )}
-                </div>
-              );
-
-              // Normal write mode
-              return (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                  {/* Writing toolbar */}
-                  <div style={{ padding: "8px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-                    <span onClick={() => setNovelView("outline")} style={{ cursor: "pointer", color: theme.textDim, fontSize: 11 }}>← Outline</span>
-                    <div style={{ width: 1, height: 16, background: theme.border }} />
-                    <span style={{ fontSize: 11, color: act.color, fontWeight: 600 }}>{act.title}</span>
-                    <span style={{ color: "#334455" }}>›</span>
-                    <span style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>{ch.title}</span>
-                    <span style={{ color: "#334455" }}>›</span>
-                    <span style={{ fontSize: 11, color: theme.textMuted }}>{scene.title}</span>
-                    <div style={{ flex: 1 }} />
-
-                    {/* Scene color tag */}
-                    <select value={scene.color || "none"} onChange={(e) => updateScene(act.id, ch.id, scene.id, { color: e.target.value })}
-                      style={{ background: theme.inputBg, border: "1px solid " + theme.border, borderRadius: 4, fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", padding: "2px 8px", cursor: "pointer", outline: "none" }}>
-                      {SCENE_COLORS.map((c) => <option key={c.id} value={c.id} style={{ color: c.color !== "transparent" ? c.color : "#ccc" }}>{c.label}</option>)}
-                    </select>
-
-                    <button onClick={() => navigateScene(-1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>←</button>
-                    <button onClick={() => navigateScene(1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>→</button>
-                    <div style={{ width: 1, height: 16, background: theme.border }} />
-                    <button onClick={() => setNovelFocusMode(true)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }} title="Distraction-free writing">{isMobile ? "⊡" : "⊡ Focus"}</button>
-                    {!isMobile && <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane ? theme.accent : theme.textMuted }}>
-                      ◫ Split
-                    </button>}
-                    <div style={{ position: "relative" }}>
-                      <button onClick={() => setNovelEditorSettings(!novelEditorSettings)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: novelEditorSettings ? theme.accent : theme.textMuted, background: novelEditorSettings ? theme.accentBg : "transparent" }}>⚙ Editor</button>
-                      {novelEditorSettings && (
-                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 16, zIndex: 200, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                            <span style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: theme.text, letterSpacing: 0.5 }}>Editor Settings</span>
-                            <span onClick={() => setNovelEditorSettings(false)} style={{ cursor: "pointer", color: theme.textDim, fontSize: 14 }}>✕</span>
-                          </div>
-                          {/* Editor Font */}
-                          <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Font</label>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
-                            {Object.entries(EDITOR_FONTS).map(([fid, fam]) => (
-                              <div key={fid} onClick={() => setSettings((p) => ({ ...p, editorFont: fid }))}
-                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid " + (settings.editorFont === fid ? theme.accent + "50" : "transparent"), background: settings.editorFont === fid ? theme.accentBg : "transparent" }}>
-                                <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid " + (settings.editorFont === fid ? theme.accent : theme.border), display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                  {settings.editorFont === fid && <div style={{ width: 7, height: 7, borderRadius: "50%", background: theme.accent }} />}
-                                </div>
-                                <span style={{ fontSize: 12, fontFamily: fam, color: settings.editorFont === fid ? theme.accent : theme.textMuted }}>{fid === "system" ? "Sans-Serif" : fid === "mono" ? "Monospace" : fid.charAt(0).toUpperCase() + fid.slice(1)}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {/* Font Size */}
-                          <label style={{ display: "block", fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Size</label>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            {[{ id: "compact", label: "Compact" }, { id: "default", label: "Default" }, { id: "large", label: "Large" }].map((s) => (
-                              <button key={s.id} onClick={() => setSettings((p) => ({ ...p, fontSize: s.id }))}
-                                style={{ flex: 1, padding: "6px 0", borderRadius: 6, cursor: "pointer", border: "1px solid " + (settings.fontSize === s.id ? theme.accent + "50" : theme.border), background: settings.fontSize === s.id ? theme.accentBg : "transparent", color: settings.fontSize === s.id ? theme.accent : theme.textMuted, fontSize: 10, fontFamily: "inherit" }}>
-                                {s.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Writing goal bar */}
-                  {(novelGoal.daily > 0 || novelShowGoalSet) && (
-                    <div style={{ padding: "6px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: ta(theme.surface, 0.3) }}>
-                      {novelShowGoalSet ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 10, color: theme.textDim }}>Daily word goal:</span>
-                          <input type="number" style={{ ...S.input, width: 80, padding: "3px 8px", fontSize: 11 }} placeholder="e.g. 1000" value={novelGoalInput}
-                            onChange={(e) => setNovelGoalInput(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); } }} />
-                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: parseInt(novelGoalInput) || 0 })); setNovelShowGoalSet(false); }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px" }}>Set</button>
-                          <button onClick={() => { setNovelGoal((g) => ({ ...g, daily: 0 })); setNovelShowGoalSet(false); }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#e07050" }}>Clear</button>
-                        </div>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: 10, color: theme.textDim }}>Session:</span>
-                          <span style={{ fontSize: 11, color: sessionWords > 0 ? "#8ec8a0" : theme.textDim, fontWeight: 600 }}>+{sessionWords.toLocaleString()}</span>
-                          <div style={{ flex: 1, height: 4, background: theme.surface, borderRadius: 2, maxWidth: 200, overflow: "hidden" }}>
-                            <div style={{ height: "100%", width: goalProgress + "%", background: goalProgress >= 100 ? "#8ec8a0" : goalProgress > 50 ? theme.accent : "#e07050", borderRadius: 2, transition: "width 0.5s" }} />
-                          </div>
-                          <span style={{ fontSize: 10, color: goalProgress >= 100 ? "#8ec8a0" : theme.textDim }}>{goalProgress}% of {novelGoal.daily.toLocaleString()}</span>
-                          {goalProgress >= 100 && <span style={{ fontSize: 10, color: "#8ec8a0" }}>🎉 Goal reached!</span>}
-                          <span onClick={() => { setNovelGoalInput(String(novelGoal.daily)); setNovelShowGoalSet(true); }} style={{ fontSize: 9, color: theme.textDim, cursor: "pointer" }}>✎</span>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-                    {/* Chapter nav rail — hidden on mobile */}
-                    {!isMobile && <div style={{ width: isTablet ? 150 : 180, borderRight: "1px solid " + theme.divider, overflowY: "auto", flexShrink: 0, padding: "12px 0", background: theme.deepBg }}>
-                      {activeMs.acts.map((a) => (
-                        <div key={a.id}>
-                          <div style={{ padding: "6px 14px", fontSize: 10, color: a.color, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                            <div style={{ width: 3, height: 12, background: a.color, borderRadius: 1 }} />{a.title}
-                          </div>
-                          {a.chapters.map((c) => (
-                            <div key={c.id}>
-                              {c.scenes.map((s) => {
-                                const sColor = SCENE_COLORS.find((sc) => sc.id === s.color) || SCENE_COLORS[0];
-                                return (
-                                  <div key={s.id} onClick={() => setNovelActiveScene({ actId: a.id, chId: c.id, scId: s.id })}
-                                    style={{ padding: "5px 14px 5px 26px", fontSize: 11, color: s.id === scene.id ? theme.accent : "#6b7b8d", cursor: "pointer", background: s.id === scene.id ? ta(theme.accent, 0.06) : "transparent", borderLeft: s.id === scene.id ? "2px solid " + theme.accent : sColor.color !== "transparent" ? "2px solid " + sColor.color + "60" : "2px solid transparent", transition: "all 0.15s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                                    onMouseEnter={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
-                                    onMouseLeave={(e) => { if (s.id !== scene.id) e.currentTarget.style.background = "transparent"; }}>
-                                    <span style={{ fontSize: 9, color: theme.textDim }}>{c.title.replace(/Chapter\s*/i, "Ch")} · </span>{s.title}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                      {/* Goal set button in nav */}
-                      <div style={{ padding: "12px 14px", borderTop: "1px solid " + theme.divider, marginTop: 8 }}>
-                        <span onClick={() => setNovelShowGoalSet(true)} style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>🎯 {novelGoal.daily > 0 ? novelGoal.daily.toLocaleString() + " word goal" : "Set word goal"}</span>
-                      </div>
-                    </div>}
-
-                    {/* Main editor area */}
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                      {/* Scene metadata bar */}
-                      <div style={{ padding: "6px 20px", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: ta(theme.surface, 0.3) }}>
-                        <input style={{ background: "none", border: "none", fontSize: 10, color: "#c084fc", outline: "none", width: 100, fontFamily: "inherit" }}
-                          placeholder="POV character..." value={scene.povCharacter || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { povCharacter: e.target.value })} />
-                        <div style={{ width: 1, height: 12, background: theme.divider }} />
-                        <input style={{ background: "none", border: "none", fontSize: 10, color: theme.textDim, outline: "none", flex: 1, fontFamily: "inherit" }}
-                          placeholder="Scene label / notes tag..." value={scene.label || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { label: e.target.value })} />
-                        <div style={{ width: 1, height: 12, background: theme.divider }} />
-                        <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} title="Save snapshot of current text"
-                          style={{ background: "none", border: "1px solid " + theme.border, borderRadius: 4, color: "#7ec8e3", cursor: "pointer", fontSize: 9, padding: "2px 8px" }}>📸 Snapshot</button>
-                        {scene.snapshots?.length > 0 && (
-                          <span onClick={() => setNovelSnapshotView(novelSnapshotView !== null ? null : scene.snapshots.length - 1)}
-                            style={{ fontSize: 9, color: "#7ec8e3", cursor: "pointer", background: "rgba(126,200,227,0.1)", padding: "2px 8px", borderRadius: 4 }}>
-                            {scene.snapshots.length} snapshot{scene.snapshots.length !== 1 ? "s" : ""} {novelSnapshotView !== null ? "▾" : "▸"}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Snapshot viewer */}
-                      {novelSnapshotView !== null && scene.snapshots?.length > 0 && (
-                        <div style={{ padding: "10px 20px", borderBottom: "1px solid " + theme.divider, background: "rgba(126,200,227,0.03)", flexShrink: 0, maxHeight: 200, overflowY: "auto" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                            <span style={{ fontSize: 11, color: "#7ec8e3", fontWeight: 600 }}>📸 Snapshots</span>
-                            <div style={{ flex: 1 }} />
-                            <span onClick={() => setNovelSnapshotView(null)} style={{ fontSize: 10, color: theme.textDim, cursor: "pointer" }}>✕</span>
-                          </div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                            {scene.snapshots.map((snap, si) => (
-                              <span key={si} onClick={() => setNovelSnapshotView(si)}
-                                style={{ fontSize: 10, padding: "3px 10px", borderRadius: 6, cursor: "pointer", background: novelSnapshotView === si ? "rgba(126,200,227,0.15)" : ta(theme.surface, 0.5), border: "1px solid " + (novelSnapshotView === si ? "rgba(126,200,227,0.3)" : theme.border), color: novelSnapshotView === si ? "#7ec8e3" : "#6b7b8d" }}>
-                                {new Date(snap.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {snap.wordCount}w
-                              </span>
-                            ))}
-                          </div>
-                          {scene.snapshots[novelSnapshotView] && (
-                            <div>
-                              <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.6, maxHeight: 80, overflow: "hidden", padding: 8, background: ta(theme.deepBg, 0.5), borderRadius: 6, fontFamily: "'Georgia', serif" }}>
-                                {scene.snapshots[novelSnapshotView].body.slice(0, 300) || "(empty)"}...
-                              </div>
-                              <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, novelSnapshotView); setNovelSnapshotView(null); }}
-                                style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", marginTop: 6, color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>
-                                ↩ Restore this snapshot
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Formatting toolbar */}
-                      <div style={{ padding: "4px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 2, flexShrink: 0, background: ta(theme.surface, 0.2), flexWrap: "wrap" }}>
-                        {[
-                          { cmd: "bold", icon: "B", key: "bold", style: { fontWeight: 800 }, tip: "Bold (Ctrl+B)" },
-                          { cmd: "italic", icon: "I", key: "italic", style: { fontStyle: "italic", fontFamily: "Georgia, serif" }, tip: "Italic (Ctrl+I)" },
-                          { cmd: "underline", icon: "U", key: "underline", style: { textDecoration: "underline" }, tip: "Underline (Ctrl+U)" },
-                          { cmd: "strikeThrough", icon: "S", key: "strikethrough", style: { textDecoration: "line-through" }, tip: "Strikethrough" },
-                        ].map((b) => (
-                          <button key={b.cmd} title={b.tip}
-                            onMouseDown={(e) => { e.preventDefault(); execFormat(b.cmd); updateFormatState(); }}
-                            style={{ width: 28, height: 26, border: "1px solid " + (formatState[b.key] ? ta(theme.accent, 0.4) : "transparent"), borderRadius: 4, background: formatState[b.key] ? ta(theme.accent, 0.12) : "transparent", color: formatState[b.key] ? theme.accent : theme.textMuted, cursor: "pointer", fontSize: 13, fontFamily: "Georgia, serif", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.1s", ...b.style }}>
-                            {b.icon}
-                          </button>
-                        ))}
-                        <div style={{ width: 1, height: 18, background: theme.border, margin: "0 4px" }} />
-                        {[
-                          { cmd: "formatBlock", val: "<h2>", icon: "H2", tip: "Heading 2" },
-                          { cmd: "formatBlock", val: "<h3>", icon: "H3", tip: "Heading 3" },
-                        ].map((b) => (
-                          <button key={b.icon} title={b.tip}
-                            onMouseDown={(e) => { e.preventDefault(); execFormat(b.cmd, b.val); }}
-                            style={{ height: 26, padding: "0 8px", border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textMuted, cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 0.5 }}>
-                            {b.icon}
-                          </button>
-                        ))}
-                        <div style={{ width: 1, height: 18, background: theme.border, margin: "0 4px" }} />
-                        <button title="Bullet list" onMouseDown={(e) => { e.preventDefault(); execFormat("insertUnorderedList"); updateFormatState(); }}
-                          style={{ width: 28, height: 26, border: "1px solid " + (formatState.ul ? ta(theme.accent, 0.4) : "transparent"), borderRadius: 4, background: formatState.ul ? ta(theme.accent, 0.12) : "transparent", color: formatState.ul ? theme.accent : theme.textMuted, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          ☰
-                        </button>
-                        <button title="Numbered list" onMouseDown={(e) => { e.preventDefault(); execFormat("insertOrderedList"); updateFormatState(); }}
-                          style={{ width: 28, height: 26, border: "1px solid " + (formatState.ol ? ta(theme.accent, 0.4) : "transparent"), borderRadius: 4, background: formatState.ol ? ta(theme.accent, 0.12) : "transparent", color: formatState.ol ? theme.accent : theme.textMuted, cursor: "pointer", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          1.
-                        </button>
-                        <button title="Block quote" onMouseDown={(e) => { e.preventDefault(); execFormat("formatBlock", "<blockquote>"); }}
-                          style={{ width: 28, height: 26, border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textMuted, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          ❝
-                        </button>
-                        <div style={{ width: 1, height: 18, background: theme.border, margin: "0 4px" }} />
-                        <button title="Horizontal rule" onMouseDown={(e) => { e.preventDefault(); execFormat("insertHorizontalRule"); }}
-                          style={{ width: 28, height: 26, border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textMuted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          ―
-                        </button>
-                        <button title="Clear formatting" onMouseDown={(e) => { e.preventDefault(); execFormat("removeFormat"); execFormat("formatBlock", "<div>"); updateFormatState(); }}
-                          style={{ width: 28, height: 26, border: "1px solid transparent", borderRadius: 4, background: "transparent", color: theme.textDim, cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          ⊘
-                        </button>
-                      </div>
-
-                      {/* ContentEditable editor */}
-                      <div
-                        ref={novelEditorRef}
-                        contentEditable suppressContentEditableWarning
-                        aria-label="Scene editor — focus mode" role="textbox" aria-multiline="true"
-                        onInput={handleNovelInput}
-                        onClick={handleEditorClick}
-                        onMouseOver={handleEditorMouseOver}
-                        onMouseLeave={() => setMentionTooltip(null)}
-                        onCompositionStart={() => { isComposingRef.current = true; }}
-                        onCompositionEnd={() => { isComposingRef.current = false; handleNovelInput(); }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") setNovelMention(null);
-                          if (novelMention && mentionMatches.length > 0 && (e.key === "Tab" || e.key === "Enter")) { e.preventDefault(); insertMention(mentionMatches[0]); }
-                          if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-                            if (e.key === "b") { e.preventDefault(); execFormat("bold"); updateFormatState(); }
-                            if (e.key === "i") { e.preventDefault(); execFormat("italic"); updateFormatState(); }
-                            if (e.key === "u") { e.preventDefault(); execFormat("underline"); updateFormatState(); }
-                          }
-                          handleMentionKeyDown(e);
-                        }}
-                        onKeyUp={updateFormatState}
-                        onMouseUp={updateFormatState}
-                        onBlur={() => setTimeout(() => setNovelMention(null), 200)}
-                        data-placeholder={"Begin writing " + scene.title + "...\nType @ to reference codex entries — they'll appear as clickable links."}
-                        style={{
-                          flex: 1, width: "100%", background: theme.inputBg, border: "none",
-                          color: theme.text, caretColor: theme.accent,
-                          fontSize: 15, fontFamily: editorFontFamily,
-                          lineHeight: 1.9, padding: "32px 48px", outline: "none", resize: "none",
-                          boxSizing: "border-box", letterSpacing: 0.3, overflowY: "auto",
-                          whiteSpace: "pre-wrap", wordWrap: "break-word", minHeight: 200,
-                        }}
-                      />
-
-                      {/* @mention autocomplete */}
-                      {novelMention && mentionMatches.length > 0 && (
-                        <div style={{ position: "fixed", left: Math.max(10, novelMention.x), top: novelMention.y, background: theme.surface, border: "1px solid " + ta(theme.accent, 0.3), borderRadius: 10, padding: 6, minWidth: 260, maxHeight: 280, overflowY: "auto", zIndex: 100, boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px " + ta(theme.accent, 0.1) }}>
-                          <div style={{ padding: "4px 10px 6px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1 }}>Codex entries</div>
-                          {mentionMatches.map((a, idx) => (
-                            <div key={a.id} onMouseDown={(e) => { e.preventDefault(); insertMention(a); }}
-                              style={{ padding: "8px 12px", fontSize: 12, color: theme.text, cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, background: idx === 0 ? ta(theme.accent, 0.08) : "transparent", transition: "background 0.1s" }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.12); }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = idx === 0 ? ta(theme.accent, 0.08) : "transparent"; }}>
-                              <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color || "#888" }}>{CATEGORIES[a.category]?.icon || "?"}</span>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
-                                {a.summary && <div style={{ fontSize: 10, color: theme.textDim, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.summary.slice(0, 60)}</div>}
-                              </div>
-                              <span style={{ fontSize: 9, color: theme.textDim, flexShrink: 0 }}>{CATEGORIES[a.category]?.label}</span>
-                            </div>
-                          ))}
-                          <div style={{ padding: "6px 10px 4px", fontSize: 9, color: theme.textDim, borderTop: "1px solid " + theme.divider, marginTop: 4 }}>Tab/Enter to insert · Esc to close</div>
-                        </div>
-                      )}
-
-                      {/* Mention hover tooltip */}
-                      {mentionTooltip && mentionTooltip.article && (
-                        <div style={{ position: "fixed", left: mentionTooltip.x, top: mentionTooltip.y, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: "12px 14px", minWidth: 240, maxWidth: 320, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                            {mentionTooltip.article.portrait && <img src={mentionTooltip.article.portrait} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", border: "1px solid " + theme.border }} />}
-                            <div>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: CATEGORIES[mentionTooltip.article.category]?.color || "#e8dcc8", fontFamily: "'Cinzel', serif" }}>
-                                {CATEGORIES[mentionTooltip.article.category]?.icon} {mentionTooltip.article.title}
-                              </div>
-                              <div style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5 }}>{CATEGORIES[mentionTooltip.article.category]?.label}</div>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 11, color: theme.textMuted, lineHeight: 1.5 }}>{mentionTooltip.article.summary?.slice(0, 150) || "No summary."}{mentionTooltip.article.summary?.length > 150 ? "…" : ""}</div>
-                          {Object.entries(mentionTooltip.article.fields || {}).filter(([_, v]) => v).slice(0, 3).map(([k, v]) => (
-                            <div key={k} style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}><strong style={{ color: theme.textDim }}>{formatKey(k)}:</strong> {String(v).slice(0, 50)}</div>
-                          ))}
-                          <div style={{ fontSize: 9, color: theme.accent, marginTop: 6 }}>Click mention to open article</div>
-                        </div>
-                      )}
-
-                      {/* Scene integrity warnings */}
-                      {(() => {
-                        const sceneWarnings = checkSceneIntegrity(scene.body, articles);
-                        if (sceneWarnings.length === 0) return null;
-                        return (
-                          <div style={{ padding: "6px 28px", background: "rgba(224,112,80,0.04)", borderTop: "1px solid rgba(224,112,80,0.15)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                            <span style={{ fontSize: 11, color: "#e07050" }}>🛡 {sceneWarnings.length} integrity issue{sceneWarnings.length !== 1 ? "s" : ""}:</span>
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
-                              {sceneWarnings.slice(0, 4).map((w, i) => (
-                                <span key={i} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: w.severity === "error" ? "rgba(224,112,80,0.1)" : ta(theme.accent, 0.1), color: w.severity === "error" ? "#e07050" : theme.accent, border: "1px solid " + (w.severity === "error" ? "rgba(224,112,80,0.2)" : ta(theme.accent, 0.2)) }}>
-                                  {w.message}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Footer bar */}
-                      <div style={{ padding: "8px 20px", borderTop: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 16, flexShrink: 0, background: theme.deepBg }}>
-                        <span style={{ fontSize: 10, color: theme.textDim }}>Scene: <strong style={{ color: theme.textMuted }}>{scWords.toLocaleString()}</strong> words</span>
-                        <span style={{ fontSize: 10, color: theme.textDim }}>Chapter: <strong style={{ color: theme.textMuted }}>{chapterWordCount(ch).toLocaleString()}</strong></span>
-                        <span style={{ fontSize: 10, color: theme.textDim }}>Total: <strong style={{ color: theme.textMuted }}>{msWordCount.total.toLocaleString()}</strong></span>
-                        <div style={{ flex: 1 }} />
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_COLORS[ch.status] }} />
-                          <span style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5 }}>{ch.status}</span>
-                        </div>
-                        <span style={{ fontSize: 9, color: "#334455" }}>@ codex · ⊡ focus · ◫ split</span>
-                      </div>
-                    </div>
-
-                    {/* === SPLIT PANE RIGHT SIDE === */}
-                    {novelSplitPane && !isMobile && (
-                      <div style={{ width: 340, borderLeft: "1px solid " + theme.divider, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, background: theme.inputBg }}>
-                        {/* Split pane tabs */}
-                        <div style={{ padding: "8px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", gap: 4, flexShrink: 0 }}>
-                          {[
-                            { id: "notes", icon: "📝", label: "Notes" },
-                            { id: "codex", icon: "📖", label: "Codex" },
-                            { id: "snapshots", icon: "📸", label: "Snapshots" },
-                          ].map((tab) => (
-                            <span key={tab.id} onClick={() => setNovelSplitPane(tab.id)}
-                              style={{ fontSize: 10, padding: "4px 10px", borderRadius: 6, cursor: "pointer", background: novelSplitPane === tab.id ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane === tab.id ? theme.accent : theme.textDim, border: "1px solid " + (novelSplitPane === tab.id ? ta(theme.accent, 0.25) : "transparent"), transition: "all 0.15s" }}>
-                              {tab.icon} {tab.label}
-                            </span>
-                          ))}
-                          <div style={{ flex: 1 }} />
-                          <span onClick={() => setNovelSplitPane(null)} style={{ cursor: "pointer", color: theme.textDim, fontSize: 12 }}>✕</span>
-                        </div>
-
-                        {/* NOTES PANE */}
-                        {novelSplitPane === "notes" && (
-                          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                            <div style={{ padding: "10px 14px 6px", flexShrink: 0 }}>
-                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: theme.accent, letterSpacing: 0.5 }}>Scene Notes</span>
-                              <div style={{ fontSize: 10, color: theme.textDim, marginTop: 2 }}>Private notes — won't appear in exports</div>
-                            </div>
-                            <textarea
-                              value={scene.notes || ""}
-                              onChange={(e) => updateScene(act.id, ch.id, scene.id, { notes: e.target.value })}
-                              placeholder={"Research notes for " + scene.title + "...\n\nCharacter motivations, plot threads, setting details, reminders..."}
-                              style={{
-                                flex: 1, background: "transparent", border: "none", color: theme.textMuted,
-                                fontSize: 13, fontFamily: "'Georgia', serif", lineHeight: 1.7,
-                                padding: "8px 14px", outline: "none", resize: "none", overflowY: "auto",
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {/* CODEX PANE (replaces old sidebar) */}
-                        {novelSplitPane === "codex" && (
-                          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                            <div style={{ padding: "10px 14px", borderBottom: "1px solid " + theme.divider, flexShrink: 0 }}>
-                              <input style={{ ...S.input, fontSize: 11, padding: "6px 10px" }} placeholder="Search articles..." value={novelCodexSearch} onChange={(e) => setNovelCodexSearch(e.target.value)} />
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                                <span onClick={() => setNovelCodexFilter("all")} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === "all" ? ta(theme.accent, 0.15) : "transparent", color: novelCodexFilter === "all" ? theme.accent : theme.textDim, border: "1px solid " + (novelCodexFilter === "all" ? ta(theme.accent, 0.3) : theme.border) }}>All</span>
-                                {["character", "location", "race", "deity", "item", "event"].map((cat) => (
-                                  <span key={cat} onClick={() => setNovelCodexFilter(cat)} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, cursor: "pointer", background: novelCodexFilter === cat ? CATEGORIES[cat].color + "20" : "transparent", color: novelCodexFilter === cat ? CATEGORIES[cat].color : theme.textDim, border: "1px solid " + (novelCodexFilter === cat ? CATEGORIES[cat].color + "40" : theme.border) }}>
-                                    {CATEGORIES[cat].icon}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
-                              {novelCodexArticles.slice(0, novelCodexVisible).map((a) => (
-                                <div key={a.id} style={{ marginBottom: 2, borderRadius: 6, overflow: "hidden" }}>
-                                  <div onClick={() => setNovelCodexExpanded(novelCodexExpanded === a.id ? null : a.id)}
-                                    style={{ padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "background 0.15s" }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                                    <span style={{ color: CATEGORIES[a.category]?.color, fontSize: 12 }}>{CATEGORIES[a.category]?.icon}</span>
-                                    <span style={{ fontSize: 12, color: theme.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
-                                    <button onClick={(e) => { e.stopPropagation(); insertMentionFromSidebar(a); }}
-                                      style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 10, padding: "2px 4px" }} title="Insert @mention">@+</button>
-                                  </div>
-                                  {novelCodexExpanded === a.id && (
-                                    <div style={{ padding: "4px 10px 12px 30px" }}>
-                                      {a.portrait && <img src={a.portrait} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", float: "right", marginLeft: 8, marginBottom: 4, border: "1px solid " + theme.border }} />}
-                                      <p style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.5, margin: "0 0 6px" }}>{a.summary || "No summary."}</p>
-                                      {Object.entries(a.fields || {}).filter(([_, v]) => v).slice(0, 5).map(([k, v]) => (
-                                        <div key={k} style={{ fontSize: 10, color: theme.textDim, marginBottom: 2 }}><strong style={{ color: theme.textDim }}>{formatKey(k)}:</strong> {String(v).slice(0, 60)}</div>
-                                      ))}
-                                      <div onClick={() => { setActiveArticle(a); setView("article"); }} style={{ fontSize: 10, color: theme.accent, cursor: "pointer", marginTop: 6 }}>Open full article →</div>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                              {novelCodexArticles.length === 0 && <p style={{ fontSize: 11, color: theme.textDim, textAlign: "center", padding: 20 }}>No matching articles.</p>}
-                              {novelCodexArticles.length > novelCodexVisible && (
-                                <div style={{ textAlign: "center", padding: "8px 0" }}>
-                                  <button onClick={() => setNovelCodexVisible((v) => v + NOVEL_CODEX_PAGE)}
-                                    style={{ ...tBtnS, padding: "6px 16px", fontSize: 10, borderRadius: 6 }}>
-                                    Show more ({novelCodexArticles.length - novelCodexVisible})
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* SNAPSHOTS PANE */}
-                        {novelSplitPane === "snapshots" && (
-                          <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#7ec8e3", letterSpacing: 0.5 }}>Scene Snapshots</span>
-                              <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#7ec8e3", borderColor: "rgba(126,200,227,0.3)" }}>📸 Save</button>
-                            </div>
-                            {(!scene.snapshots || scene.snapshots.length === 0) ? (
-                              <div style={{ textAlign: "center", padding: "30px 10px", color: theme.textDim }}>
-                                <div style={{ fontSize: 28, marginBottom: 8 }}>📸</div>
-                                <p style={{ fontSize: 12 }}>No snapshots yet.</p>
-                                <p style={{ fontSize: 10, color: "#334455" }}>Save a snapshot to create a restorable version of this scene.</p>
-                              </div>
-                            ) : (
-                              scene.snapshots.map((snap, si) => (
-                                <div key={si} style={{ marginBottom: 10, background: ta(theme.surface, 0.5), border: "1px solid " + theme.border, borderRadius: 8, padding: "10px 12px" }}>
-                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                                    <span style={{ fontSize: 11, color: "#7ec8e3" }}>
-                                      {new Date(snap.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                    </span>
-                                    <span style={{ fontSize: 10, color: theme.textDim }}>{snap.wordCount} words</span>
-                                  </div>
-                                  <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.5, maxHeight: 60, overflow: "hidden", marginBottom: 6 }}>
-                                    {snap.body.slice(0, 150) || "(empty)"}...
-                                  </div>
-                                  <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, si); }}
-                                    style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>↩ Restore</button>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-          </div>)}
+          {view === "novel" && (
+            <NovelWorkspace
+              theme={theme} articles={articles} settings={settings} setSettings={setSettings}
+              isMobile={isMobile} isTablet={isTablet} activeWorld={activeWorld}
+              navigate={navigate} goEdit={goEdit} setView={setView} setActiveArticle={setActiveArticle}
+              view={view} novelView={novelView} setNovelView={setNovelView}
+              novelFocusMode={novelFocusMode} setNovelFocusMode={setNovelFocusMode}
+              novelSplitPane={novelSplitPane} setNovelSplitPane={setNovelSplitPane}
+              novelActiveScene={novelActiveScene} setNovelActiveScene={setNovelActiveScene}
+              novelCodexSearch={novelCodexSearch} setNovelCodexSearch={setNovelCodexSearch}
+              novelCodexFilter={novelCodexFilter} setNovelCodexFilter={setNovelCodexFilter}
+              novelCodexExpanded={novelCodexExpanded} setNovelCodexExpanded={setNovelCodexExpanded}
+              novelCodexVisible={novelCodexVisible} setNovelCodexVisible={setNovelCodexVisible}
+              novelMention={novelMention} setNovelMention={setNovelMention}
+              novelOutlineCollapsed={novelOutlineCollapsed} setNovelOutlineCollapsed={setNovelOutlineCollapsed}
+              novelMsForm={novelMsForm} setNovelMsForm={setNovelMsForm}
+              novelEditorSettings={novelEditorSettings} setNovelEditorSettings={setNovelEditorSettings}
+              novelExportOpen={novelExportOpen} setNovelExportOpen={setNovelExportOpen}
+              novelGoal={novelGoal} setNovelGoal={setNovelGoal}
+              novelGoalInput={novelGoalInput} setNovelGoalInput={setNovelGoalInput}
+              novelShowGoalSet={novelShowGoalSet} setNovelShowGoalSet={setNovelShowGoalSet}
+              novelSnapshotView={novelSnapshotView} setNovelSnapshotView={setNovelSnapshotView}
+              novelCompiling={novelCompiling}
+              corkboardChapter={corkboardChapter} setCorkboardChapter={setCorkboardChapter}
+              corkboardDragId={corkboardDragId} setCorkboardDragId={setCorkboardDragId}
+              mentionTooltip={mentionTooltip} setMentionTooltip={setMentionTooltip}
+              showMsCreate={showMsCreate} setShowMsCreate={setShowMsCreate}
+              manuscripts={manuscripts} setManuscripts={setManuscripts}
+              activeMs={activeMs} setActiveMs={setActiveMs}
+              msWordCount={msWordCount} goalProgress={goalProgress} sessionWords={sessionWords}
+              editorFontFamily={editorFontFamily} novelCodexArticles={novelCodexArticles}
+              countWords={countWords} stripTags={stripTags} chapterWordCount={chapterWordCount}
+              getActiveScene={getActiveScene} navigateScene={navigateScene}
+              saveSnapshot={saveSnapshot} restoreSnapshot={restoreSnapshot}
+              createManuscript={createManuscript} deleteManuscript={deleteManuscript}
+              addChapter={addChapter} addScene={addScene} addAct={addAct}
+              updateAct={updateAct} updateChapter={updateChapter} updateScene={updateScene}
+              deleteAct={deleteAct} deleteChapter={deleteChapter} deleteScene={deleteScene}
+              compileManuscript={compileManuscript} handleCorkDrop={handleCorkDrop}
+              handleEditorClick={handleEditorClick}
+              handleNovelInput={handleNovelInput} handleMentionKeyDown={handleMentionKeyDown}
+              handleEditorMouseOver={handleEditorMouseOver}
+              insertMention={insertMention} insertMentionFromSidebar={insertMentionFromSidebar}
+              execFormat={execFormat} updateFormatState={updateFormatState} formatState={formatState}
+              checkSceneIntegrity={checkSceneIntegrity}
+              novelEditorRef={novelEditorRef} isComposingRef={isComposingRef}
+              ta={ta} tBtnS={tBtnS} tBtnP={tBtnP} tTag={tTag}
+              Ornament={Ornament} WarningBanner={WarningBanner} RenderBody={RenderBody} S={S}
+              lower={lower} formatYear={formatYear} timeAgo={timeAgo}
+            />
+          )}
   </>);
 
   const renderSettings = () => (<>
-          {/* === SETTINGS === */}
-          {view === "settings" && (<div>
-            <div style={{ marginTop: 24, marginBottom: 20 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⚙ Settings</h2>
-              <p style={{ fontSize: 13, color: theme.textMuted, marginTop: 6 }}>Configure your Frostfall Realms experience.</p>
-            </div>
-            <Ornament width={300} />
-
-            {/* Settings tabs */}
-            <div style={{ display: "flex", gap: 4, marginBottom: 28, marginTop: 20 }}>
-              {[
-                { id: "appearance", icon: "🎨", label: "Appearance" },
-                { id: "world", icon: "🌍", label: "World Settings" },
-                { id: "account", icon: "👤", label: "Account" },
-              ].map((tab) => (
-                <button key={tab.id} onClick={() => setSettingsTab(tab.id)}
-                  style={{ background: settingsTab === tab.id ? theme.accentBg : "transparent", border: "1px solid " + (settingsTab === tab.id ? theme.accent + "40" : theme.border), borderRadius: 8, padding: "10px 20px", color: settingsTab === tab.id ? theme.accent : theme.textMuted, fontSize: 13, fontWeight: settingsTab === tab.id ? 600 : 400, cursor: "pointer", fontFamily: "'Cinzel', serif", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 8, transition: "all 0.2s" }}>
-                  <span>{tab.icon}</span> {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* === APPEARANCE TAB === */}
-            {settingsTab === "appearance" && (
-              <div style={{ maxWidth: 640 }}>
-                {/* Theme Selection */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Theme</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Choose the visual atmosphere for your workspace.</p>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    {Object.entries(THEMES).map(([tid, t]) => (
-                      <div key={tid} onClick={() => setSettings((p) => ({ ...p, theme: tid }))}
-                        style={{ width: 180, padding: "16px 18px", borderRadius: 10, cursor: "pointer", border: "2px solid " + (settings.theme === tid ? theme.accent : theme.border), background: t.cardBg, transition: "all 0.2s" }}>
-                        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                          <div style={{ width: 20, height: 20, borderRadius: 4, background: t.rootBg, border: "1px solid " + t.border }} />
-                          <div style={{ width: 20, height: 20, borderRadius: 4, background: t.accent }} />
-                          <div style={{ width: 20, height: 20, borderRadius: 4, background: t.surface, border: "1px solid " + t.border }} />
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: settings.theme === tid ? theme.accent : theme.text, fontFamily: "'Cinzel', serif" }}>{t.name}</div>
-                        <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>{t.desc}</div>
-                        {settings.theme === tid && <div style={{ fontSize: 10, color: theme.accent, marginTop: 8, fontWeight: 600 }}>✓ Active</div>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* UI Scale */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Interface Scale</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Adjust the overall size of the interface.</p>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {[{ id: "compact", label: "Compact", sample: "Aa" }, { id: "default", label: "Default", sample: "Aa" }, { id: "large", label: "Large", sample: "Aa" }].map((s) => (
-                      <button key={s.id} onClick={() => setSettings((p) => ({ ...p, fontSize: s.id }))}
-                        style={{ flex: 1, padding: "14px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.fontSize === s.id ? theme.accent + "50" : theme.border), background: settings.fontSize === s.id ? theme.accentBg : "transparent", color: settings.fontSize === s.id ? theme.accent : theme.textMuted, textAlign: "center", fontFamily: "inherit", transition: "all 0.2s" }}>
-                        <div style={{ fontSize: Math.round(20 * FONT_SIZES[s.id]), fontFamily: "'Cinzel', serif", marginBottom: 4 }}>{s.sample}</div>
-                        <div style={{ fontSize: 11 }}>{s.label}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Editor settings note */}
-                <div style={{ background: theme.accentBg, border: "1px solid " + theme.accent + "30", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 16 }} aria-hidden="true">⚙</span>
-                  <div>
-                    <div style={{ fontSize: 12, color: theme.text, fontWeight: 500 }}>Editor font and size settings have moved</div>
-                    <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>Open a scene in the Novel Writing tool and click <b>⚙ Editor</b> in the toolbar to configure font family and size.</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* === WORLD SETTINGS TAB === */}
+          {view === "settings" && (<>
+            <SettingsPanel
+              theme={theme} settings={settings} setSettings={setSettings}
+              settingsTab={settingsTab} setSettingsTab={setSettingsTab}
+              isMobile={isMobile} articles={articles} archived={archived}
+              manuscripts={manuscripts} setArticles={setArticles}
+              setArchived={setArchived} setManuscripts={setManuscripts}
+              activeWorld={activeWorld} user={user}
+              setShowConfirm={setShowConfirm} setView={setView}
+              avatarFileRef={avatarFileRef} uploadPortrait={uploadPortrait}
+              supabase={supabase} formatYear={formatYear}
+              ta={ta} tBtnS={tBtnS} tBtnP={tBtnP} Ornament={Ornament} S={S}
+            />
+            {/* Export/Import World Data */}
             {settingsTab === "world" && (
-              <div style={{ maxWidth: 640 }}>
-                {/* Module Toggles */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Category Modules</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Toggle categories on or off to simplify your sidebar. Disabled categories are hidden from navigation but their data is preserved.</p>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
-                    {Object.entries(CATEGORIES).map(([cid, cat]) => {
-                      const isDisabled = settings.disabledCategories.includes(cid);
-                      const count = articles.filter((a) => a.category === cid).length;
-                      return (
-                        <div key={cid} onClick={() => setSettings((p) => ({ ...p, disabledCategories: isDisabled ? p.disabledCategories.filter((c) => c !== cid) : [...p.disabledCategories, cid] }))}
-                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (isDisabled ? theme.border : cat.color + "40"), background: isDisabled ? "transparent" : cat.color + "08", opacity: isDisabled ? 0.5 : 1, transition: "all 0.2s" }}>
-                          <div style={{ width: 36, height: 20, borderRadius: 10, background: isDisabled ? theme.border : cat.color, position: "relative", transition: "all 0.2s", flexShrink: 0 }}>
-                            <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: isDisabled ? 2 : 18, transition: "all 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
-                          </div>
-                          <span style={{ fontSize: 16 }}>{cat.icon}</span>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, fontWeight: 500, color: isDisabled ? theme.textDim : theme.text }}>{cat.label}</div>
-                            {count > 0 && <div style={{ fontSize: 10, color: theme.textDim }}>{count} entries</div>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Integrity Sensitivity */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Integrity Engine Sensitivity</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Controls how aggressively the Truth Engine flags potential issues.</p>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {[
-                      { id: "strict", label: "Strict", desc: "Flag everything — temporal notes, orphans, all warnings", icon: "🔒" },
-                      { id: "balanced", label: "Balanced", desc: "Flag errors and warnings, timeline notes as info only", icon: "⚖" },
-                      { id: "relaxed", label: "Relaxed", desc: "Only flag hard errors — duplicate names, broken links", icon: "🔓" },
-                    ].map((lvl) => (
-                      <div key={lvl.id} onClick={() => setSettings((p) => ({ ...p, integritySensitivity: lvl.id }))}
-                        style={{ flex: 1, padding: "14px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid " + (settings.integritySensitivity === lvl.id ? theme.accent + "50" : theme.border), background: settings.integritySensitivity === lvl.id ? theme.accentBg : "transparent", transition: "all 0.2s", textAlign: "center" }}>
-                        <div style={{ fontSize: 20, marginBottom: 6 }}>{lvl.icon}</div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: settings.integritySensitivity === lvl.id ? theme.accent : theme.text, fontFamily: "'Cinzel', serif" }}>{lvl.label}</div>
-                        <div style={{ fontSize: 10, color: theme.textDim, marginTop: 4, lineHeight: 1.4 }}>{lvl.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom Era Label */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Time Period Label</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Customize how years are displayed. The label combines with era names when defined.</p>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-                    <input value={settings.eraLabel} onChange={(e) => setSettings((p) => ({ ...p, eraLabel: e.target.value }))}
-                      style={{ ...S.input, width: 180, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }}
-                      placeholder="Year" />
-                    <span style={{ fontSize: 12, color: theme.textDim }}>Preview: <span style={{ color: theme.accent }}>{formatYear(2400)}</span></span>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
-                    {["Year", "Age", "Cycle", "Era", "Turn", "AR", "AE"].map((preset) => (
-                      <button key={preset} onClick={() => setSettings((p) => ({ ...p, eraLabel: preset }))}
-                        style={{ background: settings.eraLabel === preset ? theme.accentBg : "transparent", border: "1px solid " + (settings.eraLabel === preset ? theme.accent + "40" : theme.border), borderRadius: 6, padding: "4px 12px", fontSize: 11, color: settings.eraLabel === preset ? theme.accent : theme.textMuted, cursor: "pointer", fontFamily: "inherit" }}>
-                        {preset}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Custom Era Ranges */}
-                  <h4 style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Era Definitions</h4>
-                  <p style={{ fontSize: 11, color: theme.textDim, margin: "0 0 12px" }}>Define named eras with year ranges. Used in timeline display and year formatting. Leave empty to use defaults.</p>
-                  {(settings.customEras?.length > 0 ? settings.customEras : ERAS).map((era, i) => {
-                    const isCustom = settings.customEras?.length > 0;
-                    return (
-                      <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                        <input style={{ ...S.input, flex: 1, padding: "6px 10px", fontSize: 11, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }}
-                          value={era.label || era.name || ""} placeholder="Era name..."
-                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], label: e.target.value, name: e.target.value }; setSettings((p) => ({ ...p, customEras: eras })); }} />
-                        <input type="number" style={{ ...S.input, width: 70, padding: "6px 8px", fontSize: 11, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text, textAlign: "center" }}
-                          value={era.start} placeholder="Start"
-                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], start: parseInt(e.target.value) || 0 }; setSettings((p) => ({ ...p, customEras: eras })); }} />
-                        <span style={{ fontSize: 10, color: theme.textDim }}>to</span>
-                        <input type="number" style={{ ...S.input, width: 70, padding: "6px 8px", fontSize: 11, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text, textAlign: "center" }}
-                          value={era.end} placeholder="End"
-                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], end: parseInt(e.target.value) || 0 }; setSettings((p) => ({ ...p, customEras: eras })); }} />
-                        <input type="color" value={era.color || theme.accent} style={{ width: 24, height: 24, border: "none", background: "none", cursor: "pointer", padding: 0 }}
-                          onChange={(e) => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e})))]; eras[i] = { ...eras[i], color: e.target.value }; setSettings((p) => ({ ...p, customEras: eras })); }} />
-                        {isCustom && <button onClick={() => { const eras = settings.customEras.filter((_, j) => j !== i); setSettings((p) => ({ ...p, customEras: eras })); }}
-                          style={{ background: "none", border: "none", color: "#e07050", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>}
-                      </div>
-                    );
-                  })}
-                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button onClick={() => { const eras = [...(settings.customEras?.length > 0 ? settings.customEras : ERAS.map((e) => ({...e}))), { id: "custom_" + Date.now(), label: "New Era", name: "New Era", start: 0, end: 1000, color: "#8ec8a0", bg: "rgba(142,200,160,0.06)" }]; setSettings((p) => ({ ...p, customEras: eras })); }}
-                      style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>+ Add Era</button>
-                    {settings.customEras?.length > 0 && (
-                      <button onClick={() => setSettings((p) => ({ ...p, customEras: [] }))}
-                        style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>Reset to Defaults</button>
-                    )}
-                  </div>
+              <div style={{ maxWidth: 640, marginTop: 24, padding: "20px 24px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 10 }}>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: "0 0 12px", letterSpacing: 1 }}>📦 Export / Import World</h3>
+                <p style={{ fontSize: 12, color: theme.textDim, marginBottom: 16, lineHeight: 1.5 }}>Back up your entire world as JSON, or import data from another export.</p>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button onClick={exportWorldJSON} style={{ ...tBtnP, fontSize: 12, padding: "10px 20px" }}>⬇ Export World JSON</button>
+                  <label style={{ ...tBtnS, fontSize: 12, padding: "10px 20px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    ⬆ Import World JSON
+                    <input type="file" accept=".json" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) importWorldJSON(e.target.files[0]); e.target.value = ""; }} />
+                  </label>
                 </div>
               </div>
             )}
-
-            {/* === ACCOUNT TAB === */}
-            {settingsTab === "account" && (
-              <div style={{ maxWidth: 640 }}>
-                {/* Author Profile */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Author Profile</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Your identity as it appears on exported manuscripts and shared content.</p>
-                  <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-                    {/* Avatar */}
-                    <div style={{ flexShrink: 0 }}>
-                      <div style={{ width: 80, height: 80, borderRadius: "50%", border: "2px solid " + theme.border, background: theme.surface, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", marginBottom: 8, cursor: "pointer" }}
-                        onClick={() => avatarFileRef.current?.click()}>
-                        {settings.avatarUrl ? (
-                          <img src={settings.avatarUrl} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          <span style={{ fontSize: 28, color: theme.textDim }}>👤</span>
-                        )}
-                      </div>
-                      <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
-                        const file = e.target.files?.[0]; if (!file) return;
-                        if (file.size > 2000000) { alert("Image must be under 2MB"); return; }
-                        // Try Supabase upload first, fall back to data URL
-                        if (supabase && user) {
-                          const url = await uploadPortrait(user.id, file);
-                          if (url) { setSettings((p) => ({ ...p, avatarUrl: url })); e.target.value = ""; return; }
-                        }
-                        const reader = new FileReader();
-                        reader.onload = (ev) => { setSettings((p) => ({ ...p, avatarUrl: ev.target.result })); };
-                        reader.readAsDataURL(file);
-                        e.target.value = "";
-                      }} />
-                      <button onClick={() => avatarFileRef.current?.click()} style={{ ...tBtnS, fontSize: 9, padding: "4px 8px", width: 80, textAlign: "center" }}>Upload</button>
-                      {settings.avatarUrl && <button onClick={() => setSettings((p) => ({ ...p, avatarUrl: "" }))} style={{ background: "none", border: "none", fontSize: 9, color: "#e07050", cursor: "pointer", width: 80, textAlign: "center", marginTop: 4 }}>Remove</button>}
-                    </div>
-                    {/* Name + info */}
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Author / Display Name</label>
-                      <input value={settings.authorName} onChange={(e) => setSettings((p) => ({ ...p, authorName: e.target.value }))}
-                        style={{ ...S.input, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text }}
-                        placeholder="Enter your author name..." />
-                      <div style={{ fontSize: 11, color: theme.textDim, marginTop: 8 }}>This name will appear on manuscript title pages when you export and in collaboration features.</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Data Export */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>Data Export</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Download a complete backup of your world data as JSON. Includes all articles, archived entries, and metadata.</p>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => {
-                      const data = { exportFormat: "frostfall-realms-v2", exportedAt: new Date().toISOString(), worldName: activeWorld?.name, worldDescription: activeWorld?.description, settings, articles, archived, manuscripts, stats: { articles: articles.length, archived: archived.length, categories: Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, articles.filter((a) => a.category === k).length])) } };
-                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "frostfall").replace(/\s+/g, "_").toLowerCase() + "_backup_" + new Date().toISOString().slice(0, 10) + ".json"; a.click(); URL.revokeObjectURL(url);
-                    }} style={{ ...tBtnP, fontSize: 12, padding: "10px 20px" }}>
-                      📥 Export World Data (JSON)
-                    </button>
-                    <button onClick={() => {
-                      const data = { exportFormat: "frostfall-realms-v2", exportedAt: new Date().toISOString(), worldName: activeWorld?.name, articles, archived };
-                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "frostfall").replace(/\s+/g, "_").toLowerCase() + "_articles_" + new Date().toISOString().slice(0, 10) + ".json"; a.click(); URL.revokeObjectURL(url);
-                    }} style={{ ...tBtnS, fontSize: 12, color: theme.textMuted, borderColor: theme.border }}>
-                      📋 Export Articles Only
-                    </button>
-                  </div>
-                  <div style={{ marginTop: 12, padding: "10px 14px", background: theme.surface, border: "1px solid " + theme.border, borderRadius: 6, fontSize: 11, color: theme.textDim, lineHeight: 1.5 }}>
-                    <strong style={{ color: theme.textMuted }}>Export includes:</strong> {articles.length} articles, {archived.length} archived, {manuscripts.length} manuscript{manuscripts.length !== 1 ? "s" : ""}, all settings and metadata.
-                  </div>
-                </div>
-
-                {/* Reset / Danger Zone */}
-                <div style={{ marginBottom: 32 }}>
-                  <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: "#e07050", margin: "0 0 6px", letterSpacing: 0.5 }}>Danger Zone</h3>
-                  <p style={{ fontSize: 12, color: theme.textDim, margin: "0 0 16px" }}>Irreversible actions. Please export your data before proceeding.</p>
-                  <div style={{ padding: "16px 20px", border: "1px solid rgba(224,112,80,0.3)", borderRadius: 8, background: "rgba(224,112,80,0.04)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#e07050" }}>Reset Settings to Default</div>
-                        <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>Revert all appearance, world, and account settings. Does not delete articles.</div>
-                      </div>
-                      <button onClick={() => setShowConfirm({ title: "Reset Settings?", message: "This will reset all settings to their defaults. Your articles and manuscripts will not be affected.", onConfirm: () => { setSettings(DEFAULT_SETTINGS); setShowConfirm(null); } })}
-                        style={{ ...tBtnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
-                        Reset Settings
-                      </button>
-                    </div>
-                    <div style={{ height: 1, background: "rgba(224,112,80,0.15)", margin: "12px 0" }} />
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#e07050" }}>Delete All World Data</div>
-                        <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>Permanently delete all articles, manuscripts, and settings. This cannot be undone.</div>
-                      </div>
-                      <button onClick={() => setShowConfirm({ title: "Delete Everything?", message: "This will permanently delete ALL " + articles.length + " articles, " + archived.length + " archived entries, and " + manuscripts.length + " manuscripts. This CANNOT be undone. Please export first.", onConfirm: () => { setArticles([]); setArchived([]); setManuscripts([]); setSettings(DEFAULT_SETTINGS); setView("dashboard"); setShowConfirm(null); } })}
-                        style={{ ...tBtnS, fontSize: 11, color: "#e07050", borderColor: "rgba(224,112,80,0.3)", padding: "6px 14px", whiteSpace: "nowrap" }}>
-                        Delete All Data
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>)}
+          </>)}
   </>);
 
   const renderAIImport = () => (<>
-          {/* === AI DOCUMENT IMPORT === */}
-          {view === "ai_import" && (<div>
-            <div style={{ marginTop: 24, marginBottom: 20 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>🧠 AI Document Import</h2>
-              <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6, lineHeight: 1.6 }}>Upload a lore document and AI will parse it into structured codex entries for your review.</p>
-            </div>
-            <Ornament width={300} />
-
-            <div style={{ marginTop: 24, maxWidth: 640 }}>
-              <div onClick={() => aiFileRef.current?.click()} style={{
-                border: "2px dashed " + ta(theme.accent, 0.3), borderRadius: 12, padding: "48px 32px", textAlign: "center",
-                cursor: aiParsing ? "wait" : "pointer", transition: "all 0.3s",
-                background: aiParsing ? ta(theme.accent, 0.04) : ta(theme.surface, 0.4),
-              }}
-                onMouseEnter={(e) => { if (!aiParsing) { e.currentTarget.style.borderColor = ta(theme.accent, 0.6); e.currentTarget.style.background = ta(theme.accent, 0.06); } }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.3); e.currentTarget.style.background = aiParsing ? ta(theme.accent, 0.04) : ta(theme.surface, 0.4); }}>
-                {aiParsing ? (<>
-                  <div style={{ fontSize: 36, marginBottom: 12, animation: "pulse 1.5s ease-in-out infinite" }}>🧠</div>
-                  <style>{`@keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
-                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.accent, margin: "0 0 6px" }}>Analyzing Document…</p>
-                  <p style={{ fontSize: 12, color: theme.textDim, marginBottom: 10 }}>AI is reading "{aiSourceName}" and extracting lore entries</p>
-                  {aiProgress.total > 0 && (
-                    <div style={{ width: "80%", maxWidth: 300, margin: "0 auto" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: theme.textDim, marginBottom: 4 }}>
-                        <span>Chunk {aiProgress.current} of {aiProgress.total}</span>
-                        <span>{aiProgress.entries} entries found</span>
-                      </div>
-                      <div style={{ height: 6, background: theme.divider, borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ height: "100%", background: "linear-gradient(90deg, #f0c040, #d4a020)", borderRadius: 3, width: (aiProgress.current / aiProgress.total * 100) + "%", transition: "width 0.5s ease" }} />
-                      </div>
-                    </div>
-                  )}
-                </>) : (<>
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
-                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.text, margin: "0 0 6px" }}>Drop or Click to Upload</p>
-                  <p style={{ fontSize: 12, color: theme.textDim }}>Supports .txt, .md, and .docx files with lore, worldbuilding notes, language docs, bestiary entries, etc.</p>
-                </>)}
-              </div>
-
-              {aiParseError && <WarningBanner severity="error" icon="✕" title="Parse Error" style={{ marginTop: 16 }}>{aiParseError}</WarningBanner>}
-
-              <div style={{ marginTop: 28 }}>
-                <p style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, marginBottom: 12, letterSpacing: 0.5 }}>◈ How It Works</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {[
-                    { step: "1", title: "Upload", desc: "Upload a .txt, .md, or .docx document containing your lore, canon data, language specs, creature descriptions, or cultural notes." },
-                    { step: "2", title: "AI Parsing", desc: "Claude reads your document and extracts structured entries, mapping each to the right category with filled template fields." },
-                    { step: "3", title: "Review", desc: "Parsed entries appear in the Staging Area. Review each one — approve, edit, or reject before committing to the codex." },
-                    { step: "4", title: "Commit", desc: "Approved entries are added to your codex with full cross-referencing, temporal data, and integrity checking." },
-                  ].map((s) => (
-                    <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: ta(theme.accent, 0.12), border: "1px solid " + ta(theme.accent, 0.3), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: theme.accent, flexShrink: 0 }}>{s.step}</div>
-                      <div><div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{s.title}</div><div style={{ fontSize: 12, color: theme.textDim, marginTop: 2, lineHeight: 1.5 }}>{s.desc}</div></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ marginTop: 28, padding: "16px 20px", background: "rgba(126,200,227,0.06)", border: "1px solid rgba(126,200,227,0.15)", borderRadius: 8 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "#7ec8e3", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: 1 }}>Supported Categories</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {Object.entries(CATEGORIES).map(([k, c]) => (
-                    <span key={k} style={S.catBadge(c.color)}>{c.icon} {c.label}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>)}
+          {view === "ai_import" && (
+            <ImportPage
+              theme={theme} settings={settings} isMobile={isMobile}
+              aiParsing={aiParsing} aiParseError={aiParseError} setAiParseError={setAiParseError}
+              aiSourceName={aiSourceName} aiProgress={aiProgress}
+              aiFileRef={aiFileRef} handleAiFileUpload={handleAiFileUpload}
+              parseDocumentWithAI={parseDocumentWithAI}
+              setAiStaging={setAiStaging} setView={setView} setAiSourceName={setAiSourceName}
+              ta={ta} tBtnS={tBtnS} tBtnP={tBtnP} Ornament={Ornament} WarningBanner={WarningBanner} S={S}
+            />
+          )}
   </>);
 
   const renderStaging = () => (<>
@@ -4046,10 +3581,10 @@ const renderArchives = () => (<>
                   <p style={{ fontSize: 13, color: theme.textDim, marginTop: 6 }}>{aiStaging.length} entries parsed{aiSourceName ? " from \"" + aiSourceName + "\"" : ""}</p>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={stagingApproveAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>✓ Approve All Pending</button>
-                  <button onClick={stagingRejectAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>✕ Reject All Pending</button>
+                  <button onClick={stagingApproveAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#8ec8a0", border: "1px solid rgba(142,200,160,0.3)" }}>✓ Approve All Pending</button>
+                  <button onClick={stagingRejectAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#e07050", border: "1px solid rgba(224,112,80,0.3)" }}>✕ Reject All Pending</button>
                   <button onClick={stagingCommit} disabled={!aiStaging.some((e) => e._status === "approved" || e._status === "edited")} style={{ ...tBtnP, fontSize: 11, padding: "8px 16px", opacity: aiStaging.some((e) => e._status === "approved" || e._status === "edited") ? 1 : 0.4 }}>Commit to Codex</button>
-                  <button onClick={stagingDeleteRejected} disabled={!aiStaging.some((e) => e._status === "rejected")} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#e07050", borderColor: "rgba(224,112,80,0.2)", opacity: aiStaging.some((e) => e._status === "rejected") ? 1 : 0.3 }}>🗑 Remove Rejected</button>
+                  <button onClick={stagingDeleteRejected} disabled={!aiStaging.some((e) => e._status === "rejected")} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: "#e07050", border: "1px solid rgba(224,112,80,0.2)", opacity: aiStaging.some((e) => e._status === "rejected") ? 1 : 0.3 }}>🗑 Remove Rejected</button>
                   {aiStaging.length > 0 && <button onClick={stagingClearAll} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: theme.textDim }}>Clear All</button>}
                 </div>
               </div>
@@ -4074,8 +3609,8 @@ const renderArchives = () => (<>
               <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
                 <p style={{ fontSize: 16, fontFamily: "'Cinzel', serif" }}>No Entries in Staging</p>
-                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4 }}>Use AI Document Import to parse a lore document.</p>
-                <button onClick={() => setView("ai_import")} style={{ ...tBtnP, marginTop: 16, fontSize: 12 }}>Go to AI Import</button>
+                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4 }}>Use Document Import to parse a lore document.</p>
+                <button onClick={() => setView("ai_import")} style={{ ...tBtnP, marginTop: 16, fontSize: 12 }}>Go to Document Import</button>
               </div>
             ) : (
               <div>{aiStaging.map((entry) => {
@@ -4088,7 +3623,18 @@ const renderArchives = () => (<>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{entry.title}</span>
-                          <span style={S.catBadge(c.color)}>{c.label}</span>
+                          {/* Category reassignment dropdown */}
+                          <select
+                            value={entry.category}
+                            onChange={(e) => stagingEdit(entry._stagingId, "category", e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ fontSize: 10, fontFamily: "inherit", fontWeight: 600, padding: "2px 6px", borderRadius: 10, cursor: "pointer", color: c.color, background: c.color + "18", border: "1px solid " + c.color + "40", letterSpacing: 0.5, appearance: "auto" }}
+                            title="Change category"
+                          >
+                            {Object.entries(CATEGORIES).map(([k, cat]) => (
+                              <option key={k} value={k}>{cat.icon} {cat.label}</option>
+                            ))}
+                          </select>
                           <span style={{ ...S.catBadge(stColor), textTransform: "capitalize" }}>{entry._status === "edited" ? "✎ edited" : entry._status}</span>
                         </div>
                         <p style={{ fontSize: 12, color: theme.textMuted, margin: "0 0 8px", lineHeight: 1.5 }}>{entry.summary}</p>
@@ -4126,6 +3672,35 @@ const renderArchives = () => (<>
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 24, marginBottom: 16 }}>
               <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "The Full Codex" : categoryPluralLabel(codexFilter)}</h2>
               <Ornament width={120} /><span style={{ fontSize: 12, color: theme.textMuted }}>{filtered.list.length} entries{searchQuery.trim() ? " matching \"" + searchQuery + "\"" : ""}{filtered.list.length > codexVisible ? " · showing " + Math.min(codexVisible, filtered.list.length) : ""}</span>
+              <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", gap: 6, alignItems: "center" }}>
+                <button onClick={() => { setCodexBulkMode((v) => !v); setCodexSelected(new Set()); }} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: codexBulkMode ? theme.accent : theme.textDim, border: "1px solid " + (codexBulkMode ? ta(theme.accent, 0.4) : theme.border), background: codexBulkMode ? ta(theme.accent, 0.08) : "transparent" }}>
+                  {codexBulkMode ? "✓ Selecting" : "☐ Select"}
+                </button>
+                {codexFilter !== "all" ? (
+                  <button onClick={() => goCreate(codexFilter)} style={{ ...tBtnP, fontSize: 11, padding: "7px 16px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New {CATEGORIES[codexFilter]?.label}
+                  </button>
+                ) : (
+                  <div style={{ position: "relative" }}>
+                    <button onClick={() => setShowCodexCreate((v) => !v)} style={{ ...tBtnP, fontSize: 11, padding: "7px 16px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New Entry <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
+                    </button>
+                    {showCodexCreate && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.cardBg, border: "1px solid " + theme.divider, borderRadius: 8, padding: "6px 0", zIndex: 50, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
+                        {Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => (
+                          <div key={k} role="menuitem" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowCodexCreate(false); goCreate(k); } }}
+                            onClick={() => { setShowCodexCreate(false); goCreate(k); }}
+                            style={{ fontSize: 12, color: c.color, padding: "8px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = ta(c.color, 0.1); }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                            <span style={{ fontSize: 14, width: 20, textAlign: "center" }}>{c.icon}</span> {c.label}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             {/* Category filter pills */}
             <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
@@ -4153,10 +3728,55 @@ const renderArchives = () => (<>
                   </button>
                 ))}
               </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
+                <button onClick={() => setCodexViewMode("list")} title="List view" style={{ padding: "5px 8px", borderRadius: "6px 0 0 6px", cursor: "pointer", fontSize: 13, fontFamily: "inherit", border: "1px solid " + (codexViewMode === "list" ? theme.accent + "50" : theme.border), background: codexViewMode === "list" ? theme.accentBg : "transparent", color: codexViewMode === "list" ? theme.accent : theme.textDim, transition: "all 0.15s" }}>☰</button>
+                <button onClick={() => setCodexViewMode("grid")} title="Card view" style={{ padding: "5px 8px", borderRadius: "0 6px 6px 0", cursor: "pointer", fontSize: 13, fontFamily: "inherit", border: "1px solid " + (codexViewMode === "grid" ? theme.accent + "50" : theme.border), background: codexViewMode === "grid" ? theme.accentBg : "transparent", color: codexViewMode === "grid" ? theme.accent : theme.textDim, transition: "all 0.15s" }}>⊞</button>
+              </div>
             </div>
-            {filtered.list.slice(0, codexVisible).map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); const match = filtered.matchMap[a.id]; return (
-              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, background: ta(theme.surface, 0.6), border: "1px solid " + (ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? ta(theme.accent, 0.2) : theme.divider), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") navigate(a.id); }} onClick={() => navigate(a.id)}
-                onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.6); }}>
+
+            {/* Bulk action bar */}
+            {codexBulkMode && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "8px 14px", background: ta(theme.accent, 0.06), border: "1px solid " + ta(theme.accent, 0.2), borderRadius: 8 }}>
+                <span style={{ fontSize: 11, color: theme.accent, fontWeight: 600 }}>{codexSelected.size} selected</span>
+                <button onClick={() => { const all = new Set(filtered.list.slice(0, codexVisible).map((a) => a.id)); setCodexSelected(codexSelected.size === all.size ? new Set() : all); }} style={{ ...tBtnS, fontSize: 10, padding: "4px 10px" }}>{codexSelected.size === filtered.list.slice(0, codexVisible).length ? "Deselect All" : "Select All"}</button>
+                <div style={{ width: 1, height: 16, background: theme.border }} />
+                {/* Bulk re-categorize */}
+                <select disabled={codexSelected.size === 0} onChange={(e) => {
+                  if (!e.target.value || codexSelected.size === 0) return;
+                  const cat = e.target.value;
+                  setArticles((prev) => prev.map((a) => codexSelected.has(a.id) ? { ...a, category: cat, updatedAt: new Date().toISOString() } : a));
+                  setCodexSelected(new Set()); e.target.value = "";
+                }} style={{ fontSize: 10, padding: "4px 8px", background: theme.inputBg, color: theme.text, border: "1px solid " + theme.border, borderRadius: 6, fontFamily: "inherit", cursor: "pointer", opacity: codexSelected.size === 0 ? 0.4 : 1 }}>
+                  <option value="">↷ Move to…</option>
+                  {Object.entries(CATEGORIES).map(([k, c]) => <option key={k} value={k}>{c.icon} {c.label}</option>)}
+                </select>
+                <button disabled={codexSelected.size === 0} onClick={() => {
+                  const tag = prompt("Add tag to selected entries:");
+                  if (!tag?.trim()) return;
+                  setArticles((prev) => prev.map((a) => codexSelected.has(a.id) ? { ...a, tags: [...new Set([...(a.tags || []), tag.trim().toLowerCase()])], updatedAt: new Date().toISOString() } : a));
+                }} style={{ ...tBtnS, fontSize: 10, padding: "4px 10px", opacity: codexSelected.size === 0 ? 0.4 : 1 }}>🏷 Tag</button>
+                <button disabled={codexSelected.size === 0} onClick={() => {
+                  if (!confirm("Archive " + codexSelected.size + " entries?")) return;
+                  setArticles((prev) => prev.map((a) => codexSelected.has(a.id) ? { ...a, archived: true, updatedAt: new Date().toISOString() } : a));
+                  setCodexSelected(new Set());
+                }} style={{ ...tBtnS, fontSize: 10, padding: "4px 10px", color: theme.textDim, opacity: codexSelected.size === 0 ? 0.4 : 1 }}>📦 Archive</button>
+                <button disabled={codexSelected.size === 0} onClick={() => {
+                  if (!confirm("Delete " + codexSelected.size + " entries? This cannot be undone.")) return;
+                  setArticles((prev) => prev.filter((a) => !codexSelected.has(a.id)));
+                  setCodexSelected(new Set());
+                }} style={{ ...tBtnS, fontSize: 10, padding: "4px 10px", color: "#e07050", opacity: codexSelected.size === 0 ? 0.4 : 1 }}>🗑 Delete</button>
+              </div>
+            )}
+
+            {/* === LIST VIEW === */}
+            {codexViewMode === "list" && filtered.list.slice(0, codexVisible).map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, temporalGraph, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); const match = filtered.matchMap[a.id]; return (
+              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: codexBulkMode ? 8 : 14, background: codexSelected.has(a.id) ? ta(theme.accent, 0.1) : ta(theme.surface, 0.6), border: "1px solid " + (codexSelected.has(a.id) ? ta(theme.accent, 0.3) : ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? ta(theme.accent, 0.2) : theme.divider), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") { if (codexBulkMode) { setCodexSelected((prev) => { const next = new Set(prev); next.has(a.id) ? next.delete(a.id) : next.add(a.id); return next; }); } else navigate(a.id); } }} onClick={() => { if (codexBulkMode) { setCodexSelected((prev) => { const next = new Set(prev); next.has(a.id) ? next.delete(a.id) : next.add(a.id); return next; }); } else navigate(a.id); }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = codexSelected.has(a.id) ? ta(theme.accent, 0.15) : ta(theme.surface, 0.85); }} onMouseLeave={(e) => { e.currentTarget.style.background = codexSelected.has(a.id) ? ta(theme.accent, 0.1) : ta(theme.surface, 0.6); }}>
+                {codexBulkMode && (
+                  <div style={{ width: 20, height: 20, borderRadius: 4, border: "2px solid " + (codexSelected.has(a.id) ? theme.accent : theme.border), background: codexSelected.has(a.id) ? theme.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, transition: "all 0.15s" }}>
+                    {codexSelected.has(a.id) && <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>✓</span>}
+                  </div>
+                )}
                 {a.portrait ? (
                   <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid " + (CATEGORIES[a.category]?.color || "#888") + "40", flexShrink: 0, marginTop: 2 }}><img src={a.portrait} alt={a.title + " portrait"} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
                 ) : (
@@ -4194,6 +3814,45 @@ const renderArchives = () => (<>
                 <span style={{ fontSize: 11, color: theme.textDim, whiteSpace: "nowrap" }}>{timeAgo(a.updatedAt)}</span>
               </div>
             ); })}
+
+            {/* === GRID / CARD VIEW === */}
+            {codexViewMode === "grid" && (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : isTablet ? "repeat(3, 1fr)" : "repeat(4, 1fr)", gap: 12 }}>
+                {filtered.list.slice(0, codexVisible).map((a) => {
+                  const catColor = CATEGORIES[a.category]?.color || theme.accent;
+                  return (
+                    <div key={a.id} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") navigate(a.id); }} onClick={() => navigate(a.id)}
+                      style={{ background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 10, overflow: "hidden", cursor: "pointer", transition: "all 0.25s", display: "flex", flexDirection: "column" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); e.currentTarget.style.border = "1px solid " + catColor + "60"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.6); e.currentTarget.style.border = "1px solid " + theme.divider; e.currentTarget.style.transform = "none"; }}>
+                      {/* Card top accent */}
+                      <div style={{ height: 3, background: catColor }} />
+                      {/* Portrait or icon */}
+                      {a.portrait ? (
+                        <div style={{ width: "100%", height: 120, overflow: "hidden", background: ta(catColor, 0.06) }}>
+                          <img src={a.portrait} alt={a.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        </div>
+                      ) : (
+                        <div style={{ width: "100%", height: 80, display: "flex", alignItems: "center", justifyContent: "center", background: ta(catColor, 0.06) }}>
+                          <span style={{ fontSize: 36, color: catColor, opacity: 0.6 }}>{CATEGORIES[a.category]?.icon}</span>
+                        </div>
+                      )}
+                      {/* Card body */}
+                      <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, lineHeight: 1.3 }}>{a.title}</div>
+                        <span style={{ ...S.catBadge(catColor), alignSelf: "flex-start", fontSize: 9 }}>{CATEGORIES[a.category]?.label}</span>
+                        {a.summary && <p style={{ fontSize: 11, color: theme.textMuted, margin: 0, lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{a.summary}</p>}
+                        <div style={{ marginTop: "auto", paddingTop: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          {a.tags?.length > 0 && <span style={{ fontSize: 9, color: theme.textDim }}>#{a.tags[0]}{a.tags.length > 1 ? " +" + (a.tags.length - 1) : ""}</span>}
+                          <span style={{ fontSize: 10, color: theme.textDim }}>{timeAgo(a.updatedAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {filtered.list.length > codexVisible && (
               <div style={{ textAlign: "center", padding: "16px 0" }}>
                 <button onClick={() => setCodexVisible((v) => v + CODEX_PAGE)}
@@ -4238,9 +3897,30 @@ const renderArchives = () => (<>
                       </div>
                       <p style={{ fontSize: 14, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.6, margin: "8px 0 0" }}>{activeArticle.summary}</p>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0, position: "relative" }}>
                       <button onClick={() => goEdit(activeArticle)} style={{ fontSize: 11, color: theme.accent, background: ta(theme.accent, 0.1), border: "1px solid " + ta(theme.accent, 0.25), borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.2); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }}>✎ Edit</button>
+                      <button onClick={() => setShowMoveMenu(showMoveMenu === activeArticle.id ? null : activeArticle.id)} style={{ fontSize: 11, color: "#7ec8e3", background: "rgba(126,200,227,0.1)", border: "1px solid rgba(126,200,227,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.1)"; }}>↷ Move</button>
+                      <button onClick={() => goDuplicate(activeArticle)} style={{ fontSize: 11, color: "#c084fc", background: "rgba(192,132,252,0.1)", border: "1px solid rgba(192,132,252,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(192,132,252,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(192,132,252,0.1)"; }}>⧉ Duplicate</button>
+                      <button onClick={() => saveAsTemplate(activeArticle)} style={{ fontSize: 11, color: "#d4a060", background: "rgba(212,160,96,0.1)", border: "1px solid rgba(212,160,96,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.1)"; }}>📄 Template</button>
+                      {showMoveMenu === activeArticle.id && (<>
+                        <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoveMenu(null)} />
+                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 6, minWidth: 200, zIndex: 901, boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)" }}>
+                          <div style={{ padding: "6px 12px 8px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>Move to Category</div>
+                          {Object.entries(CATEGORIES).filter(([k]) => k !== activeArticle.category).map(([k, cat]) => (
+                            <div key={k} role="menuitem" tabIndex={0}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setArticles((prev) => prev.map((a) => a.id === activeArticle.id ? { ...a, category: k, updatedAt: new Date().toISOString() } : a)); setActiveArticle((prev) => ({ ...prev, category: k })); setShowMoveMenu(null); } }}
+                              onClick={() => { setArticles((prev) => prev.map((a) => a.id === activeArticle.id ? { ...a, category: k, updatedAt: new Date().toISOString() } : a)); setActiveArticle((prev) => ({ ...prev, category: k })); setShowMoveMenu(null); }}
+                              style={{ fontSize: 12, color: cat.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = cat.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                              <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{cat.icon}</span> <span>{cat.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>)}
                       <button onClick={() => setShowDeleteModal(activeArticle)} style={{ fontSize: 11, color: "#e07050", background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.1)"; }}>🗑 Delete</button>
                     </div>
@@ -4262,14 +3942,14 @@ const renderArchives = () => (<>
 
                 {/* Expanded integrity check */}
                 {(() => {
-                  const artWarnings = checkArticleIntegrity(activeArticle, articles, activeArticle.id)
+                  const artWarnings = checkArticleIntegrity(activeArticle, articles, temporalGraph, activeArticle.id)
                     .filter((w) => w.type !== "orphan");
                   const actionable = artWarnings.filter((w) => w.severity === "error" || w.severity === "warning");
                   if (actionable.length === 0) return null;
                   return (
                     <WarningBanner severity={artWarnings.some((w) => w.severity === "error") ? "error" : "warning"} icon="🛡" title={"Lore Integrity: " + actionable.length + " issue" + (actionable.length !== 1 ? "s" : "")} style={{ marginTop: 12 }}>
                       {actionable.map((w, i) => {
-                        const wKey = "av_" + (w.refId || i);
+                        const wKey = "av_" + i + "_" + (w.refId || "");
                         return (
                         <div key={wKey} style={{ padding: "4px 0", fontSize: 12 }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "flex-start", color: w.severity === "error" ? "#e07050" : theme.accent, cursor: w.type === "broken_ref" && w.fuzzyMatches?.length > 0 ? "pointer" : "default" }}
@@ -4311,8 +3991,8 @@ const renderArchives = () => (<>
                                     setExpandedWarning(null);
                                   }}
                                   style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", cursor: "pointer", borderRadius: 6, background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, transition: "all 0.15s" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); e.currentTarget.style.borderColor = ta(theme.accent, 0.3); }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); e.currentTarget.style.borderColor = theme.divider; }}>
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); e.currentTarget.style.border = "1px solid " + ta(theme.accent, 0.3); }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); e.currentTarget.style.border = "1px solid " + theme.divider; }}>
                                   <span style={{ fontSize: 14, color: CATEGORIES[fm.article.category]?.color }}>{CATEGORIES[fm.article.category]?.icon}</span>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{fm.article.title}</div>
@@ -4470,6 +4150,35 @@ const renderArchives = () => (<>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{activeArticle.tags.map((t) => <span key={t} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") { setSearchQuery(t); goCodex("all"); } }} style={{ ...tTag, cursor: "pointer", fontSize: 11, padding: "3px 10px" }} onClick={() => { setSearchQuery(t); goCodex("all"); }}>#{t}</span>)}</div>
                   </div>
                 )}
+
+                {/* Version History */}
+                {(() => {
+                  const history = getArticleHistory(activeArticle.id);
+                  if (history.length === 0) return null;
+                  return (
+                    <div style={{ padding: "0 12px 16px" }}>
+                      <div style={{ padding: "12px 0 6px", borderBottom: "1px solid " + theme.divider, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+                        onClick={() => setShowVersionHistory((v) => !v)}>
+                        <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase" }}>Version History</span>
+                        <span style={{ fontSize: 10, color: theme.textDim }}>{showVersionHistory ? "▾" : "▸"} {history.length}</span>
+                      </div>
+                      {showVersionHistory && history.slice(0, 10).map((snap, i) => (
+                        <div key={i} style={{ padding: "6px 8px", marginBottom: 4, background: ta(theme.surface, 0.4), borderRadius: 6, border: "1px solid " + theme.divider, fontSize: 11 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ color: theme.textMuted }}>{timeAgo(snap.savedAt)}</span>
+                            <button onClick={() => {
+                              if (confirm("Restore this version? Current content will be saved as a new snapshot first.")) {
+                                saveArticleSnapshot(activeArticle.id, activeArticle);
+                                restoreArticleVersion(activeArticle.id, snap);
+                              }
+                            }} style={{ fontSize: 9, color: "#8ec8a0", background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.15)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}>Restore</button>
+                          </div>
+                          <div style={{ color: theme.textDim, fontSize: 10, marginTop: 2 }}>{snap.title}{snap.body ? " · " + snap.body.slice(0, 60) + (snap.body.length > 60 ? "…" : "") : ""}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </aside>
             </div>
           )}
@@ -4485,9 +4194,33 @@ const renderArchives = () => (<>
             </div>
             <Ornament width={260} />
             <div style={{ marginTop: 20 }}>
+              {/* Template picker — only when creating new */}
+              {!editingId && (() => {
+                const templates = loadTemplates().filter((t) => t.category === createCat);
+                if (templates.length === 0) return null;
+                return (
+                  <div style={{ marginBottom: 20, padding: "12px 16px", background: ta(theme.surface, 0.5), border: "1px solid " + ta("#d4a060", 0.2), borderRadius: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: "#d4a060", letterSpacing: 1, textTransform: "uppercase" }}>📄 Templates</span>
+                      <span style={{ fontSize: 10, color: theme.textDim }}>{templates.length} available</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {templates.map((tmpl) => (
+                        <div key={tmpl.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(212,160,96,0.08)", border: "1px solid rgba(212,160,96,0.2)", borderRadius: 8, padding: "6px 10px", cursor: "pointer", transition: "all 0.2s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.18)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.08)"; }}>
+                          <span onClick={() => applyTemplate(tmpl)} style={{ fontSize: 12, color: "#d4a060", fontWeight: 500 }}>{tmpl.name}</span>
+                          <span onClick={(e) => { e.stopPropagation(); deleteTemplate(tmpl.id); }} title="Delete template" style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.6, marginLeft: 4 }}
+                            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.6"; }}>✕</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Title</label>
-                <input style={{ ...S.input, ...(liveDupes.length > 0 ? { borderColor: "#e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={`Name this ${safeText(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} />
+                <input style={{ ...S.input, ...(liveDupes.length > 0 ? { border: "1px solid #e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={`Name this ${safeText(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} />
                 {liveDupes.length > 0 && <WarningBanner severity="error" icon="⚠" title="Potential Duplicates Found" style={{ marginTop: 8 }}>
                   <p style={{ margin: "0 0 8px" }}>Saving will require confirmation. Similar entries:</p>
                   {liveDupes.map((d) => <div key={d.article.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
@@ -4528,8 +4261,8 @@ const renderArchives = () => (<>
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                       cursor: "pointer", background: ta(theme.surface, 0.4), transition: "all 0.2s",
                     }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.5); e.currentTarget.style.background = ta(theme.accent, 0.04); }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.2); e.currentTarget.style.background = ta(theme.surface, 0.4); }}>
+                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + ta(theme.accent, 0.5); e.currentTarget.style.background = ta(theme.accent, 0.04); }}
+                      onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta(theme.accent, 0.2); e.currentTarget.style.background = ta(theme.surface, 0.4); }}>
                       <span style={{ fontSize: 24, color: theme.textDim, marginBottom: 4 }}>📷</span>
                       <span style={{ fontSize: 10, color: theme.textDim }}>Add Image</span>
                     </div>
@@ -4609,8 +4342,8 @@ const renderArchives = () => (<>
                           <div key={fm.article.id}
                             onClick={() => resolveRef(w, fm.article)}
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, cursor: "pointer", background: "rgba(126,200,227,0.05)", border: "1px solid rgba(126,200,227,0.1)", transition: "all 0.2s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.15)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.3)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.05)"; e.currentTarget.style.borderColor = "rgba(126,200,227,0.1)"; }}>
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.15)"; e.currentTarget.style.border = "1px solid " + "rgba(126,200,227,0.3)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.05)"; e.currentTarget.style.border = "1px solid " + "rgba(126,200,227,0.1)"; }}>
                             <span style={{ fontSize: 14, color: CATEGORIES[fm.article.category]?.color }}>{CATEGORIES[fm.article.category]?.icon}</span>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 12, color: "#c8bda0", fontWeight: 500 }}>{fm.article.title}</div>
@@ -4714,7 +4447,7 @@ const renderArchives = () => (<>
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setIntegrityGate(null)} style={{ ...tBtnS, fontSize: 12 }}>Go Back & Fix</button>
-              <button onClick={() => { integrityGate.onProceed(); setIntegrityGate(null); }} style={{ ...tBtnP, fontSize: 12, background: "rgba(224,112,80,0.15)", borderColor: "rgba(224,112,80,0.4)", color: "#e07050" }}>Save Anyway</button>
+              <button onClick={() => { integrityGate.onProceed(); setIntegrityGate(null); }} style={{ ...tBtnP, fontSize: 12, background: "rgba(224,112,80,0.15)", border: "1px solid rgba(224,112,80,0.4)", color: "#e07050" }}>Save Anyway</button>
             </div>
           </div>
         </div>
@@ -4724,6 +4457,62 @@ const renderArchives = () => (<>
       <input ref={aiFileRef} type="file" accept=".txt,.md,.doc,.docx,.pdf" style={{ display: "none" }} onChange={handleAiFileUpload} />
 
       {/* DONATION MODAL */}
+      {/* === KEYBOARD SHORTCUTS OVERLAY === */}
+      {showShortcuts && (<>
+        <div style={MS.overlay} onClick={() => setShowShortcuts(false)} />
+        <div style={{ ...MS.modal, maxWidth: 420, padding: 0 }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 16, color: theme.text, margin: 0 }}>⌨ Keyboard Shortcuts</h3>
+            <span onClick={() => setShowShortcuts(false)} style={{ cursor: "pointer", color: theme.textDim, fontSize: 16 }}>✕</span>
+          </div>
+          <div style={{ padding: "12px 20px 20px" }}>
+            {[
+              { keys: "Ctrl + K", desc: "Focus search bar" },
+              { keys: "Ctrl + N", desc: "New codex entry" },
+              { keys: "Ctrl + D", desc: "Go to dashboard" },
+              { keys: "Ctrl + J", desc: "Toggle quick notes" },
+              { keys: "Ctrl + /", desc: "Show this help" },
+              { keys: "Escape", desc: "Close modals / menus" },
+            ].map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 5 ? "1px solid " + ta(theme.divider, 0.4) : "none" }}>
+                <span style={{ fontSize: 12, color: theme.textMuted }}>{s.desc}</span>
+                <kbd style={{ fontSize: 11, fontFamily: "monospace", color: theme.accent, background: ta(theme.accent, 0.08), border: "1px solid " + ta(theme.accent, 0.2), borderRadius: 4, padding: "2px 8px", letterSpacing: 0.5 }}>{s.keys}</kbd>
+              </div>
+            ))}
+            <p style={{ fontSize: 11, color: theme.textDim, marginTop: 12, textAlign: "center", fontStyle: "italic" }}>On Mac, use ⌘ instead of Ctrl</p>
+          </div>
+        </div>
+      </>)}
+
+      {/* === SCRATCHPAD / QUICK NOTES === */}
+      {scratchpadOpen && (
+        <div style={{ position: "fixed", bottom: isMobile ? 10 : 20, right: isMobile ? 10 : 20, width: isMobile ? "calc(100% - 20px)" : 340, height: 380, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 12, boxShadow: "0 12px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)", zIndex: 1200, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: ta(theme.deepBg, 0.5) }}>
+            <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: theme.text, letterSpacing: 1 }}>📝 Quick Notes</span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => {
+                if (!scratchpadText.trim()) return;
+                const title = scratchpadText.split("\n")[0].slice(0, 60).trim() || "Quick Note";
+                goCreate("character");
+                setFormData((p) => ({ ...p, title, body: scratchpadText, summary: scratchpadText.slice(0, 200) }));
+                setScratchpadOpen(false);
+              }} title="Promote to codex entry" style={{ fontSize: 10, color: "#8ec8a0", background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.2)", borderRadius: 5, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>↑ Promote</button>
+              <span onClick={() => setScratchpadOpen(false)} style={{ cursor: "pointer", color: theme.textDim, fontSize: 14, padding: "0 4px" }}>✕</span>
+            </div>
+          </div>
+          <textarea
+            value={scratchpadText}
+            onChange={(e) => saveScratchpad(e.target.value)}
+            placeholder="Jot down ideas, names, plot threads...&#10;&#10;First line becomes the title if you promote to a codex entry."
+            style={{ flex: 1, resize: "none", border: "none", outline: "none", padding: "12px 14px", fontSize: 13, lineHeight: 1.6, color: theme.text, background: "transparent", fontFamily: "inherit" }}
+          />
+          <div style={{ padding: "6px 14px", borderTop: "1px solid " + theme.divider, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+            <span style={{ fontSize: 10, color: theme.textDim }}>{scratchpadText.trim() ? scratchpadText.trim().split(/\s+/).length + " words" : "Empty"}</span>
+            {scratchpadText.trim() && <span onClick={() => { if (confirm("Clear all notes?")) saveScratchpad(""); }} style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.6 }}>Clear</span>}
+          </div>
+        </div>
+      )}
+
       {showDonate && (
         <div style={MS.overlay} onClick={() => setShowDonate(false)}>
           <div style={{ ...MS.box, maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
@@ -4811,14 +4600,21 @@ const renderArchives = () => (<>
         )}
         <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
           {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: theme.divider, margin: "8px 16px" }} /> : (
-            <div key={item.id} style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}) }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.action(); } }} onClick={item.action}
+            <div key={item.id} className="nav-row" style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}), position: "relative" }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.action(); } }} onClick={item.action}
               onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = ta(theme.accent, 0.05); }}
               onMouseLeave={(e) => { if (!isAct(item)) e.currentTarget.style.background = "transparent"; }}>
               <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{item.icon}</span>
               <span style={{ flex: 1 }}>{item.label}</span>
               {item.count != null && <span style={{ fontSize: 11, color: item.alert ? "#e07050" : theme.textDim, background: item.alert ? "rgba(224,112,80,0.15)" : "transparent", padding: item.alert ? "1px 8px" : 0, borderRadius: 10, fontWeight: item.alert ? 700 : 400 }}>{item.count}</span>}
+              {item.isCategory && (
+                <span className="nav-create-btn" title={"New " + CATEGORIES[item.id]?.label} onClick={(e) => { e.stopPropagation(); goCreate(item.id); }}
+                  style={{ fontSize: 15, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 4, color: CATEGORIES[item.id]?.color || theme.accent, opacity: 0.4, transition: "all 0.15s", cursor: "pointer", flexShrink: 0, marginLeft: 4, background: "transparent", fontWeight: 700 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = ta(CATEGORIES[item.id]?.color || theme.accent, 0.15); e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.opacity = "0.4"; }}>+</span>
+              )}
             </div>
           ))}
+          <style>{`.nav-row:hover .nav-create-btn { opacity: 1 !important; background: ${ta(theme.accent, 0.08)} !important; }`}</style>
         </div>
         <div style={{ padding: "10px 16px", borderTop: "1px solid " + theme.divider }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -4845,7 +4641,7 @@ const renderArchives = () => (<>
           <div style={{ position: "relative", ...(isMobile ? { flex: 1 } : {}) }}>
             <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }} aria-hidden="true">⌕</span>
             <div style={{ position: "relative" }}>
-              <input className="fr-search-box" style={{ ...S.searchBox, ...(isMobile ? { width: "100%" } : isTablet ? { width: 200 } : {}) }} aria-label="Search the codex" placeholder={isMobile ? "Search…" : "Search titles, body, fields, tags…"} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
+              <input data-search-input className="fr-search-box" style={{ ...S.searchBox, ...(isMobile ? { width: "100%" } : isTablet ? { width: 200 } : {}) }} aria-label="Search the codex" placeholder={isMobile ? "Search…" : "Search titles, body, fields, tags…"} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
               {searchQuery && <span role="button" tabIndex={0} aria-label="Clear search" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSearchQuery(""); } }} onClick={() => setSearchQuery("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 12, color: theme.textDim, lineHeight: 1 }}>✕</span>}
             </div>
           </div>
@@ -4884,6 +4680,10 @@ const renderArchives = () => (<>
           {renderIntegrity()}
           {renderArchives()}
           {renderTimeline()}
+          {renderGraph()}
+          {renderFamilyTree()}
+          {renderGenerator()}
+          {renderSessions()}
           {renderMapBuilder()}
           {renderNovel()}
           {renderSettings()}
