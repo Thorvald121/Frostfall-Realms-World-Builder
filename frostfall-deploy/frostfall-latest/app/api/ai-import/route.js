@@ -251,7 +251,7 @@ async function callAnthropic(apiKey, model, systemPrompt, userMessage) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: model || "claude-sonnet-4-20250514",
+      model: model || "claude-sonnet-5.1",
       max_tokens: 8192,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
@@ -282,7 +282,7 @@ async function callOpenAI(apiKey, model, systemPrompt, userMessage) {
       Authorization: "Bearer " + apiKey,
     },
     body: JSON.stringify({
-      model: model || "gpt-4o",
+      model: model || "gpt-5.1",
       max_completion_tokens: 8192,
       messages: [
         { role: "system", content: systemPrompt },

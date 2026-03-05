@@ -320,7 +320,7 @@ export function SettingsPanel({
                       aiKeys: { ...(s.aiKeys || {}), [provider.id]: e.target.value },
                     }))}
                     placeholder={provider.placeholder}
-                    style={{ ...S.input, flex: 1, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text, fontFamily: "monospace", fontSize: 12, letterSpacing: 0.5 }}
+                    style={{ ...S.input, flex: 1, minWidth: 0, background: theme.inputBg, border: "1px solid " + theme.border, color: theme.text, fontFamily: "monospace", fontSize: 12, letterSpacing: 0.5, overflow: "hidden", textOverflow: "ellipsis" }}
                   />
                   {currentKey && (
                     <button onClick={() => setSettings((s) => ({
@@ -331,13 +331,13 @@ export function SettingsPanel({
                     </button>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.6 }}>
+                <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.6, wordBreak: "break-word" }}>
                   {provider.helpLabel} → <a href={provider.helpUrl} target="_blank" rel="noopener noreferrer" style={{ color: theme.accent, textDecoration: "underline" }}>{provider.helpUrl.replace("https://", "")}</a>
                 </div>
                 {currentKey && (
-                  <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(142,200,160,0.06)", border: "1px solid rgba(142,200,160,0.15)", borderRadius: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(142,200,160,0.06)", border: "1px solid rgba(142,200,160,0.15)", borderRadius: 6, display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
                     <span style={{ fontSize: 12 }}>✅</span>
-                    <span style={{ fontSize: 11, color: "#8ec8a0", fontFamily: "monospace" }}>{masked}</span>
+                    <span style={{ fontSize: 11, color: "#8ec8a0", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{masked}</span>
                   </div>
                 )}
               </div>
@@ -365,12 +365,12 @@ export function SettingsPanel({
               const provId = settings.aiProvider || "anthropic";
               const models = {
                 anthropic: [
-                  { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", desc: "Best balance of speed and quality" },
-                  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", desc: "Fastest, most affordable" },
+                  { id: "claude-sonnet-5.1", label: "Claude Sonnet 5.1", desc: "Best balance of speed and quality" },
+                  { id: "claude-opus-5.1", label: "Claude Opus 5.1", desc: "Fastest, most affordable" },
                 ],
                 openai: [
-                  { id: "gpt-4o", label: "GPT-4o", desc: "Most capable, best quality" },
-                  { id: "gpt-4o-mini", label: "GPT-4o Mini", desc: "Faster, more affordable" },
+                  { id: "gpt-5.1", label: "GPT-5.1", desc: "Most capable, best quality" },
+                  { id: "gpt-5.1-mini", label: "GPT-5.1 Mini", desc: "Faster, more affordable" },
                 ],
                 google: [
                   { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", desc: "Fast and efficient" },

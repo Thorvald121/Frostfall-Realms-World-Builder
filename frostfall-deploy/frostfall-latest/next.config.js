@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins: [
+    '6aaed735-735e-4951-a7d3-4cb6c9abb1ca-00-2jo7rtmbo7k8s.kirk.replit.dev',
+  ],
   images: {
-    domains: ['*.supabase.co'],
     remotePatterns: [
       {
         protocol: 'https',

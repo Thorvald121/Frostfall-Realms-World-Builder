@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import { CATEGORIES, formatKey } from "@/lib/domain/categories";
 import { EDITOR_FONTS } from "@/lib/domain/categories";
 import { checkWord, aiProofread, aiNovelAssist, SUGGESTION_STYLES } from "@/lib/domain/writingTools";
@@ -88,6 +88,7 @@ export function NovelWorkspace({
   // ─── Outline Drag State ───
   const [outlineDrag, setOutlineDrag] = useState(null); // { type: 'act'|'chapter'|'scene', id, actId?, chId?, idx }
   const [outlineDragOver, setOutlineDragOver] = useState(null); // target id for visual indicator
+  const corkDidDragRef = useRef(false);
 
   // ─── Export Settings Panel ───
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
@@ -576,10 +577,12 @@ export function NovelWorkspace({
                       const scProg = sceneWordProgress(sc);
                       return (
                         <div key={sc.id}
-                          draggable onDragStart={() => setCorkboardDragId(sc.id)}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => { if (corkboardDragId && corkboardDragId !== sc.id) handleCorkDrop(act.id, ch.id, corkboardDragId, sc.id); setCorkboardDragId(null); }}
-                          onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
+                          draggable
+                          onDragStart={(e) => { corkDidDragRef.current = true; setCorkboardDragId(sc.id); e.dataTransfer.effectAllowed = "move"; }}
+                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (corkboardDragId && corkboardDragId !== sc.id) handleCorkDrop(act.id, ch.id, corkboardDragId, sc.id); setCorkboardDragId(null); }}
+                          onDragEnd={() => { setCorkboardDragId(null); setTimeout(() => { corkDidDragRef.current = false; }, 0); }}
+                          onClick={() => { if (corkDidDragRef.current) return; setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
                           style={{
                             width: isMobile ? "100%" : 200, minHeight: 140, padding: "14px 16px",
                             background: corkboardDragId === sc.id ? ta(theme.accent, 0.15) : ta(theme.surface, 0.6),

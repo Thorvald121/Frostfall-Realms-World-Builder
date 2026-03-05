@@ -291,7 +291,7 @@ const S = {
   navItem: (a, t) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px", cursor: "pointer", background: a ? "linear-gradient(90deg, " + (t ? t.accentBg : "rgba(240,192,64,0.12)") + " 0%, transparent 100%)" : "transparent", borderLeft: a ? "2px solid " + (t ? t.accent : "#f0c040") : "2px solid transparent", color: a ? (t ? t.accent : "#f0c040") : (t ? t.textMuted : "#8899aa"), fontSize: 13, fontWeight: a ? 600 : 400, transition: "all 0.2s", letterSpacing: 0.5 }),
   topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 28px", borderBottom: "1px solid #1a2435", background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)", position: "relative", zIndex: 50, flexShrink: 0 },
   searchBox: { background: "#111827", border: "1px solid #1e2a3a", borderRadius: 6, padding: "7px 14px 7px 34px", color: "#d4c9a8", fontSize: 13, width: 320, outline: "none", fontFamily: "inherit" },
-  content: { flex: 1, overflowY: "auto", padding: "0 28px 40px" },
+  content: { flex: 1, overflowY: "auto", overflowX: "hidden", padding: "0 28px 40px" },
   statCard: { flex: "1 1 100px", background: "linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(15,20,32,0.9) 100%)", border: "1px solid #1e2a3a", borderRadius: 8, padding: "16px 18px", position: "relative", overflow: "hidden" },
   sTitle: { fontFamily: "'Cinzel', 'Palatino Linotype', serif", fontSize: 16, fontWeight: 600, color: "#d4c9a8", marginTop: 32, marginBottom: 16, letterSpacing: 1 },
   catBadge: (c) => ({ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, color: c, background: c + "18", padding: "3px 10px", borderRadius: 12, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap" }),
