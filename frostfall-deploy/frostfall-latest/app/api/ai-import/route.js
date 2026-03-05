@@ -283,7 +283,7 @@ async function callOpenAI(apiKey, model, systemPrompt, userMessage) {
     },
     body: JSON.stringify({
       model: model || "gpt-4o",
-      max_tokens: 8192,
+      max_completion_tokens: 8192,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -294,6 +294,25 @@ async function callOpenAI(apiKey, model, systemPrompt, userMessage) {
   const retryAfter = response.headers.get("retry-after");
   if (!response.ok) {
     const errText = await response.text().catch(() => "");
+
+    // OpenAI reuses 429 for both rate limits and quota exhaustion.
+    // Distinguish them so retry logic doesn't pointlessly retry billing errors.
+    if (response.status === 429) {
+      let errorCode = "";
+      try { errorCode = JSON.parse(errText)?.error?.code || ""; } catch {}
+      if (errorCode === "insufficient_quota") {
+        const err = new Error(
+          "OpenAI quota exceeded — this is a billing/spending cap, not a rate limit. " +
+          "Your API key may have credits, but the project or organization has a separate " +
+          "monthly spending limit. Check: https://platform.openai.com/settings/organization/limits"
+        );
+        err.status = 402; // Reclassify as non-retryable
+        err.quotaError = true;
+        err.body = errText;
+        throw err;
+      }
+    }
+
     const err = new Error(`OpenAI API error ${response.status}: ${safeString(errText, 1200)}`);
     err.status = response.status;
     err.retryAfter = retryAfter;
@@ -537,7 +556,7 @@ export async function POST(request) {
     } catch (err) {
       const status = err?.status;
       const reason =
-        status === 429 ? "rate_limited_429" : status >= 500 ? `provider_${status}` : "provider_error";
+        status === 402 ? "quota_exceeded" : status === 429 ? "rate_limited_429" : status >= 500 ? `provider_${status}` : "provider_error";
 
       const fallbackEntry = makeRawFallbackEntry({
         safeText,
@@ -548,9 +567,11 @@ export async function POST(request) {
       });
 
       const warning =
-        status === 429
-          ? "AI provider rate-limited (429). Raw import used for this section."
-          : "AI provider error. Raw import used for this section.";
+        status === 402
+          ? "OpenAI spending cap reached. Check your project limits at platform.openai.com/settings/organization/limits"
+          : status === 429
+            ? "AI provider rate-limited (429). Raw import used for this section."
+            : "AI provider error. Raw import used for this section.";
 
       return NextResponse.json(
         {

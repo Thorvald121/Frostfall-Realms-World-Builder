@@ -382,6 +382,9 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [codexSort, setCodexSort] = useState("recent");
   const [codexViewMode, setCodexViewMode] = useState("list"); // "list" or "grid"
   const [codexBulkMode, setCodexBulkMode] = useState(false);
+  const [codexTagFilter, setCodexTagFilter] = useState(""); // tag to filter by
+  const [codexRefFilter, setCodexRefFilter] = useState("all"); // "all"|"has_refs"|"orphans"|"no_outgoing"|"no_incoming"
+  const [crossRefArticle, setCrossRefArticle] = useState(null); // article id for detail view
   const [codexSelected, setCodexSelected] = useState(new Set());
   // === PAGINATION ===
   const CODEX_PAGE = 30;
@@ -390,7 +393,12 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [novelCodexVisible, setNovelCodexVisible] = useState(NOVEL_CODEX_PAGE);
   const [novelSaveStatus, setNovelSaveStatus] = useState("saved");
 
-  const bodyTextareaRef = useRef(null);
+  const articleBodyRef = useRef(null);
+  const articleImageRef = useRef(null);
+  const articleBodyInternalRef = useRef(false);
+  const [articlePreviewMode, setArticlePreviewMode] = useState(false);
+  const [articleCollapsed, setArticleCollapsed] = useState(new Set());
+  const [articleTablePicker, setArticleTablePicker] = useState(false);
 
   const importFileRef = useRef(null);
   const saveTimer = useRef(null);
@@ -691,19 +699,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const avatarFileRef = useRef(null);
   const portraitFileRef = useRef(null);
 
-  // === MAP BUILDER ===
-  const [mapData, setMapData] = useState({ image: null, imageW: 0, imageH: 0, pins: [], territories: [] });
-  const [mapTool, setMapTool] = useState("select"); // select, pin, territory, erase
-  const [mapZoom, setMapZoom] = useState(1);
-  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
-  const [mapDragging, setMapDragging] = useState(false);
-  const [mapDragStart, setMapDragStart] = useState({ x: 0, y: 0 });
-  const [mapSelected, setMapSelected] = useState(null); // { type: 'pin'|'territory', id }
-  const [mapDrawing, setMapDrawing] = useState(null); // territory points being drawn
-  const [mapEditPanel, setMapEditPanel] = useState(null); // pin/territory being edited
-  const mapContainerRef = useRef(null);
-  const mapFileRef = useRef(null);
-
   // === NOVEL WRITING TOOL ===
   const [manuscripts, setManuscripts] = useState([]); // all manuscripts for active world
   const [activeMs, setActiveMs] = useState(null); // current manuscript object
@@ -724,10 +719,12 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const manuscriptsRef = useRef(manuscripts);
   // Enhanced features
   const [novelFocusMode, setNovelFocusMode] = useState(false); // composition/focus mode
-  const [novelSplitPane, setNovelSplitPane] = useState("codex"); // "codex" | "notes" | "article" | null
+  const [novelSplitPane, setNovelSplitPane] = useState("codex"); // "codex" | "notes" | "article" | "scene" | null
   const [novelSplitArticle, setNovelSplitArticle] = useState(null); // article to show in split pane
+  const [novelSplitSceneId, setNovelSplitSceneId] = useState(null); // scene id for side-by-side writing
   const [novelEditorSettings, setNovelEditorSettings] = useState(false); // gear popover open
   const [novelExportOpen, setNovelExportOpen] = useState(false); // export format dropdown
+  const [novelExportSettings, setNovelExportSettings] = useState({ frontMatter: true, chapterBreaks: true, sceneBreaks: "asterisks", includeNotes: false, includeSynopsis: false }); // compile options
   const [novelGoal, setNovelGoal] = useState({ daily: 0, session: 0, sessionStart: 0 }); // word targets
   const [novelGoalInput, setNovelGoalInput] = useState("");
   const [novelShowGoalSet, setNovelShowGoalSet] = useState(false);
@@ -965,120 +962,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const stagingRejectAll = () => setAiStaging((p) => p.map((e) => e._status === "pending" ? { ...e, _status: "rejected" } : e));
   const stagingClearAll = () => { setAiStaging([]); setAiSourceName(""); };
 
-  // === MAP BUILDER FUNCTIONS ===
-  const handleMapImageUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5000000) { alert("Image must be under 5MB"); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        setMapData((prev) => ({ ...prev, image: ev.target.result, imageW: img.naturalWidth, imageH: img.naturalHeight }));
-        setMapZoom(1); setMapPan({ x: 0, y: 0 });
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const mapClickHandler = (e) => {
-    if (!mapData.image || mapDragging) return;
-    const rect = mapContainerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = (e.clientX - rect.left - mapPan.x) / mapZoom;
-    const y = (e.clientY - rect.top - mapPan.y) / mapZoom;
-    const nx = x / mapData.imageW;
-    const ny = y / mapData.imageH;
-    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
-
-    if (mapTool === "pin") {
-      const pin = { id: "pin_" + Date.now(), x: nx, y: ny, label: "New Pin", color: theme.accent, linkedArticleId: null };
-      setMapData((prev) => ({ ...prev, pins: [...prev.pins, pin] }));
-      setMapEditPanel(pin); setMapSelected({ type: "pin", id: pin.id });
-    } else if (mapTool === "territory") {
-      setMapDrawing((prev) => prev ? [...prev, { x: nx, y: ny }] : [{ x: nx, y: ny }]);
-    } else if (mapTool === "select") {
-      const clickedPin = mapData.pins.find((p) => Math.abs(p.x - nx) < 0.02 && Math.abs(p.y - ny) < 0.02);
-      if (clickedPin) { setMapSelected({ type: "pin", id: clickedPin.id }); setMapEditPanel(clickedPin); }
-      else {
-        const clickedTerr = mapData.territories.find((t) => pointInPoly(nx, ny, t.points));
-        if (clickedTerr) { setMapSelected({ type: "territory", id: clickedTerr.id }); setMapEditPanel(clickedTerr); }
-        else { setMapSelected(null); setMapEditPanel(null); }
-      }
-    } else if (mapTool === "erase") {
-      const clickedPin = mapData.pins.find((p) => Math.abs(p.x - nx) < 0.02 && Math.abs(p.y - ny) < 0.02);
-      if (clickedPin) { setMapData((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== clickedPin.id) })); if (mapSelected?.id === clickedPin.id) { setMapSelected(null); setMapEditPanel(null); } }
-      else {
-        const clickedTerr = mapData.territories.find((t) => pointInPoly(nx, ny, t.points));
-        if (clickedTerr) { setMapData((prev) => ({ ...prev, territories: prev.territories.filter((t) => t.id !== clickedTerr.id) })); if (mapSelected?.id === clickedTerr.id) { setMapSelected(null); setMapEditPanel(null); } }
-      }
-    }
-  };
-
-  const finishTerritory = () => {
-    if (!mapDrawing || mapDrawing.length < 3) { setMapDrawing(null); return; }
-    const terr = { id: "terr_" + Date.now(), points: mapDrawing, label: "New Territory", color: theme.accent, fill: ta(theme.accent, 0.15), linkedArticleId: null };
-    setMapData((prev) => ({ ...prev, territories: [...prev.territories, terr] }));
-    setMapDrawing(null); setMapEditPanel(terr); setMapSelected({ type: "territory", id: terr.id });
-  };
-
-  const updateMapItem = (id, updates) => {
-    setMapData((prev) => ({
-      ...prev,
-      pins: prev.pins.map((p) => p.id === id ? { ...p, ...updates } : p),
-      territories: prev.territories.map((t) => t.id === id ? { ...t, ...updates } : t),
-    }));
-    setMapEditPanel((prev) => prev?.id === id ? { ...prev, ...updates } : prev);
-  };
-
-  const pointInPoly = (px, py, pts) => {
-    let inside = false;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
-      if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
-    }
-    return inside;
-  };
-
-  const mapMouseDown = (e) => { if (mapTool === "select" && !mapEditPanel) { setMapDragging(true); setMapDragStart({ x: e.clientX - mapPan.x, y: e.clientY - mapPan.y }); } };
-  const mapMouseMove = (e) => { if (mapDragging) setMapPan({ x: e.clientX - mapDragStart.x, y: e.clientY - mapDragStart.y }); };
-  const mapMouseUp = () => setMapDragging(false);
-  const mapWheel = useCallback((e) => { e.preventDefault(); setMapZoom((z) => Math.max(0.2, Math.min(5, z + (e.deltaY > 0 ? -0.1 : 0.1)))); }, []);
-
-  useEffect(() => {
-    if (!dataLoaded || !activeWorld) return;
-    const mapKey = "frostfall-map-" + (activeWorld?.id || "default");
-    const t = setTimeout(async () => {
-      const json = JSON.stringify(mapData);
-      try { if (typeof window !== "undefined" && window.storage) { await window.storage.set(mapKey, json); return; } } catch (_) {}
-      try { if (typeof window !== "undefined") localStorage.setItem(mapKey, json); } catch (_) {}
-    }, 2000);
-    return () => clearTimeout(t);
-  }, [mapData, dataLoaded, activeWorld]);
-
-  useEffect(() => {
-    if (!activeWorld) return;
-    const mapKey = "frostfall-map-" + (activeWorld?.id || "default");
-    const defaultMap = { image: null, imageW: 0, imageH: 0, pins: [], territories: [] };
-    (async () => {
-      try {
-        if (typeof window !== "undefined" && window.storage) {
-          const r = await window.storage.get(mapKey);
-          if (r?.value) { setMapData(JSON.parse(r.value)); return; }
-        }
-      } catch (_) {}
-      try {
-        if (typeof window !== "undefined") {
-          const stored = localStorage.getItem(mapKey);
-          if (stored) { setMapData(JSON.parse(stored)); return; }
-        }
-      } catch (_) {}
-      setMapData(defaultMap);
-    })();
-  }, [activeWorld]);
-
   // === NOVEL WRITING FUNCTIONS ===
   const msKey = () => "frostfall-novels-" + (activeWorld?.id || "default");
 
@@ -1137,9 +1020,8 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   // Force save on page unload
   useEffect(() => {
     const handler = () => {
-      if (manuscripts.length > 0 && activeWorld) {
-        const key = msKey();
-        try { localStorage.setItem(key, JSON.stringify(manuscripts)); } catch (_) {}
+      if (activeWorld) {
+        if (manuscripts.length > 0) { const key = msKey(); try { localStorage.setItem(key, JSON.stringify(manuscripts)); } catch (_) {} }
       }
     };
     window.addEventListener("beforeunload", handler);
@@ -1158,6 +1040,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   useEffect(() => {
     activeMsIdRef.current = activeMs?.id || null;
   }, [activeMs?.id]);
+
   manuscriptsRef.current = manuscripts;
 
   const createManuscript = () => {
@@ -1391,32 +1274,41 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   // === COMPILE / EXPORT MANUSCRIPT ===
   const buildManuscriptContent = () => {
     if (!activeMs) return { text: "", html: "" };
-    // Clean mention markers from body: @[Title](id) → Title
+    const es = novelExportSettings;
     const cleanMentions = (body) => (body || "").replace(/@\[([^\]]+)\]\(([^)]+)\)/g, "$1");
-    // For plain text: strip HTML tags + mentions
     const toPlainText = (body) => stripTags(cleanMentions(body));
-    let text = activeMs.title + "\n\n";
-    let html = `<h1 style="text-align:center;font-family:'Cinzel',serif;font-size:28px;margin-bottom:4px">${activeMs.title}</h1>`;
-    if (activeMs.description) { text += activeMs.description + "\n\n"; html += `<p style="text-align:center;color:#666;font-style:italic;margin-bottom:40px">${activeMs.description}</p>`; }
-    if (settings.authorName) html += `<p style="text-align:center;color:#888;margin-bottom:40px">by ${settings.authorName}</p>`;
-    text += "---\n\n";
-    html += `<hr style="border:none;border-top:1px solid #ccc;margin:30px auto;width:40%"/>`;
+    const sceneBreak = es.sceneBreaks === "blank" ? "\n\n\n" : es.sceneBreaks === "dash" ? "\n\n— — —\n\n" : "\n\n* * *\n\n";
+    const sceneBreakHtml = es.sceneBreaks === "blank" ? `<div style="height:30px"></div>` : es.sceneBreaks === "dash" ? `<p style="text-align:center;color:#999;margin:24px 0;letter-spacing:4px">— — —</p>` : `<p style="text-align:center;color:#999;margin:24px 0">* &nbsp; * &nbsp; *</p>`;
+    const pageBreak = es.chapterBreaks ? `<div style="page-break-before:always"></div>` : "";
+    let text = "";
+    let html = "";
+    // Front matter
+    if (es.frontMatter) {
+      text += activeMs.title + "\n";
+      html += `<h1 style="text-align:center;font-family:'Cinzel',serif;font-size:28px;margin-bottom:4px">${activeMs.title}</h1>`;
+      if (activeMs.description) { text += activeMs.description + "\n"; html += `<p style="text-align:center;color:#666;font-style:italic;margin-bottom:8px">${activeMs.description}</p>`; }
+      if (settings.authorName) { text += "by " + settings.authorName + "\n"; html += `<p style="text-align:center;color:#888;margin-bottom:40px">by ${settings.authorName}</p>`; }
+      text += "\n---\n\n";
+      html += `<hr style="border:none;border-top:1px solid #ccc;margin:30px auto;width:40%"/>`;
+    }
     for (const act of activeMs.acts) {
       text += act.title.toUpperCase() + "\n\n";
       html += `<h2 style="font-family:'Cinzel',serif;text-align:center;font-size:22px;margin:40px 0 20px;text-transform:uppercase;letter-spacing:2px">${act.title}</h2>`;
-      for (const ch of act.chapters) {
+      for (let ci = 0; ci < act.chapters.length; ci++) {
+        const ch = act.chapters[ci];
+        if (ci > 0 && es.chapterBreaks) { html += pageBreak; text += "\n\n\n"; }
         text += ch.title + "\n\n";
         html += `<h3 style="font-family:'Cinzel',serif;font-size:18px;margin:30px 0 10px">${ch.title}</h3>`;
-        if (ch.synopsis) { text += ch.synopsis + "\n\n"; html += `<p style="color:#888;font-style:italic;margin-bottom:16px">${ch.synopsis}</p>`; }
-        for (const sc of ch.scenes) {
+        if (es.includeSynopsis && ch.synopsis) { text += "[Synopsis: " + ch.synopsis + "]\n\n"; html += `<p style="color:#888;font-style:italic;margin-bottom:16px">${ch.synopsis}</p>`; }
+        for (let si = 0; si < ch.scenes.length; si++) {
+          const sc = ch.scenes[si];
+          if (si > 0) { text += sceneBreak; html += sceneBreakHtml; }
+          if (es.includeNotes && sc.notes) { text += "[Note: " + sc.notes + "]\n\n"; html += `<p style="color:#888;font-style:italic;font-size:12px;margin-bottom:8px">[${sc.notes}]</p>`; }
           if (sc.body) {
             text += toPlainText(sc.body) + "\n\n";
-            // For HTML export: preserve formatting, just clean mentions
             html += `<div style="font-family:Georgia,serif;font-size:14px;line-height:1.8;margin:0 0 16px">${cleanMentions(sc.body)}</div>`;
           }
         }
-        text += "* * *\n\n";
-        html += `<p style="text-align:center;color:#999;margin:24px 0">* &nbsp; * &nbsp; *</p>`;
       }
     }
     return { text, html };
@@ -1468,6 +1360,43 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
           if (dragIdx === -1 || dropIdx === -1) return c;
           const [moved] = scenes.splice(dragIdx, 1);
           scenes.splice(dropIdx, 0, moved);
+          return { ...c, scenes };
+        }),
+      }),
+    }));
+  };
+
+  // === OUTLINE REORDER (drag-and-drop) ===
+  const reorderActs = (fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    updateMs((m) => {
+      const acts = [...m.acts];
+      const [moved] = acts.splice(fromIdx, 1);
+      acts.splice(toIdx, 0, moved);
+      return { ...m, acts };
+    });
+  };
+  const reorderChapters = (actId, fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    updateMs((m) => ({
+      ...m, acts: m.acts.map((a) => {
+        if (a.id !== actId) return a;
+        const chapters = [...a.chapters];
+        const [moved] = chapters.splice(fromIdx, 1);
+        chapters.splice(toIdx, 0, moved);
+        return { ...a, chapters };
+      }),
+    }));
+  };
+  const reorderScenes = (actId, chId, fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    updateMs((m) => ({
+      ...m, acts: m.acts.map((a) => a.id !== actId ? a : {
+        ...a, chapters: a.chapters.map((c) => {
+          if (c.id !== chId) return c;
+          const scenes = [...c.scenes];
+          const [moved] = scenes.splice(fromIdx, 1);
+          scenes.splice(toIdx, 0, moved);
           return { ...c, scenes };
         }),
       }),
@@ -1830,10 +1759,12 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } if (isMobile) setSidebarOpen(false); }, [articles, isMobile]);
   const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); closeSidebar(); };
   const goDash = () => { setView("dashboard"); closeSidebar(); };
-  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
+  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
     setCreateCat(article.category);
     setEditingId(article.id);
+    setArticlePreviewMode(false);
+    setArticleTablePicker(false);
     setFormData({
       title: article.title,
       summary: article.summary || "",
@@ -1906,8 +1837,8 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   };
 
   // === EXPORT / IMPORT WORLD ===
-  const exportWorldJSON = () => {
-    const data = { version: 1, exportedAt: new Date().toISOString(), world: activeWorld, articles, settings, mapData };
+  const exportWorldJSON = async () => {
+    const data = { version: 1, exportedAt: new Date().toISOString(), world: activeWorld, articles, settings };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = (activeWorld?.name || "world") + "_export.json"; a.click();
@@ -1915,7 +1846,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   };
   const importWorldJSON = (file) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target.result);
         if (!data.articles || !Array.isArray(data.articles)) { alert("Invalid world file."); return; }
@@ -1923,7 +1854,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
         setArticles((prev) => {
           const existingIds = new Set(prev.map((a) => a.id));
           const newOnes = data.articles.filter((a) => !existingIds.has(a.id));
-          return [...prev, ...newOnes];
+          return dedup([...prev, ...newOnes]);
         });
         alert("Imported " + data.articles.length + " articles successfully.");
       } catch { alert("Failed to parse import file."); }
@@ -2039,6 +1970,108 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     });
   };
 
+  // ─── Article Editor Helpers ────────────────────────────────────
+  const isHtmlBody = useCallback((text) => /<[a-z][\s\S]*?>/i.test(text || ""), []);
+
+  const plainToHtml = useCallback((text) => {
+    if (!text) return "";
+    if (isHtmlBody(text)) return text;
+    return text.split("\n").map((line) => line.trim() ? "<p>" + line.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" : "<p><br></p>").join("");
+  }, [isHtmlBody]);
+
+  // Sync contentEditable → formData.body
+  const handleArticleBodyInput = useCallback(() => {
+    if (!articleBodyRef.current) return;
+    articleBodyInternalRef.current = true;
+    const html = articleBodyRef.current.innerHTML || "";
+    setFormData((p) => ({ ...p, body: html }));
+  }, []);
+
+  const execArticleCmd = useCallback((cmd, value) => {
+    articleBodyRef.current?.focus();
+    document.execCommand(cmd, false, value || null);
+    handleArticleBodyInput();
+  }, [handleArticleBodyInput]);
+
+  const insertArticleTable = useCallback((rows, cols) => {
+    let html = '<table style="width:100%;border-collapse:collapse;margin:12px 0"><tbody>';
+    for (let r = 0; r < rows; r++) {
+      html += "<tr>";
+      for (let c = 0; c < cols; c++) {
+        const tag = r === 0 ? "th" : "td";
+        html += `<${tag}>${r === 0 ? "Header " + (c + 1) : ""}</${tag}>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table><p><br></p>";
+    articleBodyRef.current?.focus();
+    document.execCommand("insertHTML", false, html);
+    handleArticleBodyInput();
+    setArticleTablePicker(false);
+  }, [handleArticleBodyInput]);
+
+  const handleArticleImageUpload = useCallback((file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    if (file.size > 2 * 1024 * 1024) { alert("Image must be under 2MB"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      articleBodyRef.current?.focus();
+      document.execCommand("insertHTML", false, `<img src="${ev.target.result}" alt="Image" style="max-width:100%;border-radius:6px;margin:8px 0" />`);
+      handleArticleBodyInput();
+    };
+    reader.readAsDataURL(file);
+  }, [handleArticleBodyInput]);
+
+  const handleArticlePaste = useCallback((e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        handleArticleImageUpload(item.getAsFile());
+        return;
+      }
+    }
+  }, [handleArticleImageUpload]);
+
+  // Extract TOC headings from HTML body
+  const getBodyToc = useCallback((html) => {
+    if (!html || !isHtmlBody(html)) return [];
+    const toc = [];
+    const regex = /<(h[23])[^>]*>(.*?)<\/\1>/gi;
+    let m;
+    let idx = 0;
+    while ((m = regex.exec(html)) !== null) {
+      const level = m[1].toLowerCase() === "h2" ? 2 : 3;
+      const text = m[2].replace(/<[^>]*>/g, "").trim();
+      if (text) toc.push({ id: "toc-" + idx, level, text });
+      idx++;
+    }
+    return toc;
+  }, [isHtmlBody]);
+
+  // Render body HTML with @mention replacement for article view
+  const renderBodyWithMentions = useCallback((html) => {
+    if (!html) return "";
+    return html.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, (_, title, id) => {
+      const art = articles.find((a) => a.id === id);
+      const color = art ? (CATEGORIES[art.category]?.color || "#f0c040") : "#e07050";
+      const icon = art ? (CATEGORIES[art.category]?.icon || "") : "⚠";
+      return `<span class="mention-chip" data-id="${id}" style="background:${color}15;border:1px solid ${color}35;border-radius:4px;padding:1px 6px;margin:0 1px;color:${color};cursor:pointer;font-weight:600;font-size:0.92em;font-family:'Cinzel',sans-serif;letter-spacing:0.3px">${icon} ${title}</span>`;
+    });
+  }, [articles]);
+
+  // Sync formData.body → contentEditable when changed externally
+  useEffect(() => {
+    if (!articleBodyRef.current) return;
+    if (articleBodyInternalRef.current) { articleBodyInternalRef.current = false; return; }
+    // External change — update innerHTML
+    const html = plainToHtml(formData.body);
+    if (articleBodyRef.current.innerHTML !== html) {
+      articleBodyRef.current.innerHTML = html;
+    }
+  }, [formData.body, plainToHtml]);
+
   const attemptSave = () => {
     const dupes = findDuplicates(formData.title, articles, editingId);
     if (dupes.length > 0) { setPendingDupes(dupes); setShowDupeModal(true); return; }
@@ -2122,10 +2155,65 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     return checkArticleIntegrity(data, articles, temporalGraph, editingId);
   }, [view, formData, articles, editingId, createCat]);
 
+  // ─── Tag Explorer Data ─────
+  const allTags = useMemo(() => {
+    const tagMap = {};
+    articles.forEach((a) => (a.tags || []).forEach((t) => { tagMap[t] = (tagMap[t] || 0) + 1; }));
+    return Object.entries(tagMap).map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count);
+  }, [articles]);
+
+  // ─── Cross-Reference Stats ─────
+  const refStats = useMemo(() => {
+    const stats = {};
+    articles.forEach((a) => { stats[a.id] = { outgoing: [...(a.linkedIds || [])], incoming: [] }; });
+    articles.forEach((a) => {
+      (a.linkedIds || []).forEach((lid) => {
+        if (stats[lid]) stats[lid].incoming.push(a.id);
+      });
+    });
+    return stats;
+  }, [articles]);
+
+  const orphanArticles = useMemo(() =>
+    articles.filter((a) => {
+      const s = refStats[a.id];
+      return s && s.outgoing.length === 0 && s.incoming.length === 0;
+    }),
+  [articles, refStats]);
+
+  // ─── Related Articles Suggestion (shared tags + category proximity) ─────
+  const getRelatedArticles = useCallback((articleId, limit = 6) => {
+    const src = articles.find((a) => a.id === articleId);
+    if (!src) return [];
+    const srcTags = new Set(src.tags || []);
+    const srcLinked = new Set(src.linkedIds || []);
+    return articles
+      .filter((a) => a.id !== articleId && !srcLinked.has(a.id))
+      .map((a) => {
+        let score = 0;
+        const aTags = new Set(a.tags || []);
+        srcTags.forEach((t) => { if (aTags.has(t)) score += 10; });
+        if (a.category === src.category) score += 3;
+        const aLinked = new Set(a.linkedIds || []);
+        if (aLinked.has(articleId)) score += 8; // back-references
+        return { article: a, score };
+      })
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }, [articles]);
+
   const filtered = useMemo(() => {
     let l = articles;
     if (codexFilter !== "all") l = l.filter((a) => a.category === codexFilter);
-    let matchMap = {}; // articleId → { where: "title"|"summary"|"body"|"tags"|"fields", snippet: "..." }
+    // Tag filter
+    if (codexTagFilter) l = l.filter((a) => (a.tags || []).includes(codexTagFilter));
+    // Reference filter
+    if (codexRefFilter === "has_refs") l = l.filter((a) => { const s = refStats[a.id]; return s && (s.outgoing.length > 0 || s.incoming.length > 0); });
+    else if (codexRefFilter === "orphans") l = l.filter((a) => { const s = refStats[a.id]; return s && s.outgoing.length === 0 && s.incoming.length === 0; });
+    else if (codexRefFilter === "no_outgoing") l = l.filter((a) => { const s = refStats[a.id]; return s && s.outgoing.length === 0; });
+    else if (codexRefFilter === "no_incoming") l = l.filter((a) => { const s = refStats[a.id]; return s && s.incoming.length === 0; });
+    let matchMap = {};
     if (searchQuery.trim()) {
       const q = lower(searchQuery);
       l = l.filter((a) => {
@@ -2182,9 +2270,9 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       });
     }
     return { list: l, matchMap };
-  }, [articles, codexFilter, searchQuery, codexSort]);
+  }, [articles, codexFilter, searchQuery, codexSort, codexTagFilter, codexRefFilter, refStats]);
   // Reset pagination when filters/sort/search change
-  useEffect(() => { setCodexVisible(CODEX_PAGE); setShowCodexCreate(false); }, [codexFilter, searchQuery, codexSort]);
+  useEffect(() => { setCodexVisible(CODEX_PAGE); setShowCodexCreate(false); }, [codexFilter, searchQuery, codexSort, codexTagFilter, codexRefFilter]);
   useEffect(() => { setNovelCodexVisible(NOVEL_CODEX_PAGE); }, [novelCodexFilter, novelCodexSearch]);
 
   const recent = useMemo(() => [...articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 6), [articles]);
@@ -2209,8 +2297,8 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     { divider: true },
     { id: "timeline", icon: "⏳", label: "Timeline", action: () => { setTlSelected(null); setTlPanelOpen(false); setView("timeline"); } },
     { id: "graph", icon: "◉", label: "Relationship Web", action: () => setView("graph") },
+    { id: "cross_refs", icon: "🔗", label: "Cross-References", action: () => setView("cross_refs") },
     { id: "family_tree", icon: "🌳", label: "Family Tree", action: () => setView("family_tree") },
-    { id: "map", icon: "🗺", label: "Map Builder", action: () => setView("map") },
     { id: "novel", icon: "✒", label: "Novel Writing", action: () => setView("novel") },
     { id: "generator", icon: "🎲", label: "Generators", action: () => setView("generator") },
     { id: "sessions", icon: "📓", label: "Session Notes", action: () => setView("sessions"), count: sessions.length > 0 ? sessions.length : undefined },
@@ -2230,8 +2318,8 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     if (item.id === "codex" && view === "codex" && codexFilter === "all") return true;
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "timeline" && view === "timeline") return true;
-    if (item.id === "map" && view === "map") return true;
     if (item.id === "graph" && view === "graph") return true;
+    if (item.id === "cross_refs" && view === "cross_refs") return true;
     if (item.id === "family_tree" && view === "family_tree") return true;
     if (item.id === "generator" && view === "generator") return true;
     if (item.id === "sessions" && view === "sessions") return true;
@@ -2491,7 +2579,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
                         { label: "Timeline", icon: "⏳", action: () => setView("timeline") },
                         { label: "Relationship Web", icon: "◉", action: () => setView("graph") },
                         { label: "Family Tree", icon: "🌳", action: () => setView("family_tree") },
-                        { label: "Map Builder", icon: "🗺", action: () => setView("map") },
                         { label: "Generators", icon: "🎲", action: () => setView("generator") },
                         { label: "Session Notes", icon: "📓", action: () => setView("sessions") },
                         { label: "Import Docs", icon: "📄", action: () => setView("ai_import") },
@@ -2704,6 +2791,233 @@ const renderArchives = () => (<>
                 );
               })()}
             </div>
+          </div>)}
+  </>);
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  CROSS-REFERENCE BROWSER                                   ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  const [crossRefTab, setCrossRefTab] = useState("map"); // "map" | "orphans" | "tags"
+
+  const renderCrossRefs = () => (<>
+          {view === "cross_refs" && (<div style={{ marginTop: 24, maxWidth: 900 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🔗 Cross-Reference Browser</h2>
+              <Ornament width={120} />
+              <span style={{ fontSize: 12, color: theme.textMuted }}>{articles.length} entries · {orphanArticles.length} orphans</span>
+            </div>
+            {/* Tab bar */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+              {[
+                { id: "map", label: "Reference Map", icon: "🗺" },
+                { id: "orphans", label: "Orphan Finder", icon: "⚠", count: orphanArticles.length },
+                { id: "tags", label: "Tag Explorer", icon: "🏷", count: allTags.length },
+              ].map((tab) => (
+                <button key={tab.id} onClick={() => setCrossRefTab(tab.id)}
+                  style={{ fontSize: 12, padding: "8px 18px", borderRadius: 8, cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: crossRefTab === tab.id ? 600 : 400, letterSpacing: 0.5, border: "1px solid " + (crossRefTab === tab.id ? ta(theme.accent, 0.4) : theme.border), background: crossRefTab === tab.id ? ta(theme.accent, 0.1) : "transparent", color: crossRefTab === tab.id ? theme.accent : theme.textMuted, transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>{tab.icon}</span> {tab.label}
+                  {tab.count != null && <span style={{ fontSize: 10, opacity: 0.7 }}>({tab.count})</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* REFERENCE MAP TAB */}
+            {crossRefTab === "map" && (
+              <div>
+                <p style={{ fontSize: 12, color: theme.textDim, marginBottom: 16 }}>Click any article to see its outgoing and incoming references at a glance.</p>
+                {crossRefArticle ? (() => {
+                  const art = articles.find((a) => a.id === crossRefArticle);
+                  if (!art) return null;
+                  const stats = refStats[art.id] || { outgoing: [], incoming: [] };
+                  const related = getRelatedArticles(art.id);
+                  const catColor = CATEGORIES[art.category]?.color || theme.accent;
+                  return (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                        <button onClick={() => setCrossRefArticle(null)} style={{ fontSize: 10, color: theme.textDim, background: "none", border: "1px solid " + theme.border, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
+                        <span style={{ fontSize: 18, color: catColor }}>{CATEGORIES[art.category]?.icon}</span>
+                        <span style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, fontWeight: 600 }}>{art.title}</span>
+                        <span style={S.catBadge(catColor)}>{CATEGORIES[art.category]?.label}</span>
+                        <button onClick={() => navigate(art.id)} style={{ fontSize: 10, color: theme.accent, background: ta(theme.accent, 0.08), border: "1px solid " + ta(theme.accent, 0.2), borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit", marginLeft: "auto" }}>Open Article →</button>
+                      </div>
+                      {/* Outgoing references */}
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#8ec8a0", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>→ Outgoing References ({stats.outgoing.length})</div>
+                        {stats.outgoing.length === 0 && <p style={{ fontSize: 12, color: theme.textDim, fontStyle: "italic" }}>This article doesn't link to any other articles.</p>}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {stats.outgoing.map((lid) => {
+                            const la = articles.find((a) => a.id === lid);
+                            if (!la) return <div key={lid} style={{ fontSize: 12, color: "#e07050", padding: "6px 10px", background: "rgba(224,112,80,0.06)", borderRadius: 6 }}>⚠ {lid} (missing)</div>;
+                            return (
+                              <div key={lid} onClick={() => setCrossRefArticle(lid)}
+                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 6, cursor: "pointer", transition: "all 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.08); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                                <span style={{ fontSize: 14, color: CATEGORIES[la.category]?.color }}>{CATEGORIES[la.category]?.icon}</span>
+                                <div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{la.title}</div><div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[la.category]?.label}</div></div>
+                                <span style={{ fontSize: 10, color: "#8ec8a0" }}>→</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {/* Incoming references */}
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#7ec8e3", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>← Incoming References ({stats.incoming.length})</div>
+                        {stats.incoming.length === 0 && <p style={{ fontSize: 12, color: theme.textDim, fontStyle: "italic" }}>No other articles link to this one.</p>}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {stats.incoming.map((lid) => {
+                            const la = articles.find((a) => a.id === lid);
+                            if (!la) return null;
+                            return (
+                              <div key={lid} onClick={() => setCrossRefArticle(lid)}
+                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 6, cursor: "pointer", transition: "all 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = ta("#7ec8e3", 0.08); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                                <span style={{ fontSize: 10, color: "#7ec8e3" }}>←</span>
+                                <span style={{ fontSize: 14, color: CATEGORIES[la.category]?.color }}>{CATEGORIES[la.category]?.icon}</span>
+                                <div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{la.title}</div><div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[la.category]?.label}</div></div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {/* Related articles (by shared tags/category) */}
+                      {related.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#c084fc", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>✦ Suggested Related ({related.length})</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {related.map((r) => (
+                              <div key={r.article.id} onClick={() => setCrossRefArticle(r.article.id)}
+                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 6, cursor: "pointer", transition: "all 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = ta("#c084fc", 0.08); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                                <span style={{ fontSize: 14, color: CATEGORIES[r.article.category]?.color }}>{CATEGORIES[r.article.category]?.icon}</span>
+                                <div style={{ flex: 1 }}><div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{r.article.title}</div><div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[r.article.category]?.label} · relevance: {r.score}</div></div>
+                                <span style={{ fontSize: 10, color: "#c084fc" }}>✦</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {articles.map((a) => {
+                      const stats = refStats[a.id] || { outgoing: [], incoming: [] };
+                      const catColor = CATEGORIES[a.category]?.color || theme.accent;
+                      return (
+                        <div key={a.id} onClick={() => setCrossRefArticle(a.id)}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 8, cursor: "pointer", transition: "all 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                          <span style={{ fontSize: 16, color: catColor }}>{CATEGORIES[a.category]?.icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: theme.text, fontSize: 13 }}>{a.title}</div>
+                            <div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[a.category]?.label}</div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
+                            <span style={{ fontSize: 10, color: "#8ec8a0", background: "rgba(142,200,160,0.1)", padding: "2px 8px", borderRadius: 10 }}>→ {stats.outgoing.length}</span>
+                            <span style={{ fontSize: 10, color: "#7ec8e3", background: "rgba(126,200,227,0.1)", padding: "2px 8px", borderRadius: 10 }}>← {stats.incoming.length}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ORPHAN FINDER TAB */}
+            {crossRefTab === "orphans" && (
+              <div>
+                <p style={{ fontSize: 12, color: theme.textDim, marginBottom: 16 }}>Articles with <strong style={{ color: "#e07050" }}>zero</strong> incoming and outgoing references — disconnected from the rest of your lore.</p>
+                {orphanArticles.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: 40, color: theme.textDim }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>✨</div>
+                    <p>No orphans! Every article is connected.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {orphanArticles.map((a) => {
+                      const catColor = CATEGORIES[a.category]?.color || theme.accent;
+                      return (
+                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid rgba(224,112,80,0.15)", borderLeft: "3px solid rgba(224,112,80,0.4)", borderRadius: 8 }}>
+                          <span style={{ fontSize: 16, color: catColor }}>{CATEGORIES[a.category]?.icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: theme.text, fontSize: 13, cursor: "pointer" }} onClick={() => navigate(a.id)}>{a.title}</div>
+                            <div style={{ fontSize: 10, color: theme.textDim }}>{CATEGORIES[a.category]?.label}{a.summary ? " · " + a.summary.slice(0, 60) + (a.summary.length > 60 ? "…" : "") : ""}</div>
+                          </div>
+                          <button onClick={() => goEdit(a)} style={{ fontSize: 10, color: theme.accent, background: ta(theme.accent, 0.08), border: "1px solid " + ta(theme.accent, 0.2), borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit" }}>✎ Add Links</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAG EXPLORER TAB */}
+            {crossRefTab === "tags" && (
+              <div>
+                <p style={{ fontSize: 12, color: theme.textDim, marginBottom: 16 }}>Visual overview of all tags across your codex. Click a tag to filter the codex by it.</p>
+                {allTags.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: 40, color: theme.textDim }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>🏷</div>
+                    <p>No tags yet. Add tags to your codex entries to see them here.</p>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Tag cloud */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 24, padding: "16px 20px", background: ta(theme.surface, 0.4), border: "1px solid " + theme.divider, borderRadius: 10 }}>
+                      {allTags.map((t) => {
+                        const maxCount = allTags[0]?.count || 1;
+                        const scale = 0.7 + (t.count / maxCount) * 0.8;
+                        const opacity = 0.5 + (t.count / maxCount) * 0.5;
+                        return (
+                          <span key={t.tag} onClick={() => { setCodexTagFilter(t.tag); setView("codex"); setCodexFilter("all"); }}
+                            style={{ fontSize: Math.round(12 * scale), padding: "4px 12px", borderRadius: 12, cursor: "pointer", background: ta(theme.accent, 0.06 + (t.count / maxCount) * 0.12), border: "1px solid " + ta(theme.accent, 0.1 + (t.count / maxCount) * 0.2), color: theme.accent, opacity, fontWeight: t.count > maxCount * 0.5 ? 600 : 400, transition: "all 0.15s", lineHeight: 1.3 }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.2); e.currentTarget.style.opacity = "1"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.06 + (t.count / maxCount) * 0.12); e.currentTarget.style.opacity = String(opacity); }}
+                            title={t.count + " article" + (t.count !== 1 ? "s" : "")}>
+                            #{t.tag}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {/* Tag list with counts and co-occurring tags */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {allTags.slice(0, 30).map((t) => {
+                        const tagArticles = articles.filter((a) => (a.tags || []).includes(t.tag));
+                        const coTags = {};
+                        tagArticles.forEach((a) => (a.tags || []).forEach((ct) => { if (ct !== t.tag) coTags[ct] = (coTags[ct] || 0) + 1; }));
+                        const topCoTags = Object.entries(coTags).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                        return (
+                          <div key={t.tag} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 8 }}>
+                            <span onClick={() => { setCodexTagFilter(t.tag); setView("codex"); setCodexFilter("all"); }}
+                              style={{ fontSize: 13, color: theme.accent, fontWeight: 600, cursor: "pointer", minWidth: 100 }}>#{t.tag}</span>
+                            <span style={{ fontSize: 11, color: theme.textDim, minWidth: 60 }}>{t.count} article{t.count !== 1 ? "s" : ""}</span>
+                            <div style={{ flex: 1, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {topCoTags.map(([ct, cc]) => (
+                                <span key={ct} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, background: ta(theme.textDim, 0.08), color: theme.textDim }}>
+                                  {ct} ×{cc}
+                                </span>
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                              {tagArticles.slice(0, 4).map((a) => (
+                                <span key={a.id} onClick={() => navigate(a.id)} title={a.title}
+                                  style={{ fontSize: 12, width: 22, height: 22, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: ta(CATEGORIES[a.category]?.color || theme.accent, 0.1), color: CATEGORIES[a.category]?.color }}>
+                                  {CATEGORIES[a.category]?.icon}
+                                </span>
+                              ))}
+                              {tagArticles.length > 4 && <span style={{ fontSize: 9, color: theme.textDim, alignSelf: "center" }}>+{tagArticles.length - 4}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>)}
   </>);
 
@@ -3305,173 +3619,6 @@ const renderArchives = () => (<>
           </div>)}
   </>);
 
-  const renderMapBuilder = () => (<>
-          {/* === MAP BUILDER === */}
-          {view === "map" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {/* Map Header */}
-            <div style={{ padding: "16px 28px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-              <div>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🗺 Map of {activeWorld?.name || "Your World"}</h2>
-                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{mapData.pins.length} pin{mapData.pins.length !== 1 ? "s" : ""} · {mapData.territories.length} territor{mapData.territories.length !== 1 ? "ies" : "y"}</p>
-              </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                {/* Tool palette */}
-                {[
-                  { id: "select", icon: "☝", tip: "Select / Pan" },
-                  { id: "pin", icon: "📍", tip: "Place Pin" },
-                  { id: "territory", icon: "⬡", tip: "Draw Territory" },
-                  { id: "erase", icon: "✕", tip: "Erase" },
-                ].map((t) => (
-                  <button key={t.id} title={t.tip} onClick={() => { setMapTool(t.id); if (mapDrawing && t.id !== "territory") { setMapDrawing(null); } }}
-                    style={{ padding: "6px 12px", fontSize: 14, background: mapTool === t.id ? ta(theme.accent, 0.2) : "transparent", border: mapTool === t.id ? "1px solid " + ta(theme.accent, 0.5) : "1px solid " + theme.border, borderRadius: 6, color: mapTool === t.id ? theme.accent : theme.textMuted, cursor: "pointer", transition: "all 0.2s" }}>
-                    {t.icon}
-                  </button>
-                ))}
-                <div style={{ width: 1, height: 24, background: theme.border, margin: "0 4px" }} />
-                <button onClick={() => mapFileRef.current?.click()} style={{ ...tBtnS, fontSize: 11, padding: "6px 12px" }}>📷 Upload Map</button>
-                <input ref={mapFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleMapImageUpload} />
-                <span style={{ fontSize: 11, color: theme.textDim }}>{Math.round(mapZoom * 100)}%</span>
-                <button onClick={() => setMapZoom((z) => Math.min(5, z + 0.2))} style={{ ...tBtnS, padding: "4px 8px", fontSize: 14 }}>+</button>
-                <button onClick={() => setMapZoom((z) => Math.max(0.2, z - 0.2))} style={{ ...tBtnS, padding: "4px 8px", fontSize: 14 }}>−</button>
-                <button onClick={() => { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }} style={{ ...tBtnS, padding: "4px 8px", fontSize: 10 }}>FIT</button>
-              </div>
-            </div>
-
-            {mapDrawing && (
-              <div style={{ padding: "8px 28px", background: ta(theme.accent, 0.06), borderBottom: "1px solid " + ta(theme.accent, 0.2), display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-                <span style={{ fontSize: 12, color: theme.accent }}>Drawing territory — {mapDrawing.length} point{mapDrawing.length !== 1 ? "s" : ""} placed</span>
-                <button onClick={finishTerritory} disabled={mapDrawing.length < 3} style={{ ...tBtnP, fontSize: 10, padding: "4px 14px", opacity: mapDrawing.length < 3 ? 0.4 : 1 }}>Finish ({"\u2265"}3 pts)</button>
-                <button onClick={() => setMapDrawing(null)} style={{ ...tBtnS, fontSize: 10, padding: "4px 14px" }}>Cancel</button>
-              </div>
-            )}
-
-            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-              {/* Map canvas */}
-              <div ref={mapContainerRef} style={{ flex: 1, overflow: "hidden", position: "relative", background: "#080c14", cursor: mapTool === "pin" ? "crosshair" : mapTool === "territory" ? "crosshair" : mapTool === "erase" ? "not-allowed" : mapDragging ? "grabbing" : "grab" }}
-                onClick={mapClickHandler} onMouseDown={mapMouseDown} onMouseMove={mapMouseMove} onMouseUp={mapMouseUp} onMouseLeave={mapMouseUp}
-                onWheel={(e) => { e.preventDefault(); setMapZoom((z) => Math.max(0.2, Math.min(5, z + (e.deltaY > 0 ? -0.1 : 0.1)))); }}>
-
-                {!mapData.image ? (
-                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-                    <div style={{ fontSize: 56, opacity: 0.3 }}>🗺</div>
-                    <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.textDim }}>Upload a Map Image</p>
-                    <p style={{ fontSize: 12, color: "#334455", maxWidth: 340, textAlign: "center", lineHeight: 1.6 }}>Upload a PNG, JPG, or WebP image of your world map. You can then place pins at locations and draw territory borders.</p>
-                    <button onClick={() => mapFileRef.current?.click()} style={{ ...tBtnP, fontSize: 13 }}>Choose Image</button>
-                  </div>
-                ) : (
-                  <div style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "0 0", position: "relative", width: mapData.imageW, height: mapData.imageH }}>
-                    <img src={mapData.image} style={{ width: mapData.imageW, height: mapData.imageH, display: "block", userSelect: "none", pointerEvents: "none" }} draggable={false} alt="World map" />
-
-                    {/* Territory polygons */}
-                    <svg style={{ position: "absolute", top: 0, left: 0, width: mapData.imageW, height: mapData.imageH, pointerEvents: "none" }}>
-                      {mapData.territories.map((t) => (
-                        <g key={t.id}>
-                          <polygon points={t.points.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
-                            fill={mapSelected?.id === t.id ? ta(theme.accent, 0.25) : (t.fill || ta(theme.accent, 0.12))}
-                            stroke={mapSelected?.id === t.id ? theme.accent : (t.color || theme.accent)}
-                            strokeWidth={mapSelected?.id === t.id ? 3 : 2} strokeDasharray={mapSelected?.id === t.id ? "none" : "6,3"} />
-                          {t.label && t.points.length > 0 && (
-                            <text x={t.points.reduce((s, p) => s + p.x, 0) / t.points.length * mapData.imageW}
-                              y={t.points.reduce((s, p) => s + p.y, 0) / t.points.length * mapData.imageH}
-                              textAnchor="middle" fill={t.color || theme.accent} fontSize={14 / mapZoom} fontFamily="'Cinzel', serif" fontWeight="700"
-                              stroke={theme.deepBg} strokeWidth={3 / mapZoom} paintOrder="stroke">{t.label}</text>
-                          )}
-                        </g>
-                      ))}
-                      {/* Drawing preview */}
-                      {mapDrawing && mapDrawing.length > 1 && (
-                        <polyline points={mapDrawing.map((p) => `${p.x * mapData.imageW},${p.y * mapData.imageH}`).join(" ")}
-                          fill="none" stroke={theme.accent} strokeWidth={2} strokeDasharray="4,4" opacity={0.7} />
-                      )}
-                      {mapDrawing && mapDrawing.map((p, i) => (
-                        <circle key={i} cx={p.x * mapData.imageW} cy={p.y * mapData.imageH} r={4} fill={theme.accent} />
-                      ))}
-                    </svg>
-
-                    {/* Pins */}
-                    {mapData.pins.map((pin) => {
-                      const linked = pin.linkedArticleId ? articles.find((a) => a.id === pin.linkedArticleId) : null;
-                      return (
-                        <div key={pin.id} style={{ position: "absolute", left: pin.x * mapData.imageW - 12, top: pin.y * mapData.imageH - 28, pointerEvents: "auto", cursor: "pointer", zIndex: mapSelected?.id === pin.id ? 10 : 1 }}>
-                          <div style={{ fontSize: 24, filter: mapSelected?.id === pin.id ? "drop-shadow(0 0 6px " + ta(theme.accent, 0.8) + ")" : "drop-shadow(0 2px 3px rgba(0,0,0,0.5))", transition: "filter 0.2s", transform: mapSelected?.id === pin.id ? "scale(1.2)" : "scale(1)" }}>📍</div>
-                          <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 10 / Math.max(mapZoom, 0.5), fontWeight: 700, color: pin.color || theme.accent, textShadow: "0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7)", fontFamily: "'Cinzel', serif", letterSpacing: 0.5 }}>
-                            {pin.label}{linked ? " ↗" : ""}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Edit panel */}
-              {mapEditPanel && (
-                <div style={{ width: isMobile ? "100%" : 280, borderLeft: isMobile ? "none" : "1px solid " + theme.divider, borderTop: isMobile ? "1px solid " + theme.divider : "none", padding: "16px 14px", overflowY: "auto", flexShrink: 0, background: theme.inputBg }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 14, color: theme.text, margin: 0 }}>
-                      {mapEditPanel.points ? "Territory" : "Pin"} Properties
-                    </h3>
-                    <span onClick={() => { setMapEditPanel(null); setMapSelected(null); }} style={{ cursor: "pointer", color: theme.textDim, fontSize: 14 }}>✕</span>
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Label</label>
-                    <input style={S.input} value={mapEditPanel.label || ""} onChange={(e) => updateMapItem(mapEditPanel.id, { label: e.target.value })} />
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Color</label>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {[theme.accent, "#e07050", "#7ec8e3", "#8ec8a0", "#c084fc", "#d4a060", "#e0c878", "#a088d0"].map((c) => (
-                        <div key={c} onClick={() => updateMapItem(mapEditPanel.id, { color: c, ...(mapEditPanel.points ? { fill: c + "25" } : {}) })}
-                          style={{ width: 22, height: 22, borderRadius: 4, background: c, cursor: "pointer", border: mapEditPanel.color === c ? "2px solid #fff" : "2px solid transparent", transition: "border 0.2s" }} />
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 }}>Link to Codex Article</label>
-                    <select style={{ ...S.input, padding: "8px 10px" }} value={mapEditPanel.linkedArticleId || ""}
-                      onChange={(e) => {
-                        const val = e.target.value || null;
-                        updateMapItem(mapEditPanel.id, { linkedArticleId: val });
-                        if (val) {
-                          const art = articles.find((a) => a.id === val);
-                          if (art && mapEditPanel.label === "New Pin") updateMapItem(mapEditPanel.id, { label: art.title, linkedArticleId: val });
-                        }
-                      }}>
-                      <option value="">— None —</option>
-                      {articles.filter((a) => a.category === "location" || a.category === "organization" || a.category === "race").sort((a, b) => a.title.localeCompare(b.title)).map((a) => (
-                        <option key={a.id} value={a.id}>{CATEGORIES[a.category]?.icon} {a.title}</option>
-                      ))}
-                      <optgroup label="All Articles">
-                        {articles.filter((a) => a.category !== "location" && a.category !== "organization" && a.category !== "race").sort((a, b) => a.title.localeCompare(b.title)).map((a) => (
-                          <option key={a.id} value={a.id}>{CATEGORIES[a.category]?.icon} {a.title}</option>
-                        ))}
-                      </optgroup>
-                    </select>
-                  </div>
-                  {mapEditPanel.linkedArticleId && (() => {
-                    const linked = articles.find((a) => a.id === mapEditPanel.linkedArticleId);
-                    return linked ? (
-                      <div onClick={() => { setActiveArticle(linked); setView("article"); }} style={{ padding: "10px 12px", background: ta(theme.accent, 0.06), border: "1px solid " + ta(theme.accent, 0.15), borderRadius: 6, cursor: "pointer", marginBottom: 12, transition: "all 0.2s" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.12); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.06); }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{CATEGORIES[linked.category]?.icon} {linked.title}</div>
-                        <div style={{ fontSize: 10, color: theme.textDim, marginTop: 3 }}>{linked.summary?.slice(0, 80)}{linked.summary?.length > 80 ? "…" : ""}</div>
-                        <div style={{ fontSize: 9, color: theme.accent, marginTop: 4 }}>Click to view article →</div>
-                      </div>
-                    ) : null;
-                  })()}
-                  <div style={{ borderTop: "1px solid " + theme.divider, paddingTop: 12 }}>
-                    <button onClick={() => {
-                      if (mapEditPanel.points) setMapData((prev) => ({ ...prev, territories: prev.territories.filter((t) => t.id !== mapEditPanel.id) }));
-                      else setMapData((prev) => ({ ...prev, pins: prev.pins.filter((p) => p.id !== mapEditPanel.id) }));
-                      setMapEditPanel(null); setMapSelected(null);
-                    }} style={{ ...tBtnS, fontSize: 11, color: "#e07050", border: "1px solid rgba(224,112,80,0.3)", width: "100%" }}>Delete {mapEditPanel.points ? "Territory" : "Pin"}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>)}
-  </>);
-
   const renderNovel = () => (<>
           {view === "novel" && (
             <NovelWorkspace
@@ -3481,6 +3628,7 @@ const renderArchives = () => (<>
               view={view} novelView={novelView} setNovelView={setNovelView}
               novelFocusMode={novelFocusMode} setNovelFocusMode={setNovelFocusMode}
               novelSplitPane={novelSplitPane} setNovelSplitPane={setNovelSplitPane}
+              novelSplitSceneId={novelSplitSceneId} setNovelSplitSceneId={setNovelSplitSceneId}
               novelActiveScene={novelActiveScene} setNovelActiveScene={setNovelActiveScene}
               novelCodexSearch={novelCodexSearch} setNovelCodexSearch={setNovelCodexSearch}
               novelCodexFilter={novelCodexFilter} setNovelCodexFilter={setNovelCodexFilter}
@@ -3491,6 +3639,7 @@ const renderArchives = () => (<>
               novelMsForm={novelMsForm} setNovelMsForm={setNovelMsForm}
               novelEditorSettings={novelEditorSettings} setNovelEditorSettings={setNovelEditorSettings}
               novelExportOpen={novelExportOpen} setNovelExportOpen={setNovelExportOpen}
+              novelExportSettings={novelExportSettings} setNovelExportSettings={setNovelExportSettings}
               novelGoal={novelGoal} setNovelGoal={setNovelGoal}
               novelGoalInput={novelGoalInput} setNovelGoalInput={setNovelGoalInput}
               novelShowGoalSet={novelShowGoalSet} setNovelShowGoalSet={setNovelShowGoalSet}
@@ -3512,6 +3661,7 @@ const renderArchives = () => (<>
               updateAct={updateAct} updateChapter={updateChapter} updateScene={updateScene}
               deleteAct={deleteAct} deleteChapter={deleteChapter} deleteScene={deleteScene}
               compileManuscript={compileManuscript} handleCorkDrop={handleCorkDrop}
+              reorderActs={reorderActs} reorderChapters={reorderChapters} reorderScenes={reorderScenes}
               handleEditorClick={handleEditorClick}
               handleNovelInput={handleNovelInput} handleMentionKeyDown={handleMentionKeyDown}
               handleEditorMouseOver={handleEditorMouseOver}
@@ -3734,6 +3884,44 @@ const renderArchives = () => (<>
               </div>
             </div>
 
+            {/* Advanced filters bar — tag + reference filters */}
+            {(codexTagFilter || codexRefFilter !== "all" || allTags.length > 0) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, padding: "8px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.border, borderRadius: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, color: theme.textMuted, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", flexShrink: 0 }}>Filter</span>
+                <div style={{ width: 1, height: 16, background: theme.border, flexShrink: 0 }} />
+                {/* Tag filter */}
+                <select value={codexTagFilter} onChange={(e) => setCodexTagFilter(e.target.value)}
+                  style={{ background: theme.inputBg, border: "1px solid " + (codexTagFilter ? ta("#7ec8e3", 0.4) : theme.border), borderRadius: 6, fontSize: 11, color: codexTagFilter ? "#7ec8e3" : theme.textMuted, padding: "4px 8px", cursor: "pointer", outline: "none", fontFamily: "inherit" }}>
+                  <option value="">All Tags</option>
+                  {allTags.slice(0, 50).map((t) => (
+                    <option key={t.tag} value={t.tag}>#{t.tag} ({t.count})</option>
+                  ))}
+                </select>
+                {/* Reference filter */}
+                <select value={codexRefFilter} onChange={(e) => setCodexRefFilter(e.target.value)}
+                  style={{ background: theme.inputBg, border: "1px solid " + (codexRefFilter !== "all" ? ta("#c084fc", 0.4) : theme.border), borderRadius: 6, fontSize: 11, color: codexRefFilter !== "all" ? "#c084fc" : theme.textMuted, padding: "4px 8px", cursor: "pointer", outline: "none", fontFamily: "inherit" }}>
+                  <option value="all">All References</option>
+                  <option value="has_refs">Has Links</option>
+                  <option value="orphans">Orphans (No Links)</option>
+                  <option value="no_outgoing">No Outgoing Links</option>
+                  <option value="no_incoming">No Incoming Links</option>
+                </select>
+                {/* Clear all filters */}
+                {(codexTagFilter || codexRefFilter !== "all") && (
+                  <button onClick={() => { setCodexTagFilter(""); setCodexRefFilter("all"); }}
+                    style={{ fontSize: 10, color: "#e07050", background: "rgba(224,112,80,0.08)", border: "1px solid rgba(224,112,80,0.2)", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit" }}>
+                    ✕ Clear Filters
+                  </button>
+                )}
+                {/* Active filter count indicator */}
+                {(codexTagFilter || codexRefFilter !== "all") && (
+                  <span style={{ fontSize: 10, color: theme.accent, marginLeft: "auto" }}>
+                    {[codexTagFilter ? "tag:" + codexTagFilter : "", codexRefFilter !== "all" ? "refs:" + codexRefFilter : ""].filter(Boolean).join(" + ")}
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Bulk action bar */}
             {codexBulkMode && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "8px 14px", background: ta(theme.accent, 0.06), border: "1px solid " + ta(theme.accent, 0.2), borderRadius: 8 }}>
@@ -3897,33 +4085,34 @@ const renderArchives = () => (<>
                       </div>
                       <p style={{ fontSize: 14, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.6, margin: "8px 0 0" }}>{activeArticle.summary}</p>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0, position: "relative" }}>
-                      <button onClick={() => goEdit(activeArticle)} style={{ fontSize: 11, color: theme.accent, background: ta(theme.accent, 0.1), border: "1px solid " + ta(theme.accent, 0.25), borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.2); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }}>✎ Edit</button>
-                      <button onClick={() => setShowMoveMenu(showMoveMenu === activeArticle.id ? null : activeArticle.id)} style={{ fontSize: 11, color: "#7ec8e3", background: "rgba(126,200,227,0.1)", border: "1px solid rgba(126,200,227,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.1)"; }}>↷ Move</button>
-                      <button onClick={() => goDuplicate(activeArticle)} style={{ fontSize: 11, color: "#c084fc", background: "rgba(192,132,252,0.1)", border: "1px solid rgba(192,132,252,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(192,132,252,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(192,132,252,0.1)"; }}>⧉ Duplicate</button>
-                      <button onClick={() => saveAsTemplate(activeArticle)} style={{ fontSize: 11, color: "#d4a060", background: "rgba(212,160,96,0.1)", border: "1px solid rgba(212,160,96,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.1)"; }}>📄 Template</button>
-                      {showMoveMenu === activeArticle.id && (<>
-                        <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoveMenu(null)} />
-                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 6, minWidth: 200, zIndex: 901, boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)" }}>
-                          <div style={{ padding: "6px 12px 8px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>Move to Category</div>
-                          {Object.entries(CATEGORIES).filter(([k]) => k !== activeArticle.category).map(([k, cat]) => (
-                            <div key={k} role="menuitem" tabIndex={0}
-                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setArticles((prev) => prev.map((a) => a.id === activeArticle.id ? { ...a, category: k, updatedAt: new Date().toISOString() } : a)); setActiveArticle((prev) => ({ ...prev, category: k })); setShowMoveMenu(null); } }}
-                              onClick={() => { setArticles((prev) => prev.map((a) => a.id === activeArticle.id ? { ...a, category: k, updatedAt: new Date().toISOString() } : a)); setActiveArticle((prev) => ({ ...prev, category: k })); setShowMoveMenu(null); }}
-                              style={{ fontSize: 12, color: cat.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = cat.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                              <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{cat.icon}</span> <span>{cat.label}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </>)}
-                      <button onClick={() => setShowDeleteModal(activeArticle)} style={{ fontSize: 11, color: "#e07050", background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.1)"; }}>🗑 Delete</button>
-                    </div>
+                  </div>
+                  {/* Action buttons — own row to prevent squishing title/summary */}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 14, position: "relative" }}>
+                    <button onClick={() => goEdit(activeArticle)} style={{ fontSize: 11, color: theme.accent, background: ta(theme.accent, 0.1), border: "1px solid " + ta(theme.accent, 0.25), borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.2); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }}>✎ Edit</button>
+                    <button onClick={() => setShowMoveMenu(showMoveMenu === activeArticle.id ? null : activeArticle.id)} style={{ fontSize: 11, color: "#7ec8e3", background: "rgba(126,200,227,0.1)", border: "1px solid rgba(126,200,227,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.1)"; }}>↷ Move</button>
+                    <button onClick={() => goDuplicate(activeArticle)} style={{ fontSize: 11, color: "#c084fc", background: "rgba(192,132,252,0.1)", border: "1px solid rgba(192,132,252,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(192,132,252,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(192,132,252,0.1)"; }}>⧉ Duplicate</button>
+                    <button onClick={() => saveAsTemplate(activeArticle)} style={{ fontSize: 11, color: "#d4a060", background: "rgba(212,160,96,0.1)", border: "1px solid rgba(212,160,96,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(212,160,96,0.1)"; }}>📄 Template</button>
+                    {showMoveMenu === activeArticle.id && (<>
+                      <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoveMenu(null)} />
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 6, minWidth: 200, zIndex: 901, boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)" }}>
+                        <div style={{ padding: "6px 12px 8px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>Move to Category</div>
+                        {Object.entries(CATEGORIES).filter(([k]) => k !== activeArticle.category).map(([k, cat]) => (
+                          <div key={k} role="menuitem" tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setArticles((prev) => prev.map((a) => a.id === activeArticle.id ? { ...a, category: k, updatedAt: new Date().toISOString() } : a)); setActiveArticle((prev) => ({ ...prev, category: k })); setShowMoveMenu(null); } }}
+                            onClick={() => { setArticles((prev) => prev.map((a) => a.id === activeArticle.id ? { ...a, category: k, updatedAt: new Date().toISOString() } : a)); setActiveArticle((prev) => ({ ...prev, category: k })); setShowMoveMenu(null); }}
+                            style={{ fontSize: 12, color: cat.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = cat.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                            <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{cat.icon}</span> <span>{cat.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>)}
+                    <button onClick={() => setShowDeleteModal(activeArticle)} style={{ fontSize: 11, color: "#e07050", background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.1)"; }}>🗑 Delete</button>
                   </div>
                   <Ornament width={260} />
                 </div>
@@ -4014,8 +4203,51 @@ const renderArchives = () => (<>
                 })()}
 
                 {/* Body content */}
-                <div style={{ fontSize: 14, color: theme.textMuted, lineHeight: 1.8, marginTop: 16 }}>
-                  {activeArticle.body?.split("\n").map((p, i) => <p key={i} style={{ margin: "0 0 14px" }}><RenderBody text={p} articles={articles} onNavigate={navigate} /></p>)}
+                <div className="article-body" style={{ fontSize: 14, color: theme.textMuted, lineHeight: 1.8, marginTop: 16 }}>
+                  {isHtmlBody(activeArticle.body) ? (() => {
+                    // HTML body — render with mention chips and collapsible sections
+                    const mentionHtml = renderBodyWithMentions(activeArticle.body);
+                    // Split by H2/H3 for collapsible sections
+                    const sectionRegex = /(<h[23][^>]*>.*?<\/h[23]>)/gi;
+                    const parts = mentionHtml.split(sectionRegex).filter(Boolean);
+                    let tocIdx = 0;
+                    return parts.map((part, i) => {
+                      const headingMatch = part.match(/^<(h[23])[^>]*>(.*?)<\/\1>$/i);
+                      if (headingMatch) {
+                        const sectionId = "toc-" + tocIdx;
+                        tocIdx++;
+                        const isCollapsed = articleCollapsed.has(sectionId);
+                        // Find the next part (the content after this heading)
+                        const nextPart = parts[i + 1] && !parts[i + 1].match(/^<h[23]/i) ? parts[i + 1] : null;
+                        return (
+                          <div key={i} id={sectionId}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}
+                              onClick={() => setArticleCollapsed((prev) => { const n = new Set(prev); n.has(sectionId) ? n.delete(sectionId) : n.add(sectionId); return n; })}>
+                              <span style={{ fontSize: 10, color: theme.textDim, transition: "transform 0.2s", transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▾</span>
+                              <span dangerouslySetInnerHTML={{ __html: part }} style={{ flex: 1 }} />
+                            </div>
+                            {nextPart && !isCollapsed && (
+                              <div dangerouslySetInnerHTML={{ __html: nextPart }}
+                                onClick={(e) => { const chip = e.target.closest(".mention-chip"); if (chip) navigate(chip.dataset.id); }}
+                                style={{ cursor: "default" }} />
+                            )}
+                            {nextPart && isCollapsed && (
+                              <div style={{ padding: "4px 0 4px 18px", fontSize: 11, color: theme.textDim, fontStyle: "italic" }}>Section collapsed — click heading to expand</div>
+                            )}
+                          </div>
+                        );
+                      }
+                      // Skip parts that are consumed as "nextPart" by a heading
+                      if (i > 0 && parts[i - 1]?.match(/^<h[23]/i)) return null;
+                      return (
+                        <div key={i} dangerouslySetInnerHTML={{ __html: part }}
+                          onClick={(e) => { const chip = e.target.closest(".mention-chip"); if (chip) navigate(chip.dataset.id); }}
+                          style={{ cursor: "default" }} />
+                      );
+                    });
+                  })() : (
+                    activeArticle.body?.split("\n").map((p, i) => <p key={i} style={{ margin: "0 0 14px" }}><RenderBody text={p} articles={articles} onNavigate={navigate} /></p>)
+                  )}
                 </div>
 
                 {/* Tags */}
@@ -4040,6 +4272,27 @@ const renderArchives = () => (<>
                     <p style={{ fontSize: 9, color: theme.textDim, textAlign: "center", margin: "6px 0 0", textTransform: "uppercase", letterSpacing: 1 }}>{activeArticle.title}</p>
                   </div>
                 )}
+
+                {/* Table of Contents — generated from H2/H3 in body */}
+                {(() => {
+                  const toc = getBodyToc(activeArticle.body);
+                  if (toc.length === 0) return null;
+                  return (
+                    <div style={{ margin: "12px 12px 0", borderRadius: 8, border: "1px solid " + theme.divider, overflow: "hidden" }}>
+                      <div style={{ padding: "8px 14px", background: ta("#c084fc", 0.06), borderBottom: "1px solid " + theme.divider }}>
+                        <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: "#c084fc", letterSpacing: 1, textTransform: "uppercase" }}>Contents</span>
+                      </div>
+                      {toc.map((h) => (
+                        <div key={h.id} onClick={() => { const el = document.getElementById(h.id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                          style={{ padding: h.level === 3 ? "5px 14px 5px 28px" : "5px 14px", cursor: "pointer", fontSize: 11, color: theme.textMuted, borderBottom: "1px solid " + ta(theme.divider, 0.4), transition: "all 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = ta("#c084fc", 0.06); e.currentTarget.style.color = "#c084fc"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = theme.textMuted; }}>
+                          {h.level === 3 ? "› " : ""}{h.text}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* At a Glance — fields panel */}
                 {activeArticle.fields && Object.entries(activeArticle.fields).filter(([_, v]) => v).length > 0 && (
@@ -4140,6 +4393,33 @@ const renderArchives = () => (<>
                     </div>)}
                   </div>
                 ); })()}
+
+                {/* Suggested Related Articles (by shared tags/category) */}
+                {(() => {
+                  const related = getRelatedArticles(activeArticle.id);
+                  if (related.length === 0) return null;
+                  return (
+                    <div style={{ padding: "0 12px" }}>
+                      <div style={{ padding: "12px 0 6px", borderBottom: "1px solid " + theme.divider, marginBottom: 8 }}>
+                        <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: "#c084fc", letterSpacing: 1, textTransform: "uppercase" }}>✦ Related</span>
+                        <span style={{ fontSize: 10, color: theme.textDim, marginLeft: 6 }}>({related.length})</span>
+                      </div>
+                      <p style={{ fontSize: 10, color: theme.textDim, margin: "0 0 6px" }}>Based on shared tags and category</p>
+                      {related.map((r) => (
+                        <div key={r.article.id} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") navigate(r.article.id); }}
+                          style={tRelItem} onClick={() => navigate(r.article.id)}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = ta("#c084fc", 0.08); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                          <span style={{ fontSize: 14, color: CATEGORIES[r.article.category]?.color }}>{CATEGORIES[r.article.category]?.icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 500, color: theme.text, fontSize: 12 }}>{r.article.title}</div>
+                            <div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>{CATEGORIES[r.article.category]?.label}</div>
+                          </div>
+                          <span style={{ fontSize: 9, color: "#c084fc", opacity: 0.6 }}>✦</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* Tags (clickable) */}
                 {activeArticle.tags?.length > 0 && (
@@ -4294,7 +4574,126 @@ const renderArchives = () => (<>
                 </div>
               </>)}
 
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: theme.textDim }}>— type @ to link codex entries</span></label><textarea style={{ ...S.textarea, fontFamily: editorFontFamily, fontSize: 13 }} value={formData.body} onChange={(e) => setFormData((p) => ({ ...p, body: e.target.value }))} placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} rows={8} /></div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <label style={{ fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: theme.textDim }}>— rich text editor</span></label>
+                  <button onClick={() => setArticlePreviewMode((p) => !p)}
+                    style={{ fontSize: 10, padding: "3px 10px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", background: articlePreviewMode ? ta("#c084fc", 0.15) : "transparent", border: "1px solid " + (articlePreviewMode ? "rgba(192,132,252,0.3)" : theme.border), color: articlePreviewMode ? "#c084fc" : theme.textDim }}>
+                    {articlePreviewMode ? "✎ Edit" : "👁 Preview"}
+                  </button>
+                </div>
+                {/* Formatting toolbar */}
+                {!articlePreviewMode && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 2, padding: "6px 8px", background: ta(theme.surface, 0.6), border: "1px solid " + theme.border, borderBottom: "none", borderRadius: "8px 8px 0 0", alignItems: "center" }}>
+                    {[
+                      { cmd: "bold", icon: "B", title: "Bold", style: { fontWeight: 700 } },
+                      { cmd: "italic", icon: "I", title: "Italic", style: { fontStyle: "italic" } },
+                      { cmd: "strikeThrough", icon: "S̶", title: "Strikethrough" },
+                    ].map((b) => (
+                      <button key={b.cmd} title={b.title} onClick={() => execArticleCmd(b.cmd)}
+                        style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: theme.textMuted, fontFamily: "inherit", minWidth: 28, ...b.style }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); e.currentTarget.style.borderColor = ta(theme.accent, 0.2); }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.borderColor = "transparent"; }}>
+                        {b.icon}
+                      </button>
+                    ))}
+                    <div style={{ width: 1, height: 18, background: theme.divider, margin: "0 4px" }} />
+                    <button title="Heading 2" onClick={() => execArticleCmd("formatBlock", "h2")}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: theme.textMuted, fontFamily: "'Cinzel', serif", fontWeight: 700 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>H2</button>
+                    <button title="Heading 3" onClick={() => execArticleCmd("formatBlock", "h3")}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: theme.textMuted, fontFamily: "'Cinzel', serif", fontWeight: 600 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>H3</button>
+                    <button title="Normal paragraph" onClick={() => execArticleCmd("formatBlock", "p")}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 10, color: theme.textDim, fontFamily: "inherit" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>¶</button>
+                    <div style={{ width: 1, height: 18, background: theme.divider, margin: "0 4px" }} />
+                    <button title="Blockquote" onClick={() => execArticleCmd("formatBlock", "blockquote")}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 13, color: theme.textMuted }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>❝</button>
+                    <button title="Bullet list" onClick={() => execArticleCmd("insertUnorderedList")}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: theme.textMuted }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>•≡</button>
+                    <button title="Numbered list" onClick={() => execArticleCmd("insertOrderedList")}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: theme.textMuted }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>1.</button>
+                    <button title="Horizontal rule" onClick={() => execArticleCmd("insertHorizontalRule")}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: theme.textMuted }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>─</button>
+                    <div style={{ width: 1, height: 18, background: theme.divider, margin: "0 4px" }} />
+                    <button title="Insert image" onClick={() => articleImageRef.current?.click()}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: theme.textMuted }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>🖼</button>
+                    <div style={{ position: "relative" }}>
+                      <button title="Insert table" onClick={() => setArticleTablePicker((p) => !p)}
+                        style={{ background: articleTablePicker ? ta(theme.accent, 0.1) : "none", border: "1px solid " + (articleTablePicker ? ta(theme.accent, 0.2) : "transparent"), borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: theme.textMuted }}
+                        onMouseEnter={(e) => { if (!articleTablePicker) e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { if (!articleTablePicker) e.currentTarget.style.background = "none"; }}>⊞</button>
+                      {articleTablePicker && (<>
+                        <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setArticleTablePicker(false)} />
+                        <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 8, padding: 10, zIndex: 901, boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}>
+                          <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 6, fontWeight: 600 }}>Table Size</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 20px)", gap: 2 }}>
+                            {Array.from({ length: 25 }, (_, i) => {
+                              const r = Math.floor(i / 5) + 1;
+                              const c = (i % 5) + 1;
+                              return (
+                                <div key={i} onClick={() => insertArticleTable(r, c)}
+                                  style={{ width: 20, height: 20, borderRadius: 3, border: "1px solid " + theme.border, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: theme.textDim, transition: "all 0.1s" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.2); e.currentTarget.style.borderColor = theme.accent; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = theme.border; }}
+                                  title={r + "×" + c}>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div style={{ fontSize: 9, color: theme.textDim, marginTop: 4, textAlign: "center" }}>Click to insert</div>
+                        </div>
+                      </>)}
+                    </div>
+                    <button title="Insert @mention link" onClick={() => {
+                      const title = prompt("Enter the codex entry title to link:");
+                      if (!title) return;
+                      const match = articles.find((a) => lower(a.title) === lower(title));
+                      if (match) {
+                        articleBodyRef.current?.focus();
+                        document.execCommand("insertHTML", false, `@[${match.title}](${match.id})`);
+                        handleArticleBodyInput();
+                      } else {
+                        articleBodyRef.current?.focus();
+                        document.execCommand("insertText", false, "@" + title);
+                        handleArticleBodyInput();
+                      }
+                    }}
+                      style={{ background: "none", border: "1px solid transparent", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: theme.textMuted, fontWeight: 700 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}>@</button>
+                  </div>
+                )}
+                {/* Hidden image file input */}
+                <input ref={articleImageRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleArticleImageUpload(file);
+                  e.target.value = "";
+                }} />
+                {/* Editor or Preview */}
+                {articlePreviewMode ? (
+                  <div style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, padding: "16px 20px", borderRadius: "8px" }}>
+                    {isHtmlBody(formData.body) ? (
+                      <div dangerouslySetInnerHTML={{ __html: renderBodyWithMentions(formData.body) }}
+                        onClick={(e) => { const chip = e.target.closest(".mention-chip"); if (chip) navigate(chip.dataset.id); }}
+                        style={{ cursor: "default" }} />
+                    ) : (
+                      formData.body?.split("\n").map((p, i) => <p key={i} style={{ margin: "0 0 10px" }}><RenderBody text={p} articles={articles} onNavigate={navigate} /></p>)
+                    )}
+                    {!formData.body && <span style={{ color: theme.textDim, opacity: 0.5 }}>Nothing to preview yet...</span>}
+                  </div>
+                ) : (
+                  <div ref={articleBodyRef} contentEditable suppressContentEditableWarning
+                    onInput={handleArticleBodyInput}
+                    onPaste={handleArticlePaste}
+                    data-placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...\n\nUse the toolbar above for formatting. Type @ to link codex entries.`}
+                    style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", wordWrap: "break-word", overflowWrap: "break-word", borderRadius: articlePreviewMode ? "8px" : "0 0 8px 8px", padding: "12px 16px" }} />
+                )}
+              </div>
 
               {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
                 <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>
@@ -4395,6 +4794,22 @@ const renderArchives = () => (<>
         [contenteditable] hr { border: none; border-top: 1px solid ${theme.border}; margin: 1em 0; }
         [contenteditable] strong, [contenteditable] b { color: ${theme.text}; }
         [contenteditable]:empty::before { content: attr(data-placeholder); color: ${theme.textDim}; opacity: 0.5; white-space: pre-line; pointer-events: none; }
+        /* Tables in editor and article view */
+        [contenteditable] table, .article-body table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+        [contenteditable] th, .article-body th { background: ${ta(theme.accent, 0.08)}; padding: 8px 12px; border: 1px solid ${theme.border}; text-align: left; font-weight: 600; color: ${theme.text}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        [contenteditable] td, .article-body td { padding: 6px 12px; border: 1px solid ${theme.border}; color: ${theme.textMuted}; }
+        [contenteditable] tr:hover td, .article-body tr:hover td { background: ${ta(theme.accent, 0.03)}; }
+        /* Article view HTML body */
+        .article-body h2 { font-family: 'Cinzel', serif; font-size: 1.4em; font-weight: 700; margin: 0.8em 0 0.4em; color: ${theme.text}; letter-spacing: 0.5px; border-bottom: 1px solid ${theme.border}; padding-bottom: 4px; }
+        .article-body h3 { font-family: 'Cinzel', serif; font-size: 1.15em; font-weight: 600; margin: 0.6em 0 0.3em; color: ${theme.text}; letter-spacing: 0.3px; }
+        .article-body blockquote { border-left: 3px solid ${theme.accent}; margin: 0.5em 0; padding: 4px 16px; color: ${theme.textMuted}; font-style: italic; background: ${ta(theme.accent, 0.04)}; border-radius: 0 6px 6px 0; }
+        .article-body ul, .article-body ol { margin: 0.3em 0; padding-left: 1.5em; }
+        .article-body li { margin: 2px 0; }
+        .article-body hr { border: none; border-top: 1px solid ${theme.border}; margin: 1em 0; }
+        .article-body strong, .article-body b { color: ${theme.text}; }
+        .article-body img { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+        .article-body p { margin: 0 0 14px; }
+        .mention-chip:hover { filter: brightness(1.2); }
         /* Accessibility: focus-visible outlines */
         :focus-visible { outline: 2px solid ${theme.accent}; outline-offset: 2px; border-radius: 4px; }
         button:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible { outline: 2px solid ${theme.accent}; outline-offset: 2px; }
@@ -4682,9 +5097,9 @@ const renderArchives = () => (<>
           {renderTimeline()}
           {renderGraph()}
           {renderFamilyTree()}
+          {renderCrossRefs()}
           {renderGenerator()}
           {renderSessions()}
-          {renderMapBuilder()}
           {renderNovel()}
           {renderSettings()}
           {renderAIImport()}

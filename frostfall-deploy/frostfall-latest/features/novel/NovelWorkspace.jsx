@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { CATEGORIES, formatKey } from "@/lib/domain/categories";
 import { EDITOR_FONTS } from "@/lib/domain/categories";
 import { checkWord, aiProofread, aiNovelAssist, SUGGESTION_STYLES } from "@/lib/domain/writingTools";
@@ -21,11 +21,13 @@ export function NovelWorkspace({
   // Novel state
   view, novelView, setNovelView, novelFocusMode, setNovelFocusMode,
   novelSplitPane, setNovelSplitPane, novelActiveScene, setNovelActiveScene,
+  novelSplitSceneId, setNovelSplitSceneId,
   novelCodexSearch, setNovelCodexSearch, novelCodexFilter, setNovelCodexFilter,
   novelCodexExpanded, setNovelCodexExpanded, novelCodexVisible, setNovelCodexVisible,
   novelMention, setNovelMention, novelOutlineCollapsed, setNovelOutlineCollapsed,
   novelMsForm, setNovelMsForm, novelEditorSettings, setNovelEditorSettings,
   novelExportOpen, setNovelExportOpen, novelGoal, setNovelGoal,
+  novelExportSettings, setNovelExportSettings,
   novelGoalInput, setNovelGoalInput, novelShowGoalSet, setNovelShowGoalSet,
   novelSnapshotView, setNovelSnapshotView, novelCompiling,
   corkboardChapter, setCorkboardChapter, corkboardDragId, setCorkboardDragId,
@@ -41,6 +43,7 @@ export function NovelWorkspace({
   addChapter, addScene, addAct, updateAct, updateChapter, updateScene,
   deleteAct, deleteChapter, deleteScene,
   compileManuscript, handleCorkDrop, handleEditorClick,
+  reorderActs, reorderChapters, reorderScenes,
   handleNovelInput, handleMentionKeyDown, handleEditorMouseOver,
   insertMention, insertMentionFromSidebar,
   execFormat, updateFormatState, formatState,
@@ -53,6 +56,12 @@ export function NovelWorkspace({
 }) {
   const NOVEL_CODEX_PAGE = 25;
   const STATUS_COLORS = { draft: theme.textDim, revised: theme.accent, final: "#8ec8a0" };
+  const SCENE_STATUSES = [
+    { id: "draft", label: "Draft", color: theme.textDim, icon: "✎" },
+    { id: "revised", label: "Revised", color: "#7ec8e3", icon: "✓" },
+    { id: "final", label: "Final", color: "#8ec8a0", icon: "★" },
+    { id: "needs_work", label: "Needs Work", color: "#e07050", icon: "⚠" },
+  ];
   const SCENE_COLORS = [
     { id: "none", color: "transparent", label: "None" },
     { id: "red", color: "#e07050", label: "Action" },
@@ -75,6 +84,13 @@ export function NovelWorkspace({
   const [aiAssistResult, setAiAssistResult] = useState(null); // { text, action }
   const [aiAssistError, setAiAssistError] = useState(null);
   const [aiAssistMenuOpen, setAiAssistMenuOpen] = useState(false);
+
+  // ─── Outline Drag State ───
+  const [outlineDrag, setOutlineDrag] = useState(null); // { type: 'act'|'chapter'|'scene', id, actId?, chId?, idx }
+  const [outlineDragOver, setOutlineDragOver] = useState(null); // target id for visual indicator
+
+  // ─── Export Settings Panel ───
+  const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
 
   const hasApiKey = !!settings.aiKeys?.[settings.aiProvider || "anthropic"];
 
@@ -240,6 +256,58 @@ export function NovelWorkspace({
     }
   }, [settings.autoCorrect]);
 
+  // ─── Scene Status Cycling ───
+  const cycleStatus = useCallback((actId, chId, scId) => {
+    const order = ["draft", "revised", "final", "needs_work"];
+    const scene = (() => {
+      const ms = activeMs || manuscripts?.[0];
+      if (!ms) return null;
+      for (const a of ms.acts) for (const c of a.chapters) for (const s of c.scenes) if (s.id === scId) return s;
+      return null;
+    })();
+    const current = scene?.status || "draft";
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    updateScene(actId, chId, scId, { status: next });
+  }, [activeMs, manuscripts, updateScene]);
+
+  // ─── Word Target Progress ───
+  const sceneWordProgress = useCallback((scene) => {
+    if (!scene?.wordTarget || scene.wordTarget <= 0) return null;
+    const words = countWords(scene.body);
+    return { words, target: scene.wordTarget, pct: Math.min(100, Math.round((words / scene.wordTarget) * 100)) };
+  }, [countWords]);
+
+  const chapterWordProgress = useCallback((ch) => {
+    if (!ch?.wordTarget || ch.wordTarget <= 0) return null;
+    const words = chapterWordCount(ch);
+    return { words, target: ch.wordTarget, pct: Math.min(100, Math.round((words / ch.wordTarget) * 100)) };
+  }, [chapterWordCount]);
+
+  // ─── Outline Drag Handlers ───
+  const handleOutlineDragStart = useCallback((type, id, actId, chId, idx) => {
+    setOutlineDrag({ type, id, actId, chId, idx });
+  }, []);
+  const handleOutlineDragOver = useCallback((e, targetId) => {
+    e.preventDefault();
+    setOutlineDragOver(targetId);
+  }, []);
+  const handleOutlineDrop = useCallback((type, targetIdx, targetActId, targetChId) => {
+    if (!outlineDrag || outlineDrag.type !== type) { setOutlineDrag(null); setOutlineDragOver(null); return; }
+    if (type === "act") reorderActs(outlineDrag.idx, targetIdx);
+    else if (type === "chapter" && outlineDrag.actId === targetActId) reorderChapters(targetActId, outlineDrag.idx, targetIdx);
+    else if (type === "scene" && outlineDrag.actId === targetActId && outlineDrag.chId === targetChId) reorderScenes(targetActId, targetChId, outlineDrag.idx, targetIdx);
+    setOutlineDrag(null);
+    setOutlineDragOver(null);
+  }, [outlineDrag, reorderActs, reorderChapters, reorderScenes]);
+
+  // ─── Get all scenes flat for split pane picker ───
+  const allScenes = useMemo(() => {
+    if (!activeMs) return [];
+    const result = [];
+    for (const a of activeMs.acts) for (const c of a.chapters) for (const s of c.scenes) result.push({ ...s, actId: a.id, actTitle: a.title, chId: c.id, chTitle: c.title });
+    return result;
+  }, [activeMs]);
+
   return (
     <div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
@@ -256,8 +324,8 @@ export function NovelWorkspace({
               const scCount = ms.acts.reduce((t, a) => t + a.chapters.reduce((tc, c) => tc + c.scenes.length, 0), 0);
               return (
                 <div key={ms.id} onClick={() => { setActiveMs(ms); setNovelView("outline"); }} style={{ width: 240, padding: "20px 18px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.border, borderRadius: 10, cursor: "pointer", transition: "all 0.2s", position: "relative" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + ta(theme.accent, 0.4); e.currentTarget.style.transform = "translateY(-2px)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + theme.border; e.currentTarget.style.transform = "none"; }}>
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); e.currentTarget.style.transform = "translateY(-2px)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.transform = "none"; }}>
                   <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #f0c040, #e07050)", borderRadius: "10px 10px 0 0" }} />
                   <div style={{ fontSize: 28, marginBottom: 10 }}>📖</div>
                   <div style={{ fontFamily: "'Cinzel', serif", fontSize: 15, color: theme.text, fontWeight: 600, letterSpacing: 0.5 }}>{ms.title}</div>
@@ -272,7 +340,7 @@ export function NovelWorkspace({
               );
             })}
             <div onClick={() => setShowMsCreate(true)} style={{ width: 240, padding: "20px 18px", background: "transparent", border: "2px dashed #1e2a3a", borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 140, transition: "all 0.2s" }}
-              onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + ta(theme.accent, 0.4); }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + theme.border; }}>
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
               <div style={{ fontSize: 32, color: "#334455" }}>+</div>
               <div style={{ fontSize: 12, color: theme.textDim, marginTop: 6 }}>New Manuscript</div>
             </div>
@@ -303,7 +371,7 @@ export function NovelWorkspace({
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => setNovelView("corkboard")} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px" }}>🗂 Corkboard</button>
               <div style={{ position: "relative" }}>
-                <button onClick={() => setNovelExportOpen(!novelExportOpen)} disabled={novelCompiling} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", border: "1px solid rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export ▾"}</button>
+                <button onClick={() => setNovelExportOpen(!novelExportOpen)} disabled={novelCompiling} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)", opacity: novelCompiling ? 0.5 : 1 }}>{novelCompiling ? "Exporting..." : "📄 Export ▾"}</button>
                 {novelExportOpen && (
                   <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 8, padding: 4, minWidth: 180, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
                     {[
@@ -323,18 +391,60 @@ export function NovelWorkspace({
                         </div>
                       </div>
                     ))}
+                    <div style={{ borderTop: "1px solid " + theme.divider, marginTop: 4, paddingTop: 4 }}>
+                      <div onClick={() => setExportSettingsOpen(!exportSettingsOpen)}
+                        style={{ padding: "8px 12px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.08)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                        <span style={{ fontSize: 14 }}>⚙</span>
+                        <div style={{ fontSize: 11, color: theme.textMuted }}>Export Settings</div>
+                      </div>
+                    </div>
+                    {exportSettingsOpen && (
+                      <div style={{ borderTop: "1px solid " + theme.divider, padding: "10px 12px" }}>
+                        {[
+                          { key: "frontMatter", label: "Include Title & Author" },
+                          { key: "chapterBreaks", label: "Page Break per Chapter" },
+                          { key: "includeSynopsis", label: "Include Chapter Synopses" },
+                          { key: "includeNotes", label: "Include Scene Notes" },
+                        ].map((opt) => (
+                          <div key={opt.key} onClick={() => setNovelExportSettings((p) => ({ ...p, [opt.key]: !p[opt.key] }))}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", cursor: "pointer" }}>
+                            <div style={{ width: 14, height: 14, borderRadius: 3, border: "1px solid " + (novelExportSettings[opt.key] ? "#8ec8a0" : theme.border), background: novelExportSettings[opt.key] ? "#8ec8a020" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#8ec8a0" }}>
+                              {novelExportSettings[opt.key] ? "✓" : ""}
+                            </div>
+                            <span style={{ fontSize: 10, color: theme.textMuted }}>{opt.label}</span>
+                          </div>
+                        ))}
+                        <div style={{ marginTop: 6 }}>
+                          <span style={{ fontSize: 9, color: theme.textDim, display: "block", marginBottom: 4 }}>Scene Breaks:</span>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            {[{ id: "asterisks", label: "* * *" }, { id: "dash", label: "— — —" }, { id: "blank", label: "Blank" }].map((s) => (
+                              <button key={s.id} onClick={() => setNovelExportSettings((p) => ({ ...p, sceneBreaks: s.id }))}
+                                style={{ flex: 1, fontSize: 9, padding: "3px 6px", borderRadius: 4, cursor: "pointer", fontFamily: "inherit", background: novelExportSettings.sceneBreaks === s.id ? "rgba(142,200,160,0.1)" : "transparent", border: "1px solid " + (novelExportSettings.sceneBreaks === s.id ? "rgba(142,200,160,0.3)" : theme.border), color: novelExportSettings.sceneBreaks === s.id ? "#8ec8a0" : theme.textDim }}>
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
               <button onClick={addAct} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px" }}>+ Act</button>
-              <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#e07050", border: "1px solid rgba(224,112,80,0.3)" }}>Delete</button>
+              <button onClick={() => deleteManuscript(activeMs.id)} style={{ ...tBtnS, fontSize: 10, padding: "5px 12px", color: "#e07050", borderColor: "rgba(224,112,80,0.3)" }}>Delete</button>
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
             {activeMs.acts.map((act, ai) => (
-              <div key={act.id} style={{ marginBottom: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}
+              <div key={act.id} style={{ marginBottom: 20 }}
+                draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; handleOutlineDragStart("act", act.id, null, null, ai); }}
+                onDragOver={(e) => handleOutlineDragOver(e, "act_" + act.id)}
+                onDrop={() => handleOutlineDrop("act", ai)} onDragEnd={() => { setOutlineDrag(null); setOutlineDragOver(null); }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer", opacity: outlineDragOver === "act_" + act.id ? 0.5 : 1, transition: "opacity 0.15s" }}
                   onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(act.id) ? n.delete(act.id) : n.add(act.id); return n; })}>
+                  <span style={{ cursor: "grab", color: theme.textDim, fontSize: 10, opacity: 0.4 }} title="Drag to reorder">⠿</span>
                   <div style={{ width: 4, height: 28, background: act.color, borderRadius: 2 }} />
                   <span style={{ fontSize: 10, color: theme.textDim, transform: novelOutlineCollapsed.has(act.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
                   <input style={{ background: "none", border: "none", fontFamily: "'Cinzel', serif", fontSize: 16, color: act.color, fontWeight: 700, letterSpacing: 1, outline: "none", flex: 1, cursor: "text", minWidth: 0 }}
@@ -345,9 +455,15 @@ export function NovelWorkspace({
                 </div>
                 {!novelOutlineCollapsed.has(act.id) && (
                   <div style={{ marginLeft: 20 }}>
-                    {act.chapters.map((ch) => (
-                      <div key={ch.id} style={{ marginBottom: 10, background: ta(theme.surface, 0.4), border: "1px solid " + theme.divider, borderRadius: 8, overflow: "hidden" }}>
+                    {act.chapters.map((ch, ci) => {
+                      const chProg = chapterWordProgress(ch);
+                      return (
+                      <div key={ch.id} style={{ marginBottom: 10, background: ta(theme.surface, 0.4), border: "1px solid " + (outlineDragOver === "ch_" + ch.id ? ta(theme.accent, 0.4) : theme.divider), borderRadius: 8, overflow: "hidden", transition: "border 0.15s" }}
+                        draggable onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = "move"; handleOutlineDragStart("chapter", ch.id, act.id, null, ci); }}
+                        onDragOver={(e) => { e.stopPropagation(); handleOutlineDragOver(e, "ch_" + ch.id); }}
+                        onDrop={(e) => { e.stopPropagation(); handleOutlineDrop("chapter", ci, act.id); }} onDragEnd={() => { setOutlineDrag(null); setOutlineDragOver(null); }}>
                         <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid " + theme.surface }}>
+                          <span style={{ cursor: "grab", color: theme.textDim, fontSize: 10, opacity: 0.4 }} title="Drag to reorder">⠿</span>
                           <span onClick={() => setNovelOutlineCollapsed((prev) => { const n = new Set(prev); n.has(ch.id) ? n.delete(ch.id) : n.add(ch.id); return n; })}
                             style={{ fontSize: 10, color: theme.textDim, cursor: "pointer", transform: novelOutlineCollapsed.has(ch.id) ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▾</span>
                           <input style={{ background: "none", border: "none", fontSize: 13, color: theme.text, fontWeight: 600, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit" }}
@@ -360,25 +476,49 @@ export function NovelWorkspace({
                           <button onClick={() => addScene(act.id, ch.id)} style={{ ...tBtnS, fontSize: 8, padding: "2px 8px" }}>+ Scene</button>
                           {act.chapters.length > 1 && <button onClick={() => deleteChapter(act.id, ch.id)} style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 11 }}>✕</button>}
                         </div>
-                        <div style={{ padding: "0 14px" }}>
-                          <input style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: theme.textDim, padding: "6px 0", outline: "none", fontStyle: "italic", fontFamily: "inherit", boxSizing: "border-box" }}
+                        <div style={{ padding: "0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                          <input style={{ flex: 1, background: "none", border: "none", fontSize: 11, color: theme.textDim, padding: "6px 0", outline: "none", fontStyle: "italic", fontFamily: "inherit", boxSizing: "border-box" }}
                             placeholder="Chapter synopsis..." value={ch.synopsis || ""} onChange={(e) => updateChapter(act.id, ch.id, { synopsis: e.target.value })} />
+                          {/* Chapter word target */}
+                          <input type="number" min="0" step="500" placeholder="Target" title="Chapter word target"
+                            value={ch.wordTarget || ""} onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => updateChapter(act.id, ch.id, { wordTarget: Number(e.target.value) || 0 })}
+                            style={{ width: 56, background: "none", border: "1px solid " + theme.border, borderRadius: 4, fontSize: 9, color: theme.textDim, padding: "2px 4px", outline: "none", fontFamily: "inherit", textAlign: "right" }} />
                         </div>
+                        {/* Chapter word target progress bar */}
+                        {chProg && (
+                          <div style={{ margin: "0 14px 6px", height: 3, background: theme.surface, borderRadius: 2, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: chProg.pct + "%", background: chProg.pct >= 100 ? "#8ec8a0" : chProg.pct > 50 ? theme.accent : "#e07050", borderRadius: 2, transition: "width 0.3s" }} />
+                          </div>
+                        )}
                         {!novelOutlineCollapsed.has(ch.id) && (
                           <div style={{ padding: "4px 14px 10px" }}>
-                            {ch.scenes.map((sc) => {
+                            {ch.scenes.map((sc, si) => {
                               const scWords = countWords(sc.body);
                               const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
+                              const scStatus = SCENE_STATUSES.find((s) => s.id === (sc.status || "draft")) || SCENE_STATUSES[0];
+                              const scProg = sceneWordProgress(sc);
                               return (
-                                <div key={sc.id} onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
-                                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: ta(theme.accent, 0.02), borderLeft: scColor.color !== "transparent" ? "3px solid " + scColor.color : "3px solid transparent" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.08); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.02); }}>
-                                  <span style={{ fontSize: 10, color: theme.accent }}>▸</span>
+                                <div key={sc.id}
+                                  draggable onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = "move"; handleOutlineDragStart("scene", sc.id, act.id, ch.id, si); }}
+                                  onDragOver={(e) => { e.stopPropagation(); handleOutlineDragOver(e, "sc_" + sc.id); }}
+                                  onDrop={(e) => { e.stopPropagation(); handleOutlineDrop("scene", si, act.id, ch.id); }}
+                                  onDragEnd={() => { setOutlineDrag(null); setOutlineDragOver(null); }}
+                                  onClick={() => { setNovelActiveScene({ actId: act.id, chId: ch.id, scId: sc.id }); setNovelView("write"); }}
+                                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginTop: 4, borderRadius: 5, cursor: "pointer", transition: "all 0.15s", background: outlineDragOver === "sc_" + sc.id ? ta(theme.accent, 0.12) : ta(theme.accent, 0.02), borderLeft: scColor.color !== "transparent" ? "3px solid " + scColor.color : "3px solid transparent" }}
+                                  onMouseEnter={(e) => { if (!outlineDragOver) e.currentTarget.style.background = ta(theme.accent, 0.08); }} onMouseLeave={(e) => { if (!outlineDragOver) e.currentTarget.style.background = ta(theme.accent, 0.02); }}>
+                                  <span style={{ cursor: "grab", color: theme.textDim, fontSize: 9, opacity: 0.3 }} title="Drag to reorder">⠿</span>
+                                  {/* Scene status badge */}
+                                  <span onClick={(e) => { e.stopPropagation(); cycleStatus(act.id, ch.id, sc.id); }}
+                                    title={scStatus.label + " — click to cycle"} style={{ fontSize: 9, color: scStatus.color, cursor: "pointer", minWidth: 14, textAlign: "center" }}>{scStatus.icon}</span>
                                   <input style={{ background: "none", border: "none", fontSize: 12, color: theme.textMuted, outline: "none", flex: 1, minWidth: 0, fontFamily: "inherit", cursor: "pointer" }}
                                     value={sc.title} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); updateScene(act.id, ch.id, sc.id, { title: e.target.value }); }} />
                                   {sc.povCharacter && <span style={{ fontSize: 9, color: "#c084fc", background: "rgba(192,132,252,0.1)", padding: "1px 6px", borderRadius: 8 }}>{sc.povCharacter}</span>}
                                   {sc.label && <span style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : theme.textDim, background: (scColor.color !== "transparent" ? scColor.color : theme.textDim) + "18", padding: "1px 6px", borderRadius: 8 }}>{sc.label || scColor.label}</span>}
-                                  <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + " w" : "empty"}</span>
+                                  {/* Word count with optional target */}
+                                  <span style={{ fontSize: 9, color: scProg ? (scProg.pct >= 100 ? "#8ec8a0" : theme.textDim) : theme.textDim }}>
+                                    {scWords > 0 ? scWords.toLocaleString() : "—"}{scProg ? "/" + scProg.target.toLocaleString() : ""} w
+                                  </span>
                                   {sc.notes && <span style={{ fontSize: 9, color: theme.accent }} title="Has notes">📝</span>}
                                   {sc.snapshots?.length > 0 && <span style={{ fontSize: 9, color: "#7ec8e3" }} title={sc.snapshots.length + " snapshot(s)"}>📸{sc.snapshots.length}</span>}
                                   {ch.scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(act.id, ch.id, sc.id); }} style={{ background: "none", border: "none", color: "#334455", cursor: "pointer", fontSize: 10 }}>✕</button>}
@@ -388,7 +528,7 @@ export function NovelWorkspace({
                           </div>
                         )}
                       </div>
-                    ))}
+                    );})}
                   </div>
                 )}
               </div>
@@ -432,6 +572,8 @@ export function NovelWorkspace({
                     {ch.scenes.map((sc, si) => {
                       const scWords = countWords(sc.body);
                       const scColor = SCENE_COLORS.find((c) => c.id === sc.color) || SCENE_COLORS[0];
+                      const scStatus = SCENE_STATUSES.find((s) => s.id === (sc.status || "draft")) || SCENE_STATUSES[0];
+                      const scProg = sceneWordProgress(sc);
                       return (
                         <div key={sc.id}
                           draggable onDragStart={() => setCorkboardDragId(sc.id)}
@@ -441,23 +583,38 @@ export function NovelWorkspace({
                           style={{
                             width: isMobile ? "100%" : 200, minHeight: 140, padding: "14px 16px",
                             background: corkboardDragId === sc.id ? ta(theme.accent, 0.15) : ta(theme.surface, 0.6),
-                            border: "1px solid " + (corkboardDragId === sc.id ? ta(theme.accent, 0.4) : theme.border),
                             borderTop: "3px solid " + (scColor.color !== "transparent" ? scColor.color : theme.border),
+                            borderRight: "1px solid " + (corkboardDragId === sc.id ? ta(theme.accent, 0.4) : theme.border),
+                            borderBottom: "1px solid " + (corkboardDragId === sc.id ? ta(theme.accent, 0.4) : theme.border),
+                            borderLeft: "1px solid " + (corkboardDragId === sc.id ? ta(theme.accent, 0.4) : theme.border),
                             borderRadius: 8, cursor: "grab", transition: "all 0.2s", position: "relative",
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)"; }}
                           onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
-                          <div style={{ fontSize: 13, color: theme.text, fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>{sc.title}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                            <div style={{ fontSize: 13, color: theme.text, fontWeight: 600, lineHeight: 1.3, flex: 1 }}>{sc.title}</div>
+                            <span onClick={(e) => { e.stopPropagation(); cycleStatus(act.id, ch.id, sc.id); }}
+                              title={scStatus.label} style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: scStatus.color + "18", color: scStatus.color, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+                              {scStatus.icon}
+                            </span>
+                          </div>
                           {sc.povCharacter && <div style={{ fontSize: 9, color: "#c084fc", marginBottom: 4 }}>POV: {sc.povCharacter}</div>}
                           {sc.label && <div style={{ fontSize: 9, color: scColor.color !== "transparent" ? scColor.color : "#6b7b8d", marginBottom: 4 }}>{sc.label}</div>}
                           <div style={{ fontSize: 10, color: theme.textDim, lineHeight: 1.4, overflow: "hidden", maxHeight: 52 }}>
                             {sc.body ? stripTags(sc.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "$1")).slice(0, 120) + (stripTags(sc.body).length > 120 ? "..." : "") : <span style={{ fontStyle: "italic", color: theme.textDim }}>Empty scene</span>}
                           </div>
-                          <div style={{ position: "absolute", bottom: 10, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}</span>
-                            <div style={{ display: "flex", gap: 4 }}>
-                              {sc.notes && <span style={{ fontSize: 9 }} title="Has notes">📝</span>}
-                              {sc.snapshots?.length > 0 && <span style={{ fontSize: 9 }} aria-hidden="true">📸</span>}
+                          <div style={{ position: "absolute", bottom: 10, left: 16, right: 16 }}>
+                            {scProg && (
+                              <div style={{ height: 2, background: theme.surface, borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
+                                <div style={{ height: "100%", width: scProg.pct + "%", background: scProg.pct >= 100 ? "#8ec8a0" : theme.accent, borderRadius: 2, transition: "width 0.3s" }} />
+                              </div>
+                            )}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: 9, color: theme.textDim }}>{scWords > 0 ? scWords.toLocaleString() + "w" : "—"}{scProg ? "/" + scProg.target.toLocaleString() : ""}</span>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                {sc.notes && <span style={{ fontSize: 9 }} title="Has notes">📝</span>}
+                                {sc.snapshots?.length > 0 && <span style={{ fontSize: 9 }} aria-hidden="true">📸</span>}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -465,8 +622,8 @@ export function NovelWorkspace({
                     })}
                     <div onClick={() => addScene(act.id, ch.id)}
                       style={{ width: 200, minHeight: 140, border: "2px dashed #1e2a3a", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + ta(theme.accent, 0.4); }}
-                      onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + theme.border; }}>
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
                       <span style={{ color: theme.textDim, fontSize: 24 }}>+</span>
                     </div>
                   </div>
@@ -603,14 +760,14 @@ export function NovelWorkspace({
               <button onClick={() => navigateScene(-1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>←</button>
               <button onClick={() => navigateScene(1)} style={{ ...tBtnS, fontSize: 10, padding: "3px 10px" }}>→</button>
               <div style={{ width: 1, height: 16, background: theme.border }} />
-              <button onClick={() => setNovelFocusMode(true)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", border: "1px solid rgba(192,132,252,0.3)" }} title="Distraction-free writing">{isMobile ? "⊡" : "⊡ Focus"}</button>
+              <button onClick={() => setNovelFocusMode(true)} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }} title="Distraction-free writing">{isMobile ? "⊡" : "⊡ Focus"}</button>
               {!isMobile && <button onClick={() => setNovelSplitPane(novelSplitPane ? null : "notes")} style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", background: novelSplitPane ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane ? theme.accent : theme.textMuted }}>
                 ◫ Split
               </button>}
               {/* AI Proofread button */}
               <button onClick={handleProofread} disabled={proofLoading || !settings.aiKeys?.[settings.aiProvider || "anthropic"]}
                 title={settings.aiKeys?.[settings.aiProvider || "anthropic"] ? "Proofread scene with AI" : "Add an API key in Settings to enable"}
-                style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: proofPanelOpen ? "#8ec8a0" : proofLoading ? theme.accent : theme.textDim, border: proofPanelOpen ? "1px solid rgba(142,200,160,0.3)" : "1px solid " + theme.border, background: proofPanelOpen ? "rgba(142,200,160,0.06)" : "transparent", opacity: settings.aiKeys?.[settings.aiProvider || "anthropic"] ? 1 : 0.4 }}>
+                style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: proofPanelOpen ? "#8ec8a0" : proofLoading ? theme.accent : theme.textDim, borderColor: proofPanelOpen ? "rgba(142,200,160,0.3)" : undefined, background: proofPanelOpen ? "rgba(142,200,160,0.06)" : "transparent", opacity: settings.aiKeys?.[settings.aiProvider || "anthropic"] ? 1 : 0.4 }}>
                 {proofLoading ? "⟳ Checking…" : isMobile ? "✓" : "✓ Proofread"}
               </button>
               {proofPanelOpen && proofSuggestions.length > 0 && (
@@ -625,7 +782,7 @@ export function NovelWorkspace({
                   }}
                   disabled={aiAssistLoading || !hasApiKey}
                   title={hasApiKey ? (getSelection() ? "Rewrite selected text" : "AI Writing Assistant") : "Add an API key in Settings to enable"}
-                  style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: aiAssistLoading ? theme.accent : aiAssistResult ? "#c084fc" : theme.textDim, border: aiAssistMenuOpen ? "1px solid rgba(192,132,252,0.3)" : "1px solid " + theme.border, background: aiAssistMenuOpen ? "rgba(192,132,252,0.06)" : "transparent", opacity: hasApiKey ? 1 : 0.4 }}>
+                  style={{ ...tBtnS, fontSize: 10, padding: "3px 12px", color: aiAssistLoading ? theme.accent : aiAssistResult ? "#c084fc" : theme.textDim, borderColor: aiAssistMenuOpen ? "rgba(192,132,252,0.3)" : undefined, background: aiAssistMenuOpen ? "rgba(192,132,252,0.06)" : "transparent", opacity: hasApiKey ? 1 : 0.4 }}>
                   {aiAssistLoading ? "⟳ Writing…" : isMobile ? "✦" : "✦ AI Assist"} {!isMobile && !aiAssistLoading && <span style={{ fontSize: 8, opacity: 0.6 }}>▾</span>}
                 </button>
                 {aiAssistMenuOpen && (
@@ -782,7 +939,7 @@ export function NovelWorkspace({
                         <button onClick={() => {
                           proofSuggestions.forEach((s) => applySuggestion(s, 0));
                           setProofSuggestions([]);
-                        }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#8ec8a0", border: "1px solid rgba(142,200,160,0.3)" }}>Accept All</button>
+                        }} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>Accept All</button>
                         <button onClick={() => { setProofSuggestions([]); setProofPanelOpen(false); }} style={{ ...tBtnS, fontSize: 9, padding: "3px 8px" }}>Clear All</button>
                       </div>
                       {proofSuggestions.map((s, i) => {
@@ -806,7 +963,7 @@ export function NovelWorkspace({
                               <button onClick={() => {
                                 applySuggestion(s, i);
                                 setProofSuggestions((prev) => prev.filter((_, idx) => idx !== i));
-                              }} style={{ ...tBtnS, fontSize: 9, padding: "2px 8px", color: "#8ec8a0", border: "1px solid rgba(142,200,160,0.3)" }}>Apply</button>
+                              }} style={{ ...tBtnS, fontSize: 9, padding: "2px 8px", color: "#8ec8a0", borderColor: "rgba(142,200,160,0.3)" }}>Apply</button>
                               <button onClick={() => {
                                 setProofSuggestions((prev) => prev.filter((_, idx) => idx !== i));
                               }} style={{ ...tBtnS, fontSize: 9, padding: "2px 8px", color: theme.textDim }} title="Dismiss">✕</button>
@@ -909,11 +1066,27 @@ export function NovelWorkspace({
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 {/* Scene metadata bar */}
                 <div style={{ padding: "6px 20px", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: ta(theme.surface, 0.3) }}>
+                  {/* Scene status */}
+                  {(() => { const st = SCENE_STATUSES.find((s) => s.id === (scene.status || "draft")) || SCENE_STATUSES[0]; return (
+                    <span onClick={() => cycleStatus(act.id, ch.id, scene.id)} title={st.label + " — click to cycle"}
+                      style={{ fontSize: 9, padding: "2px 8px", borderRadius: 8, cursor: "pointer", background: st.color + "18", color: st.color, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>
+                      {st.icon} {st.label}
+                    </span>
+                  ); })()}
+                  <div style={{ width: 1, height: 12, background: theme.divider }} />
                   <input style={{ background: "none", border: "none", fontSize: 10, color: "#c084fc", outline: "none", width: 100, fontFamily: "inherit" }}
                     placeholder="POV character..." value={scene.povCharacter || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { povCharacter: e.target.value })} />
                   <div style={{ width: 1, height: 12, background: theme.divider }} />
                   <input style={{ background: "none", border: "none", fontSize: 10, color: theme.textDim, outline: "none", flex: 1, fontFamily: "inherit" }}
                     placeholder="Scene label / notes tag..." value={scene.label || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { label: e.target.value })} />
+                  <div style={{ width: 1, height: 12, background: theme.divider }} />
+                  {/* Scene word target */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 9, color: theme.textDim }}>Target:</span>
+                    <input type="number" min="0" step="100" placeholder="—"
+                      value={scene.wordTarget || ""} onChange={(e) => updateScene(act.id, ch.id, scene.id, { wordTarget: Number(e.target.value) || 0 })}
+                      style={{ width: 48, background: "none", border: "1px solid " + theme.border, borderRadius: 3, fontSize: 9, color: theme.textDim, padding: "1px 4px", outline: "none", fontFamily: "inherit", textAlign: "right" }} />
+                  </div>
                   <div style={{ width: 1, height: 12, background: theme.divider }} />
                   <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} title="Save snapshot of current text"
                     style={{ background: "none", border: "1px solid " + theme.border, borderRadius: 4, color: "#7ec8e3", cursor: "pointer", fontSize: 9, padding: "2px 8px" }}>📸 Snapshot</button>
@@ -924,6 +1097,15 @@ export function NovelWorkspace({
                     </span>
                   )}
                 </div>
+                {/* Scene word target progress bar */}
+                {(() => { const prog = sceneWordProgress(scene); return prog ? (
+                  <div style={{ padding: "0 20px", background: ta(theme.surface, 0.2), display: "flex", alignItems: "center", gap: 8, height: 18, flexShrink: 0 }}>
+                    <div style={{ flex: 1, height: 3, background: theme.surface, borderRadius: 2, overflow: "hidden", maxWidth: 300 }}>
+                      <div style={{ height: "100%", width: prog.pct + "%", background: prog.pct >= 100 ? "#8ec8a0" : prog.pct > 50 ? theme.accent : "#e07050", borderRadius: 2, transition: "width 0.3s" }} />
+                    </div>
+                    <span style={{ fontSize: 9, color: prog.pct >= 100 ? "#8ec8a0" : theme.textDim }}>{prog.words.toLocaleString()}/{prog.target.toLocaleString()} ({prog.pct}%)</span>
+                  </div>
+                ) : null; })()}
 
                 {/* Snapshot viewer */}
                 {novelSnapshotView !== null && scene.snapshots?.length > 0 && (
@@ -947,7 +1129,7 @@ export function NovelWorkspace({
                           {scene.snapshots[novelSnapshotView].body.slice(0, 300) || "(empty)"}...
                         </div>
                         <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, novelSnapshotView); setNovelSnapshotView(null); }}
-                          style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", marginTop: 6, color: theme.accent, border: "1px solid " + ta(theme.accent, 0.3) }}>
+                          style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", marginTop: 6, color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>
                           ↩ Restore this snapshot
                         </button>
                       </div>
@@ -1124,6 +1306,7 @@ export function NovelWorkspace({
                       { id: "notes", icon: "📝", label: "Notes" },
                       { id: "codex", icon: "📖", label: "Codex" },
                       { id: "snapshots", icon: "📸", label: "Snapshots" },
+                      { id: "scene", icon: "◫", label: "Scene" },
                     ].map((tab) => (
                       <span key={tab.id} onClick={() => setNovelSplitPane(tab.id)}
                         style={{ fontSize: 10, padding: "4px 10px", borderRadius: 6, cursor: "pointer", background: novelSplitPane === tab.id ? ta(theme.accent, 0.1) : "transparent", color: novelSplitPane === tab.id ? theme.accent : theme.textDim, border: "1px solid " + (novelSplitPane === tab.id ? ta(theme.accent, 0.25) : "transparent"), transition: "all 0.15s" }}>
@@ -1209,7 +1392,7 @@ export function NovelWorkspace({
                     <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                         <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#7ec8e3", letterSpacing: 0.5 }}>Scene Snapshots</span>
-                        <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#7ec8e3", border: "1px solid rgba(126,200,227,0.3)" }}>📸 Save</button>
+                        <button onClick={() => saveSnapshot(act.id, ch.id, scene.id)} style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: "#7ec8e3", borderColor: "rgba(126,200,227,0.3)" }}>📸 Save</button>
                       </div>
                       {(!scene.snapshots || scene.snapshots.length === 0) ? (
                         <div style={{ textAlign: "center", padding: "30px 10px", color: theme.textDim }}>
@@ -1230,10 +1413,63 @@ export function NovelWorkspace({
                               {snap.body.slice(0, 150) || "(empty)"}...
                             </div>
                             <button onClick={() => { restoreSnapshot(act.id, ch.id, scene.id, si); }}
-                              style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: theme.accent, border: "1px solid " + ta(theme.accent, 0.3) }}>↩ Restore</button>
+                              style={{ ...tBtnS, fontSize: 9, padding: "3px 10px", color: theme.accent, borderColor: ta(theme.accent, 0.3) }}>↩ Restore</button>
                           </div>
                         ))
                       )}
+                    </div>
+                  )}
+
+                  {/* SCENE SPLIT PANE — side-by-side scene comparison */}
+                  {novelSplitPane === "scene" && (
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      <div style={{ padding: "10px 14px", borderBottom: "1px solid " + theme.divider, flexShrink: 0 }}>
+                        <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#c084fc", letterSpacing: 0.5 }}>Reference Scene</span>
+                        <select value={novelSplitSceneId || ""}
+                          onChange={(e) => setNovelSplitSceneId(e.target.value || null)}
+                          style={{ display: "block", width: "100%", marginTop: 6, background: theme.inputBg, border: "1px solid " + theme.border, borderRadius: 6, fontSize: 11, color: theme.text, padding: "5px 8px", outline: "none" }}>
+                          <option value="">Choose a scene...</option>
+                          {allScenes.filter((s) => s.id !== scene.id).map((s) => (
+                            <option key={s.id} value={s.id}>{s.actTitle} › {s.chTitle} › {s.title}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {(() => {
+                        const refScene = allScenes.find((s) => s.id === novelSplitSceneId);
+                        if (!refScene) return (
+                          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: theme.textDim, padding: 20 }}>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 28, marginBottom: 8 }}>◫</div>
+                              <p style={{ fontSize: 12 }}>Select a scene to view side by side.</p>
+                              <p style={{ fontSize: 10, color: "#334455" }}>Compare notes, check continuity, or reference earlier work.</p>
+                            </div>
+                          </div>
+                        );
+                        const refStatus = SCENE_STATUSES.find((st) => st.id === (refScene.status || "draft")) || SCENE_STATUSES[0];
+                        return (
+                          <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 13, color: theme.text, fontWeight: 600 }}>{refScene.title}</span>
+                              <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: refStatus.color + "18", color: refStatus.color }}>{refStatus.icon} {refStatus.label}</span>
+                            </div>
+                            {refScene.povCharacter && <div style={{ fontSize: 10, color: "#c084fc", marginBottom: 4 }}>POV: {refScene.povCharacter}</div>}
+                            <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 8 }}>{countWords(refScene.body).toLocaleString()} words</div>
+                            <div style={{
+                              fontSize: 13, fontFamily: editorFontFamily, lineHeight: 1.8, color: theme.textMuted,
+                              padding: "12px 16px", background: ta(theme.surface, 0.4), borderRadius: 8, border: "1px solid " + theme.border,
+                              whiteSpace: "pre-wrap", wordWrap: "break-word", overflowWrap: "break-word",
+                            }}
+                              dangerouslySetInnerHTML={{ __html: (refScene.body || "<em style='color:" + theme.textDim + "'>Empty scene</em>").replace(/@\[([^\]]+)\]\(([^)]+)\)/g, '<span style="color:' + theme.accent + ';font-weight:600">$1</span>') }}
+                            />
+                            {refScene.notes && (
+                              <div style={{ marginTop: 12, padding: "10px 12px", background: ta(theme.surface, 0.3), borderRadius: 6, border: "1px solid " + theme.border }}>
+                                <div style={{ fontSize: 10, color: theme.textDim, fontWeight: 600, marginBottom: 4 }}>📝 Notes</div>
+                                <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{refScene.notes}</div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

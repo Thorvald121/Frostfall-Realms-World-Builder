@@ -143,7 +143,6 @@ export const FEATURE_MODULES = [
   { id: "timeline", icon: "⏳", label: "Timeline", description: "Chronological view of world events" },
   { id: "graph", icon: "◉", label: "Relationship Web", description: "Visual graph of entity connections" },
   { id: "family_tree", icon: "🌳", label: "Family Tree", description: "Character lineage and family ties" },
-  { id: "map", icon: "🗺", label: "Map Builder", description: "Interactive world map with pins" },
   { id: "novel", icon: "✒", label: "Novel Writing", description: "Scene-based manuscript editor" },
   { id: "generator", icon: "🎲", label: "Generators", description: "Random NPC, location, and plot generators" },
   { id: "sessions", icon: "📓", label: "Session Notes", description: "Campaign session logging for DMs" },
