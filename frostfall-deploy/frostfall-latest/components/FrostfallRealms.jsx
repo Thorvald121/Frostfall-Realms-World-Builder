@@ -1759,12 +1759,13 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } if (isMobile) setSidebarOpen(false); }, [articles, isMobile]);
   const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); closeSidebar(); };
   const goDash = () => { setView("dashboard"); closeSidebar(); };
-  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
+  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleBodyInternalRef.current = false; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
     setCreateCat(article.category);
     setEditingId(article.id);
     setArticlePreviewMode(false);
     setArticleTablePicker(false);
+    articleBodyInternalRef.current = false;
     setFormData({
       title: article.title,
       summary: article.summary || "",
@@ -1781,6 +1782,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const goDuplicate = (article) => {
     setCreateCat(article.category);
     setEditingId(null);
+    articleBodyInternalRef.current = false;
     setFormData({
       title: article.title + " (Copy)",
       summary: article.summary || "",
@@ -1925,50 +1927,65 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     // and other expanded warnings remain visible for the user to continue fixing
   };
 
-  // Smart insert a link suggestion — find where the name appears in body and wrap it in-place
-  const smartInsertLink = (sug) => {
-    const richMention = "@[" + sug.article.title + "](" + sug.article.id + ")";
-    // Don't add if already linked
-    if (formData.body.includes(richMention) || formData.body.includes("@[" + sug.article.title + "]")) return;
+// Smart insert a link suggestion — find where the name appears in body and wrap it in-place
+const smartInsertLink = (sug) => {
+  const richMention = "@[" + sug.article.title + "](" + sug.article.id + ")";
+  // Don't add if already linked
+  if (formData.body.includes(richMention) || formData.body.includes("@[" + sug.article.title + "]")) return;
 
-    // Helper: check if a position falls inside an existing @mention
-    const findEnclosingMention = (body, pos) => {
-      const legacyPattern = /@(?!\[)([\w]+)/g;
-      let m;
-      while ((m = legacyPattern.exec(body)) !== null) {
-        if (pos >= m.index && pos < m.index + m[0].length) return { start: m.index, end: m.index + m[0].length, text: m[0] };
-      }
-      return null;
-    };
-
-    setFormData((prev) => {
-      let newBody = prev.body;
-      const bodyLower = lower(newBody);
-
-      // Strategy 1: exact title match
-      const titleLower = lower(sug?.article?.title);
-      const exactIdx = bodyLower.indexOf(titleLower);
-      if (exactIdx !== -1) {
-        return { ...prev, body: newBody.substring(0, exactIdx) + richMention + newBody.substring(exactIdx + sug.article.title.length) };
-      }
-
-      // Strategy 2: matched text — but check if it's inside an @mention
-      const searchText = lower(sug?.matchText || sug?.match || "");
-      if (searchText) {
-        const matchIdx = bodyLower.indexOf(searchText);
-        if (matchIdx !== -1) {
-          const enclosing = findEnclosingMention(newBody, matchIdx);
-          if (enclosing) {
-            return { ...prev, body: newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end) };
-          }
-          return { ...prev, body: newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length) };
-        }
-      }
-
-      // Fallback: append
-      return { ...prev, body: newBody + (newBody ? "\n\n" : "") + richMention };
-    });
+  // Helper: check if a position falls inside an existing @mention
+  const findEnclosingMention = (body, pos) => {
+    const legacyPattern = /@(?!\[)([\w]+)/g;
+    let m;
+    while ((m = legacyPattern.exec(body)) !== null) {
+      if (pos >= m.index && pos < m.index + m[0].length) return { start: m.index, end: m.index + m[0].length, text: m[0] };
+    }
+    return null;
   };
+
+  setFormData((prev) => {
+    let newBody = prev.body;
+    const bodyLower = lower(newBody);
+
+    // Strategy 1: exact title match
+    const titleLower = lower(sug?.article?.title);
+    const exactIdx = bodyLower.indexOf(titleLower);
+    if (exactIdx !== -1) {
+      return { ...prev, body: newBody.substring(0, exactIdx) + richMention + newBody.substring(exactIdx + sug.article.title.length) };
+    }
+
+    // Strategy 2: use the computed body position first to avoid replacing the wrong occurrence
+    if (Number.isInteger(sug?.matchPosition) && sug.matchPosition >= 0 && sug?.matchText) {
+      const slice = newBody.substring(sug.matchPosition, sug.matchPosition + sug.matchText.length);
+      if (lower(slice) === lower(sug.matchText)) {
+        const enclosing = findEnclosingMention(newBody, sug.matchPosition);
+        if (enclosing) {
+          return { ...prev, body: newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end) };
+        }
+        return {
+          ...prev,
+          body: newBody.substring(0, sug.matchPosition) + richMention + newBody.substring(sug.matchPosition + sug.matchText.length),
+        };
+      }
+    }
+
+    // Strategy 3: matched text fallback — but check if it's inside an @mention
+    const searchText = lower(sug?.matchText || sug?.match || "");
+    if (searchText) {
+      const matchIdx = bodyLower.indexOf(searchText);
+      if (matchIdx !== -1) {
+        const enclosing = findEnclosingMention(newBody, matchIdx);
+        if (enclosing) {
+          return { ...prev, body: newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end) };
+        }
+        return { ...prev, body: newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length) };
+      }
+    }
+
+    // Fallback: append
+    return { ...prev, body: newBody + (newBody ? "\n\n" : "") + richMention };
+  });
+};
 
   // ─── Article Editor Helpers ────────────────────────────────────
   const isHtmlBody = useCallback((text) => /<[a-z][\s\S]*?>/i.test(text || ""), []);

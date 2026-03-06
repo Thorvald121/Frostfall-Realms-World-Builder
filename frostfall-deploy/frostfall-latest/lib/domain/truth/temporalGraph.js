@@ -60,10 +60,15 @@ export function extractMentionIds(body) {
  *
  * Return: boolean
  *
+ * IMPORTANT:
+ * A codex entry should be allowed to reference *past* people/events (historical mentions).
+ * The true "impossibility" is referencing something that has not happened / does not exist yet
+ * relative to the source entry's time.
+ *
  * Rule:
- *  - sourceYear = source.temporal.active_start || source.temporal.year
- *  - targetEnd  = target.temporal.death_year || target.temporal.active_end
- *  - if sourceYear > targetEnd => impossible
+ *  - sourceYear   = source.temporal.active_start || source.temporal.year
+ *  - targetStart  = target.temporal.birth_year || target.temporal.active_start || target.temporal.year
+ *  - if sourceYear < targetStart => impossible
  */
 export function isImpossibleReference(sourceId, targetId, graph) {
   const g = graph || null;
@@ -84,10 +89,10 @@ export function isImpossibleReference(sourceId, targetId, graph) {
   const sourceYear = toIntOrNull(st.active_start ?? st.year);
   if (sourceYear === null) return false;
 
-  const targetEnd = toIntOrNull(tt.death_year ?? tt.active_end);
-  if (targetEnd === null) return false;
+  const targetStart = toIntOrNull(tt.birth_year ?? tt.active_start ?? tt.year);
+  if (targetStart === null) return false;
 
-  return sourceYear > targetEnd;
+  return sourceYear < targetStart;
 }
 
 /**

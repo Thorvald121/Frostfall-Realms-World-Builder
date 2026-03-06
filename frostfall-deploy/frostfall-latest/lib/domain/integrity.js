@@ -389,10 +389,10 @@ export function checkArticleIntegrity(data, articles, graphOrExclude = null, may
         const tt = target?.temporal || {};
         if (tt?.type === "concept") continue;
 
-        const targetEnd = getTemporalTargetEndYear(tt);
-        if (targetEnd === null) continue;
+        const targetStart = getTemporalTargetStartYear(tt);
+        if (targetStart === null) continue;
 
-        if (sourceYearDraft > targetEnd) {
+        if (sourceYearDraft < targetStart) {
           warnings.push({
             type: "temporal_impossible",
             severity: "warning",

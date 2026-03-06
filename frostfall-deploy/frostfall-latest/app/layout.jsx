@@ -1,6 +1,7 @@
 // app/layout.jsx
 import "./themes.css";
 import { Cinzel, Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const cinzel = Cinzel({
@@ -20,6 +21,7 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${cinzel.variable} ${inter.variable}`}>
       <body>
         {children}
+        <Analytics />
         <SpeedInsights />
       </body>
     </html>
