@@ -60,15 +60,11 @@ export function extractMentionIds(body) {
  *
  * Return: boolean
  *
- * IMPORTANT:
- * A codex entry should be allowed to reference *past* people/events (historical mentions).
- * The true "impossibility" is referencing something that has not happened / does not exist yet
- * relative to the source entry's time.
+ * Rule: A reference is impossible when the SOURCE ended BEFORE the TARGET began.
+ * This means the source couldn't have known about the target.
  *
- * Rule:
- *  - sourceYear   = source.temporal.active_start || source.temporal.year
- *  - targetStart  = target.temporal.birth_year || target.temporal.active_start || target.temporal.year
- *  - if sourceYear < targetStart => impossible
+ * Historical references (source starts AFTER target ends) are perfectly valid —
+ * a modern article can reference an ancient event or deceased character.
  */
 export function isImpossibleReference(sourceId, targetId, graph) {
   const g = graph || null;
@@ -84,15 +80,23 @@ export function isImpossibleReference(sourceId, targetId, graph) {
   const st = s.temporal || {};
   const tt = t.temporal || {};
 
+  // Concepts are always referenceable
   if (tt?.type === "concept") return false;
+  if (st?.type === "concept") return false;
 
-  const sourceYear = toIntOrNull(st.active_start ?? st.year);
-  if (sourceYear === null) return false;
+  // Immortals with no end date can reference anything
+  if (st?.type === "immortal" && !st.active_end && !st.death_year) return false;
 
-  const targetStart = toIntOrNull(tt.birth_year ?? tt.active_start ?? tt.year);
+  // The source needs an end date (death_year or active_end) for the check to apply
+  const sourceEnd = toIntOrNull(st.death_year ?? st.active_end);
+  if (sourceEnd === null) return false;
+
+  // The target needs a start date for the check to apply
+  const targetStart = toIntOrNull(tt.active_start ?? tt.year);
   if (targetStart === null) return false;
 
-  return sourceYear < targetStart;
+  // Impossible: source ended before target even began
+  return sourceEnd < targetStart;
 }
 
 /**

@@ -291,7 +291,7 @@ const S = {
   navItem: (a, t) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px", cursor: "pointer", background: a ? "linear-gradient(90deg, " + (t ? t.accentBg : "rgba(240,192,64,0.12)") + " 0%, transparent 100%)" : "transparent", borderLeft: a ? "2px solid " + (t ? t.accent : "#f0c040") : "2px solid transparent", color: a ? (t ? t.accent : "#f0c040") : (t ? t.textMuted : "#8899aa"), fontSize: 13, fontWeight: a ? 600 : 400, transition: "all 0.2s", letterSpacing: 0.5 }),
   topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 28px", borderBottom: "1px solid #1a2435", background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)", position: "relative", zIndex: 50, flexShrink: 0 },
   searchBox: { background: "#111827", border: "1px solid #1e2a3a", borderRadius: 6, padding: "7px 14px 7px 34px", color: "#d4c9a8", fontSize: 13, width: 320, outline: "none", fontFamily: "inherit" },
-  content: { flex: 1, overflowY: "auto", overflowX: "hidden", padding: "0 28px 40px" },
+  content: { flex: 1, overflowY: "auto", padding: "0 28px 40px" },
   statCard: { flex: "1 1 100px", background: "linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(15,20,32,0.9) 100%)", border: "1px solid #1e2a3a", borderRadius: 8, padding: "16px 18px", position: "relative", overflow: "hidden" },
   sTitle: { fontFamily: "'Cinzel', 'Palatino Linotype', serif", fontSize: 16, fontWeight: 600, color: "#d4c9a8", marginTop: 32, marginBottom: 16, letterSpacing: 1 },
   catBadge: (c) => ({ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, color: c, background: c + "18", padding: "3px 10px", borderRadius: 12, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap" }),
@@ -1759,18 +1759,21 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } if (isMobile) setSidebarOpen(false); }, [articles, isMobile]);
   const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); closeSidebar(); };
   const goDash = () => { setView("dashboard"); closeSidebar(); };
-  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleBodyInternalRef.current = false; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
+  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
     setCreateCat(article.category);
     setEditingId(article.id);
     setArticlePreviewMode(false);
     setArticleTablePicker(false);
-    articleBodyInternalRef.current = false;
+    // Convert plain text body to HTML on edit
+    const bodyHtml = (article.body && !/<[a-z][\s\S]*?>/i.test(article.body))
+      ? article.body.split("\n").map((line) => line.trim() ? "<p>" + line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" : "<p><br></p>").join("")
+      : (article.body || "");
     setFormData({
       title: article.title,
       summary: article.summary || "",
       fields: { ...article.fields },
-      body: article.body || "",
+      body: bodyHtml,
       tags: (article.tags || []).join(", "),
       temporal: article.temporal ? { ...article.temporal } : null,
       portrait: article.portrait || null,
@@ -1782,7 +1785,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const goDuplicate = (article) => {
     setCreateCat(article.category);
     setEditingId(null);
-    articleBodyInternalRef.current = false;
     setFormData({
       title: article.title + " (Copy)",
       summary: article.summary || "",
@@ -1927,65 +1929,75 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     // and other expanded warnings remain visible for the user to continue fixing
   };
 
-// Smart insert a link suggestion — find where the name appears in body and wrap it in-place
-const smartInsertLink = (sug) => {
-  const richMention = "@[" + sug.article.title + "](" + sug.article.id + ")";
-  // Don't add if already linked
-  if (formData.body.includes(richMention) || formData.body.includes("@[" + sug.article.title + "]")) return;
+  // Smart insert a link suggestion — find where the name appears in body and wrap it in-place
+  const smartInsertLink = (sug) => {
+    const richMention = "@[" + sug.article.title + "](" + sug.article.id + ")";
+    // Don't add if already linked
+    if (formData.body.includes(richMention) || formData.body.includes("@[" + sug.article.title + "]")) return;
 
-  // Helper: check if a position falls inside an existing @mention
-  const findEnclosingMention = (body, pos) => {
-    const legacyPattern = /@(?!\[)([\w]+)/g;
-    let m;
-    while ((m = legacyPattern.exec(body)) !== null) {
-      if (pos >= m.index && pos < m.index + m[0].length) return { start: m.index, end: m.index + m[0].length, text: m[0] };
-    }
-    return null;
-  };
+    setFormData((prev) => {
+      let body = prev.body;
+      const titleToFind = sug.article.title;
+      const matchText = sug?.matchText || sug?.match || titleToFind;
 
-  setFormData((prev) => {
-    let newBody = prev.body;
-    const bodyLower = lower(newBody);
+      if (isHtmlBody(body)) {
+        // HTML body — use DOM-based replacement to avoid breaking tags
+        const div = document.createElement("div");
+        div.innerHTML = body;
+        let replaced = false;
 
-    // Strategy 1: exact title match
-    const titleLower = lower(sug?.article?.title);
-    const exactIdx = bodyLower.indexOf(titleLower);
-    if (exactIdx !== -1) {
-      return { ...prev, body: newBody.substring(0, exactIdx) + richMention + newBody.substring(exactIdx + sug.article.title.length) };
-    }
-
-    // Strategy 2: use the computed body position first to avoid replacing the wrong occurrence
-    if (Number.isInteger(sug?.matchPosition) && sug.matchPosition >= 0 && sug?.matchText) {
-      const slice = newBody.substring(sug.matchPosition, sug.matchPosition + sug.matchText.length);
-      if (lower(slice) === lower(sug.matchText)) {
-        const enclosing = findEnclosingMention(newBody, sug.matchPosition);
-        if (enclosing) {
-          return { ...prev, body: newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end) };
-        }
-        return {
-          ...prev,
-          body: newBody.substring(0, sug.matchPosition) + richMention + newBody.substring(sug.matchPosition + sug.matchText.length),
+        const walkAndReplace = (node, searchText) => {
+          if (replaced) return;
+          if (node.nodeType === 3) { // Text node
+            const idx = node.textContent.toLowerCase().indexOf(searchText.toLowerCase());
+            if (idx !== -1) {
+              // Check this text node isn't inside an existing mention
+              const parent = node.parentElement;
+              if (parent && (parent.classList?.contains("mention-chip") || parent.closest?.("[data-mention]"))) return;
+              // Split and insert mention text
+              const before = node.textContent.substring(0, idx);
+              const after = node.textContent.substring(idx + searchText.length);
+              node.textContent = before + richMention + after;
+              replaced = true;
+              return;
+            }
+          }
+          if (node.childNodes) {
+            for (const child of Array.from(node.childNodes)) {
+              walkAndReplace(child, searchText);
+              if (replaced) return;
+            }
+          }
         };
-      }
-    }
 
-    // Strategy 3: matched text fallback — but check if it's inside an @mention
-    const searchText = lower(sug?.matchText || sug?.match || "");
-    if (searchText) {
-      const matchIdx = bodyLower.indexOf(searchText);
-      if (matchIdx !== -1) {
-        const enclosing = findEnclosingMention(newBody, matchIdx);
-        if (enclosing) {
-          return { ...prev, body: newBody.substring(0, enclosing.start) + richMention + newBody.substring(enclosing.end) };
+        // Try exact title match first, then matchText
+        walkAndReplace(div, titleToFind);
+        if (!replaced && matchText !== titleToFind) walkAndReplace(div, matchText);
+
+        if (replaced) {
+          return { ...prev, body: div.innerHTML };
         }
-        return { ...prev, body: newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length) };
+        // Fallback: append as new paragraph
+        return { ...prev, body: body + "<p>" + richMention + "</p>" };
       }
-    }
 
-    // Fallback: append
-    return { ...prev, body: newBody + (newBody ? "\n\n" : "") + richMention };
-  });
-};
+      // Plain text body — original logic
+      const bodyLower = lower(body);
+      const titleLower = lower(titleToFind);
+      const exactIdx = bodyLower.indexOf(titleLower);
+      if (exactIdx !== -1) {
+        return { ...prev, body: body.substring(0, exactIdx) + richMention + body.substring(exactIdx + titleToFind.length) };
+      }
+      const searchLower = lower(matchText);
+      if (searchLower) {
+        const matchIdx = bodyLower.indexOf(searchLower);
+        if (matchIdx !== -1) {
+          return { ...prev, body: body.substring(0, matchIdx) + richMention + body.substring(matchIdx + matchText.length) };
+        }
+      }
+      return { ...prev, body: body + (body ? "\n\n" : "") + richMention };
+    });
+  };
 
   // ─── Article Editor Helpers ────────────────────────────────────
   const isHtmlBody = useCallback((text) => /<[a-z][\s\S]*?>/i.test(text || ""), []);
@@ -1993,16 +2005,37 @@ const smartInsertLink = (sug) => {
   const plainToHtml = useCallback((text) => {
     if (!text) return "";
     if (isHtmlBody(text)) return text;
-    return text.split("\n").map((line) => line.trim() ? "<p>" + line.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" : "<p><br></p>").join("");
+    return text.split("\n").map((line) => line.trim() ? "<p>" + line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" : "<p><br></p>").join("");
   }, [isHtmlBody]);
 
-  // Sync contentEditable → formData.body
+  // Strip HTML tags to get plain text (for search within body)
+  const stripBodyHtml = useCallback((html) => {
+    if (!html) return "";
+    return html.replace(/<[^>]*>/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  }, []);
+
+  // Sync contentEditable → formData.body (user typing)
   const handleArticleBodyInput = useCallback(() => {
     if (!articleBodyRef.current) return;
     articleBodyInternalRef.current = true;
     const html = articleBodyRef.current.innerHTML || "";
     setFormData((p) => ({ ...p, body: html }));
   }, []);
+
+  // Initialize or re-sync contentEditable from formData
+  const syncEditorContent = useCallback(() => {
+    if (!articleBodyRef.current) return;
+    const html = plainToHtml(formData.body);
+    articleBodyRef.current.innerHTML = html;
+  }, [formData.body, plainToHtml]);
+
+  // When switching from preview to edit, or when editor first mounts, populate it
+  const articleEditorMounted = useCallback((node) => {
+    articleBodyRef.current = node;
+    if (node) {
+      node.innerHTML = plainToHtml(formData.body);
+    }
+  }, [formData.body, plainToHtml]);
 
   const execArticleCmd = useCallback((cmd, value) => {
     articleBodyRef.current?.focus();
@@ -2078,15 +2111,12 @@ const smartInsertLink = (sug) => {
     });
   }, [articles]);
 
-  // Sync formData.body → contentEditable when changed externally
+  // Sync formData.body → contentEditable only for EXTERNAL changes (smartInsertLink, resolveRef)
   useEffect(() => {
     if (!articleBodyRef.current) return;
     if (articleBodyInternalRef.current) { articleBodyInternalRef.current = false; return; }
-    // External change — update innerHTML
-    const html = plainToHtml(formData.body);
-    if (articleBodyRef.current.innerHTML !== html) {
-      articleBodyRef.current.innerHTML = html;
-    }
+    // External change — re-populate editor
+    articleBodyRef.current.innerHTML = plainToHtml(formData.body);
   }, [formData.body, plainToHtml]);
 
   const attemptSave = () => {
@@ -4693,22 +4723,22 @@ const renderArchives = () => (<>
                 }} />
                 {/* Editor or Preview */}
                 {articlePreviewMode ? (
-                  <div style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, padding: "16px 20px", borderRadius: "8px" }}>
+                  <div className="article-body" style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, padding: "16px 20px", borderRadius: "8px" }}>
                     {isHtmlBody(formData.body) ? (
                       <div dangerouslySetInnerHTML={{ __html: renderBodyWithMentions(formData.body) }}
                         onClick={(e) => { const chip = e.target.closest(".mention-chip"); if (chip) navigate(chip.dataset.id); }}
                         style={{ cursor: "default" }} />
-                    ) : (
-                      formData.body?.split("\n").map((p, i) => <p key={i} style={{ margin: "0 0 10px" }}><RenderBody text={p} articles={articles} onNavigate={navigate} /></p>)
-                    )}
+                    ) : formData.body ? (
+                      formData.body.split("\n").map((p, i) => <p key={i} style={{ margin: "0 0 10px" }}><RenderBody text={p} articles={articles} onNavigate={navigate} /></p>)
+                    ) : null}
                     {!formData.body && <span style={{ color: theme.textDim, opacity: 0.5 }}>Nothing to preview yet...</span>}
                   </div>
                 ) : (
-                  <div ref={articleBodyRef} contentEditable suppressContentEditableWarning
+                  <div ref={articleEditorMounted} contentEditable suppressContentEditableWarning
                     onInput={handleArticleBodyInput}
                     onPaste={handleArticlePaste}
-                    data-placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...\n\nUse the toolbar above for formatting. Type @ to link codex entries.`}
-                    style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", wordWrap: "break-word", overflowWrap: "break-word", borderRadius: articlePreviewMode ? "8px" : "0 0 8px 8px", padding: "12px 16px" }} />
+                    data-placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...\n\nUse the toolbar above for formatting.`}
+                    style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", wordWrap: "break-word", overflowWrap: "break-word", borderRadius: "0 0 8px 8px", padding: "12px 16px" }} />
                 )}
               </div>
 

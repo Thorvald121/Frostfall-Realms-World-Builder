@@ -379,8 +379,9 @@ export function checkArticleIntegrity(data, articles, graphOrExclude = null, may
       });
     }
   } else {
-    // Draft mode: no stable id yet, but we CAN still do physics from sourceYearDraft
-    if (sourceYearDraft !== null) {
+    // Draft mode: check if draft ended before any referenced entity began
+    const draftEnd = getTemporalTargetEndYear(temporal); // reuse: gets death_year or active_end
+    if (draftEnd !== null) {
       for (const targetId of mentionIds) {
         if (!targetId) continue;
         if (!entityMap[targetId]) continue;
@@ -389,17 +390,18 @@ export function checkArticleIntegrity(data, articles, graphOrExclude = null, may
         const tt = target?.temporal || {};
         if (tt?.type === "concept") continue;
 
-        const targetStart = getTemporalTargetStartYear(tt);
+        const targetStart = toIntOrNull(tt?.active_start ?? tt?.year);
         if (targetStart === null) continue;
 
-        if (sourceYearDraft < targetStart) {
+        // Impossible: draft ended before target even began
+        if (draftEnd < targetStart) {
           warnings.push({
             type: "temporal_impossible",
             severity: "warning",
             refId: targetId,
-            message: `⛓️ Timeline impossibility: this draft cannot reference "${target?.title || targetId}" in the configured chronology.`,
+            message: `⛓️ Timeline impossibility: this draft (ending Year ${draftEnd}) references "${target?.title || targetId}" which begins in Year ${targetStart}.`,
             suggestion:
-              "Adjust dates (birth/death/active years), or remove/replace the reference if unintended.",
+              "The referenced entity didn't exist yet during this entry's timeframe. Adjust dates or remove the reference.",
           });
         }
       }
