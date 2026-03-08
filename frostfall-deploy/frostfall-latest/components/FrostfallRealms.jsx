@@ -4214,16 +4214,81 @@ const renderArchives = () => (<>
                                     setArticles((prev) => prev.map((a) => {
                                       if (a.id !== activeArticle.id) return a;
                                       let newBody = a.body || "";
-                                      // Replace legacy @mention with rich mention
+                                      let replaced = false;
+
+                                      // Try replacing the raw mention in the body
                                       if (w.rawMention) {
-                                        const legacy = "@" + w.rawMention;
-                                        if (newBody.includes(legacy)) {
-                                          newBody = newBody.replace(legacy, richMention);
+                                        // rawMention may be "@some_id" or "@[Title](id)" — use it directly
+                                        if (newBody.includes(w.rawMention)) {
+                                          newBody = newBody.replace(w.rawMention, richMention);
+                                          replaced = true;
+                                        }
+                                        // Also try without leading @ if rawMention doesn't start with @
+                                        if (!replaced) {
+                                          const withAt = w.rawMention.startsWith("@") ? w.rawMention : "@" + w.rawMention;
+                                          if (newBody.includes(withAt)) {
+                                            newBody = newBody.replace(withAt, richMention);
+                                            replaced = true;
+                                          }
                                         }
                                       }
+                                      // Fallback: try @refId pattern
+                                      if (!replaced && w.refId) {
+                                        const patterns = ["@" + w.refId, "@[" + w.refId + "]"];
+                                        for (const pat of patterns) {
+                                          if (newBody.includes(pat)) {
+                                            newBody = newBody.replace(pat, richMention);
+                                            replaced = true;
+                                            break;
+                                          }
+                                        }
+                                      }
+                                      // HTML body fallback: DOM-based text node replacement
+                                      if (!replaced && isHtmlBody(newBody) && w.refId) {
+                                        const div = document.createElement("div");
+                                        div.innerHTML = newBody;
+                                        const searchTerms = [w.rawMention, "@" + w.refId, w.refId.replace(/_/g, " ")].filter(Boolean);
+                                        let found = false;
+                                        const walk = (node, term) => {
+                                          if (found) return;
+                                          if (node.nodeType === 3) {
+                                            const idx = node.textContent.indexOf(term);
+                                            if (idx !== -1) {
+                                              node.textContent = node.textContent.substring(0, idx) + richMention + node.textContent.substring(idx + term.length);
+                                              found = true;
+                                            }
+                                          }
+                                          if (node.childNodes) for (const child of Array.from(node.childNodes)) walk(child, term);
+                                        };
+                                        for (const term of searchTerms) {
+                                          walk(div, term);
+                                          if (found) { newBody = div.innerHTML; replaced = true; break; }
+                                        }
+                                      }
+
                                       const newLinked = [...new Set([...(a.linkedIds || []), fm.article.id])];
-                                      return { ...a, body: newBody, linkedIds: newLinked, updatedAt: new Date().toISOString() };
+                                      const updated = { ...a, body: newBody, linkedIds: newLinked, updatedAt: new Date().toISOString() };
+                                      return updated;
                                     }));
+                                    // Sync activeArticle so the view re-renders immediately
+                                    setActiveArticle((prev) => {
+                                      if (!prev || prev.id !== activeArticle.id) return prev;
+                                      let newBody = prev.body || "";
+                                      if (w.rawMention && newBody.includes(w.rawMention)) {
+                                        newBody = newBody.replace(w.rawMention, richMention);
+                                      } else if (w.rawMention) {
+                                        const withAt = w.rawMention.startsWith("@") ? w.rawMention : "@" + w.rawMention;
+                                        if (newBody.includes(withAt)) newBody = newBody.replace(withAt, richMention);
+                                      }
+                                      if (w.refId && newBody === (prev.body || "")) {
+                                        const patterns = ["@" + w.refId, "@[" + w.refId + "]"];
+                                        for (const pat of patterns) {
+                                          if (newBody.includes(pat)) { newBody = newBody.replace(pat, richMention); break; }
+                                        }
+                                      }
+                                      const newLinked = [...new Set([...(prev.linkedIds || []), fm.article.id])];
+                                      return { ...prev, body: newBody, linkedIds: newLinked, updatedAt: new Date().toISOString() };
+                                    });
                                     setExpandedWarning(null);
                                   }}
                                   style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", cursor: "pointer", borderRadius: 6, background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, transition: "all 0.15s" }}
@@ -4400,23 +4465,59 @@ const renderArchives = () => (<>
                         onClick={(e) => {
                           e.stopPropagation();
                           const richMention = "@[" + s.article.title + "](" + s.article.id + ")";
+
+                          const replaceInBody = (body) => {
+                            if (!body) return richMention;
+                            if (body.includes(richMention)) return body;
+
+                            if (isHtmlBody(body)) {
+                              // DOM-safe replacement for HTML bodies
+                              const div = document.createElement("div");
+                              div.innerHTML = body;
+                              let replaced = false;
+                              const searchTerms = [s.article.title, s?.matchText || s?.match || ""].filter(Boolean);
+                              const walk = (node, term) => {
+                                if (replaced) return;
+                                if (node.nodeType === 3) {
+                                  const idx = node.textContent.toLowerCase().indexOf(term.toLowerCase());
+                                  if (idx !== -1) {
+                                    const parent = node.parentElement;
+                                    if (parent && parent.closest?.("[data-id]")) return; // skip existing mentions
+                                    node.textContent = node.textContent.substring(0, idx) + richMention + node.textContent.substring(idx + term.length);
+                                    replaced = true;
+                                  }
+                                }
+                                if (node.childNodes) for (const child of Array.from(node.childNodes)) walk(child, term);
+                              };
+                              for (const term of searchTerms) {
+                                if (term) walk(div, term);
+                                if (replaced) return div.innerHTML;
+                              }
+                              return body + "<p>" + richMention + "</p>";
+                            }
+
+                            // Plain text body
+                            const titleLower = lower(s?.article?.title);
+                            const bodyLower = lower(body);
+                            const titleIdx = bodyLower.indexOf(titleLower);
+                            if (titleIdx !== -1) return body.substring(0, titleIdx) + richMention + body.substring(titleIdx + s.article.title.length);
+                            const searchText = lower(s?.matchText || s?.match || "");
+                            const matchIdx = searchText ? bodyLower.indexOf(searchText) : -1;
+                            if (matchIdx !== -1) return body.substring(0, matchIdx) + richMention + body.substring(matchIdx + searchText.length);
+                            return body + "\n\n" + richMention;
+                          };
+
                           setArticles((prev) => prev.map((a) => {
                             if (a.id !== activeArticle.id) return a;
-                            let newBody = a.body || "";
-                            if (newBody.includes(richMention)) return a;
-                            const titleLower = lower(s?.article?.title);
-                            const bodyLower = lower(newBody);
-                            const titleIdx = bodyLower.indexOf(titleLower);
-                            if (titleIdx !== -1) {
-                              newBody = newBody.substring(0, titleIdx) + richMention + newBody.substring(titleIdx + s.article.title.length);
-                            } else {
-                              const searchText = lower(s?.matchText || s?.match || "");
-                              const matchIdx = searchText ? bodyLower.indexOf(searchText) : -1;
-                              if (matchIdx !== -1) newBody = newBody.substring(0, matchIdx) + richMention + newBody.substring(matchIdx + searchText.length);
-                              else newBody = newBody + "\n\n" + richMention;
-                            }
+                            const newBody = replaceInBody(a.body);
                             return { ...a, body: newBody, linkedIds: [...new Set([...(a.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
                           }));
+                          // Sync activeArticle
+                          setActiveArticle((prev) => {
+                            if (!prev || prev.id !== activeArticle.id) return prev;
+                            const newBody = replaceInBody(prev.body);
+                            return { ...prev, body: newBody, linkedIds: [...new Set([...(prev.linkedIds || []), s.article.id])], updatedAt: new Date().toISOString() };
+                          });
                         }}
                         style={{ fontSize: 11, color: "#8ec8a0", cursor: "pointer", padding: "3px 8px", borderRadius: 6, background: "rgba(142,200,160,0.1)", border: "1px solid rgba(142,200,160,0.2)", fontWeight: 600, whiteSpace: "nowrap" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(142,200,160,0.25)"; }}
