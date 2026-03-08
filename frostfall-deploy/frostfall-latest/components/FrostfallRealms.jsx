@@ -148,7 +148,7 @@ const RenderBody = ({ text, articles, onNavigate }) => {
 
 const WarningBanner = ({ severity = "warning", icon = "⚠", title, children, style = {} }) => {
   const c = { error: { bg: "rgba(224,112,80,0.08)", border: "#e07050", accent: "#e07050", text: "#e8a090" }, warning: { bg: "rgba(240,192,64,0.08)", border: "#f0c040", accent: "#f0c040", text: "#e8dcc8" }, info: { bg: "rgba(126,200,227,0.08)", border: "#7ec8e3", accent: "#7ec8e3", text: "#a0d0e8" } }[severity] || { bg: "rgba(240,192,64,0.08)", border: "#f0c040", accent: "#f0c040", text: "#e8dcc8" };
-  return (<div style={{ background: c.bg, border: "1px solid " + c.border + "30", borderLeft: "3px solid " + c.border, borderRadius: 6, padding: "12px 16px", marginBottom: 10, ...style }}>
+  return (<div style={{ background: c.bg, borderTop: "1px solid " + c.border + "30", borderRight: "1px solid " + c.border + "30", borderBottom: "1px solid " + c.border + "30", borderLeft: "3px solid " + c.border, borderRadius: 6, padding: "12px 16px", marginBottom: 10, ...style }}>
     <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
       <span style={{ fontSize: 16, color: c.accent, flexShrink: 0, marginTop: 1 }}>{icon}</span>
       <div style={{ flex: 1 }}>{title && <div style={{ fontSize: 12, fontWeight: 700, color: c.accent, marginBottom: 4, letterSpacing: 0.5, textTransform: "uppercase" }}>{title}</div>}<div style={{ fontSize: 12, color: c.text, lineHeight: 1.6 }}>{children}</div></div>
@@ -391,7 +391,7 @@ export default function FrostfallRealms({ user, onLogout }) {
   const NOVEL_CODEX_PAGE = 25;
   const [codexVisible, setCodexVisible] = useState(CODEX_PAGE);
   const [novelCodexVisible, setNovelCodexVisible] = useState(NOVEL_CODEX_PAGE);
-  const [novelSaveStatus, setNovelSaveStatus] = useState("saved");
+
 
   const articleBodyRef = useRef(null);
   const articleImageRef = useRef(null);
@@ -653,7 +653,7 @@ const saveRelations = (r) => { setRelations(r); try { localStorage.setItem(RELAT
     saveRelations(r);
   };
   const getRelationsFor = (id) => relations[id] || [];
-  const characters = articles.filter((a) => a.category === "character");
+  const characters = useMemo(() => articles.filter((a) => a.category === "character"), [articles]);
 
   // ═══ SESSION / CAMPAIGN NOTES ═══
   const SESSIONS_KEY = "ff_sessions";
@@ -694,7 +694,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     if (j < 0 || j >= n.length) return;
     [n[i], n[j]] = [n[j], n[i]]; saveDashWidgets(n);
   };
-  const [authView, setAuthView] = useState(null);
   const aiFileRef = useRef(null);
   const avatarFileRef = useRef(null);
   const portraitFileRef = useRef(null);
@@ -704,7 +703,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const [activeMs, setActiveMs] = useState(null); // current manuscript object
   const [novelView, setNovelView] = useState("select"); // select, outline, write, corkboard
   const [novelActiveScene, setNovelActiveScene] = useState(null); // { actId, chId, scId }
-  const [novelCodexOpen, setNovelCodexOpen] = useState(false);
   const [novelCodexSearch, setNovelCodexSearch] = useState("");
   const [novelCodexFilter, setNovelCodexFilter] = useState("all");
   const [novelCodexExpanded, setNovelCodexExpanded] = useState(null); // article id
@@ -720,7 +718,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   // Enhanced features
   const [novelFocusMode, setNovelFocusMode] = useState(false); // composition/focus mode
   const [novelSplitPane, setNovelSplitPane] = useState("codex"); // "codex" | "notes" | "article" | "scene" | null
-  const [novelSplitArticle, setNovelSplitArticle] = useState(null); // article to show in split pane
   const [novelSplitSceneId, setNovelSplitSceneId] = useState(null); // scene id for side-by-side writing
   const [novelEditorSettings, setNovelEditorSettings] = useState(false); // gear popover open
   const [novelExportOpen, setNovelExportOpen] = useState(false); // export format dropdown
@@ -2322,6 +2319,19 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   useEffect(() => { setCodexVisible(CODEX_PAGE); setShowCodexCreate(false); }, [codexFilter, searchQuery, codexSort, codexTagFilter, codexRefFilter]);
   useEffect(() => { setNovelCodexVisible(NOVEL_CODEX_PAGE); }, [novelCodexFilter, novelCodexSearch]);
 
+  // Memoized integrity results for codex list view — avoids O(n²) per render
+  const codexIntegrityMap = useMemo(() => {
+    const map = {};
+    articles.forEach((a) => {
+      const warnings = filterBySensitivity(checkArticleIntegrity(a, articles, temporalGraph, a.id));
+      map[a.id] = {
+        errors: warnings.filter((w) => w.severity === "error"),
+        warnings: warnings.filter((w) => w.severity === "warning"),
+      };
+    });
+    return map;
+  }, [articles, temporalGraph, filterBySensitivity]);
+
   const recent = useMemo(() => [...articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 6), [articles]);
   const catCounts = useMemo(() => {
     const c = {};
@@ -2986,7 +2996,7 @@ const renderArchives = () => (<>
                     {orphanArticles.map((a) => {
                       const catColor = CATEGORIES[a.category]?.color || theme.accent;
                       return (
-                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid rgba(224,112,80,0.15)", borderLeft: "3px solid rgba(224,112,80,0.4)", borderRadius: 8 }}>
+                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: ta(theme.surface, 0.5), borderTop: "1px solid rgba(224,112,80,0.15)", borderRight: "1px solid rgba(224,112,80,0.15)", borderBottom: "1px solid rgba(224,112,80,0.15)", borderLeft: "3px solid rgba(224,112,80,0.4)", borderRadius: 8 }}>
                           <span style={{ fontSize: 16, color: catColor }}>{CATEGORIES[a.category]?.icon}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 600, color: theme.text, fontSize: 13, cursor: "pointer" }} onClick={() => navigate(a.id)}>{a.title}</div>
@@ -3814,7 +3824,7 @@ const renderArchives = () => (<>
                 const c = CATEGORIES[entry.category] || { label: "Unknown", icon: "?", color: "#888" };
                 const stColor = entry._status === "approved" || entry._status === "edited" ? "#8ec8a0" : entry._status === "rejected" ? "#e07050" : theme.accent;
                 return (
-                  <div key={entry._stagingId} style={{ background: ta(theme.surface, 0.6), border: "1px solid " + (entry._status === "rejected" ? "rgba(224,112,80,0.2)" : theme.divider), borderLeft: "3px solid " + stColor, borderRadius: 8, padding: "16px 20px", marginBottom: 10, opacity: entry._status === "rejected" ? 0.5 : 1, transition: "all 0.3s" }}>
+                  <div key={entry._stagingId} style={{ background: ta(theme.surface, 0.6), borderTop: "1px solid " + (entry._status === "rejected" ? "rgba(224,112,80,0.2)" : theme.divider), borderRight: "1px solid " + (entry._status === "rejected" ? "rgba(224,112,80,0.2)" : theme.divider), borderBottom: "1px solid " + (entry._status === "rejected" ? "rgba(224,112,80,0.2)" : theme.divider), borderLeft: "3px solid " + stColor, borderRadius: 8, padding: "16px 20px", marginBottom: 10, opacity: entry._status === "rejected" ? 0.5 : 1, transition: "all 0.3s" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                       <span style={{ fontSize: 20, color: c.color, marginTop: 2 }}>{c.icon}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -4004,7 +4014,7 @@ const renderArchives = () => (<>
             )}
 
             {/* === LIST VIEW === */}
-            {codexViewMode === "list" && filtered.list.slice(0, codexVisible).map((a) => { const ac = conflictsFor(a.id); const ai = filterBySensitivity(checkArticleIntegrity(a, articles, temporalGraph, a.id)); const aiErrors = ai.filter((w) => w.severity === "error"); const aiWarns = ai.filter((w) => w.severity === "warning"); const match = filtered.matchMap[a.id]; return (
+            {codexViewMode === "list" && filtered.list.slice(0, codexVisible).map((a) => { const ac = conflictsFor(a.id); const ci = codexIntegrityMap[a.id] || { errors: [], warnings: [] }; const aiErrors = ci.errors; const aiWarns = ci.warnings; const match = filtered.matchMap[a.id]; return (
               <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: codexBulkMode ? 8 : 14, background: codexSelected.has(a.id) ? ta(theme.accent, 0.1) : ta(theme.surface, 0.6), border: "1px solid " + (codexSelected.has(a.id) ? ta(theme.accent, 0.3) : ac.length > 0 || aiErrors.length > 0 ? "rgba(224,112,80,0.3)" : aiWarns.length > 0 ? ta(theme.accent, 0.2) : theme.divider), borderRadius: 8, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") { if (codexBulkMode) { setCodexSelected((prev) => { const next = new Set(prev); next.has(a.id) ? next.delete(a.id) : next.add(a.id); return next; }); } else navigate(a.id); } }} onClick={() => { if (codexBulkMode) { setCodexSelected((prev) => { const next = new Set(prev); next.has(a.id) ? next.delete(a.id) : next.add(a.id); return next; }); } else navigate(a.id); }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = codexSelected.has(a.id) ? ta(theme.accent, 0.15) : ta(theme.surface, 0.85); }} onMouseLeave={(e) => { e.currentTarget.style.background = codexSelected.has(a.id) ? ta(theme.accent, 0.1) : ta(theme.surface, 0.6); }}>
                 {codexBulkMode && (
@@ -4732,7 +4742,7 @@ const renderArchives = () => (<>
                 </div>
                 {/* Formatting toolbar */}
                 {!articlePreviewMode && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 2, padding: "6px 8px", background: ta(theme.surface, 0.6), border: "1px solid " + theme.border, borderBottom: "none", borderRadius: "8px 8px 0 0", alignItems: "center" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 2, padding: "6px 8px", background: ta(theme.surface, 0.6), borderTop: "1px solid " + theme.border, borderRight: "1px solid " + theme.border, borderLeft: "1px solid " + theme.border, borderBottom: "none", borderRadius: "8px 8px 0 0", alignItems: "center" }}>
                     {[
                       { cmd: "bold", icon: "B", title: "Bold", style: { fontWeight: 700 } },
                       { cmd: "italic", icon: "I", title: "Italic", style: { fontStyle: "italic" } },
