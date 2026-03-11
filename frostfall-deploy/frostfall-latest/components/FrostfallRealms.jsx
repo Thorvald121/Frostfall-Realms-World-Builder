@@ -15,6 +15,8 @@ import { useTimeline } from "@/features/timeline/useTimeline";
 import { NovelWorkspace } from "@/features/novel/NovelWorkspace";
 import { CATEGORIES, categoryPluralLabel, ERAS, SWIM_LANE_ORDER, FIELD_LABELS, formatKey, TEMPLATE_FIELDS, FONT_SIZES, EDITOR_FONTS, DEFAULT_SETTINGS } from "@/lib/domain/categories";
 import { ImportPage } from "@/features/import/ImportPage";
+import { SupportPage } from "@/features/support/SupportPage";
+import { CollaborationPanel } from "@/features/collab/CollaborationPanel";
 
 // === SAFE STRING HELPERS ===
 const safeText = (v) => (v == null ? "" : String(v));
@@ -395,7 +397,8 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   const articleBodyRef = useRef(null);
   const articleImageRef = useRef(null);
-  const articleBodyInternalRef = useRef(false);
+  const articleLastTypedRef = useRef(null);
+  const articleInitSessionRef = useRef(null);
   const [articlePreviewMode, setArticlePreviewMode] = useState(false);
   const [articleCollapsed, setArticleCollapsed] = useState(new Set());
   const [articleTablePicker, setArticleTablePicker] = useState(false);
@@ -448,6 +451,20 @@ export default function FrostfallRealms({ user, onLogout }) {
     };
     loadData();
   }, [user?.id]);
+
+  // Check for invite code in URL (e.g. ?invite=AB3XK7QR)
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) return;
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get("invite");
+    if (inviteCode) {
+      // Clean the URL
+      window.history.replaceState({}, "", window.location.pathname);
+      // Navigate to collaboration page with the code pre-filled
+      setView("collaboration");
+    }
+  }, [user]);
+
 const handleCreateWorld = async () => {
     if (!worldForm.name.trim()) return;
     try {
@@ -1756,12 +1773,14 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } if (isMobile) setSidebarOpen(false); }, [articles, isMobile]);
   const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); closeSidebar(); };
   const goDash = () => { setView("dashboard"); closeSidebar(); };
-  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
+  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
     setCreateCat(article.category);
     setEditingId(article.id);
     setArticlePreviewMode(false);
     setArticleTablePicker(false);
+    articleInitSessionRef.current = null; // force re-initialization
+    articleLastTypedRef.current = null;
     // Convert plain text body to HTML on edit
     const bodyHtml = (article.body && !/<[a-z][\s\S]*?>/i.test(article.body))
       ? article.body.split("\n").map((line) => line.trim() ? "<p>" + line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" : "<p><br></p>").join("")
@@ -1908,20 +1927,22 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   // Replace a broken @mention in the body with a proper rich mention to the selected article
   const resolveRef = (warning, selectedArticle) => {
     const richMention = "@[" + selectedArticle.title + "](" + selectedArticle.id + ")";
-    setFormData((prev) => {
-      let newBody = prev.body;
-      if (warning.rawMention && newBody.includes(warning.rawMention)) {
-        // Direct replacement of the broken mention text
-        newBody = newBody.replace(warning.rawMention, richMention);
-      } else if (warning.refId) {
-        // Try to find @refId pattern
-        const legacyPattern = "@" + warning.refId;
-        if (newBody.includes(legacyPattern)) {
-          newBody = newBody.replace(legacyPattern, richMention);
-        }
+    // Read current body from editor DOM if available
+    const currentBody = (articleBodyRef.current?.innerHTML) || formData.body || "";
+    let newBody = currentBody;
+
+    if (warning.rawMention && newBody.includes(warning.rawMention)) {
+      newBody = newBody.replace(warning.rawMention, richMention);
+    } else if (warning.refId) {
+      const legacyPattern = "@" + warning.refId;
+      if (newBody.includes(legacyPattern)) {
+        newBody = newBody.replace(legacyPattern, richMention);
       }
-      return { ...prev, body: newBody };
-    });
+    }
+    if (newBody !== currentBody) {
+      updateEditorBody(newBody);
+    }
+  };
     // Don't close expandedWarning — the fixed warning disappears naturally from the recalculated list,
     // and other expanded warnings remain visible for the user to continue fixing
   };
@@ -1929,71 +1950,55 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   // Smart insert a link suggestion — find where the name appears in body and wrap it in-place
   const smartInsertLink = (sug) => {
     const richMention = "@[" + sug.article.title + "](" + sug.article.id + ")";
-    // Don't add if already linked
-    if (formData.body.includes(richMention) || formData.body.includes("@[" + sug.article.title + "]")) return;
+    // Read current body from editor DOM if available, otherwise formData
+    const currentBody = (articleBodyRef.current?.innerHTML) || formData.body || "";
+    if (currentBody.includes(richMention) || currentBody.includes("@[" + sug.article.title + "]")) return;
 
-    setFormData((prev) => {
-      let body = prev.body;
-      const titleToFind = sug.article.title;
-      const matchText = sug?.matchText || sug?.match || titleToFind;
+    const titleToFind = sug.article.title;
+    const matchText = sug?.matchText || sug?.match || titleToFind;
+    let newBody = currentBody;
 
-      if (isHtmlBody(body)) {
-        // HTML body — use DOM-based replacement to avoid breaking tags
-        const div = document.createElement("div");
-        div.innerHTML = body;
-        let replaced = false;
-
-        const walkAndReplace = (node, searchText) => {
-          if (replaced) return;
-          if (node.nodeType === 3) { // Text node
-            const idx = node.textContent.toLowerCase().indexOf(searchText.toLowerCase());
-            if (idx !== -1) {
-              // Check this text node isn't inside an existing mention
-              const parent = node.parentElement;
-              if (parent && (parent.classList?.contains("mention-chip") || parent.closest?.("[data-mention]"))) return;
-              // Split and insert mention text
-              const before = node.textContent.substring(0, idx);
-              const after = node.textContent.substring(idx + searchText.length);
-              node.textContent = before + richMention + after;
-              replaced = true;
-              return;
-            }
+    if (isHtmlBody(currentBody)) {
+      const div = document.createElement("div");
+      div.innerHTML = currentBody;
+      let replaced = false;
+      const walkAndReplace = (node, searchText) => {
+        if (replaced) return;
+        if (node.nodeType === 3) {
+          const idx = node.textContent.toLowerCase().indexOf(searchText.toLowerCase());
+          if (idx !== -1) {
+            const parent = node.parentElement;
+            if (parent && (parent.classList?.contains("mention-chip") || parent.closest?.("[data-mention]"))) return;
+            const before = node.textContent.substring(0, idx);
+            const after = node.textContent.substring(idx + searchText.length);
+            node.textContent = before + richMention + after;
+            replaced = true;
           }
-          if (node.childNodes) {
-            for (const child of Array.from(node.childNodes)) {
-              walkAndReplace(child, searchText);
-              if (replaced) return;
-            }
-          }
-        };
-
-        // Try exact title match first, then matchText
-        walkAndReplace(div, titleToFind);
-        if (!replaced && matchText !== titleToFind) walkAndReplace(div, matchText);
-
-        if (replaced) {
-          return { ...prev, body: div.innerHTML };
         }
-        // Fallback: append as new paragraph
-        return { ...prev, body: body + "<p>" + richMention + "</p>" };
-      }
-
-      // Plain text body — original logic
-      const bodyLower = lower(body);
+        if (node.childNodes) for (const child of Array.from(node.childNodes)) { walkAndReplace(child, searchText); if (replaced) return; }
+      };
+      walkAndReplace(div, titleToFind);
+      if (!replaced && matchText !== titleToFind) walkAndReplace(div, matchText);
+      newBody = replaced ? div.innerHTML : currentBody + "<p>" + richMention + "</p>";
+    } else {
+      const bodyLower = lower(currentBody);
       const titleLower = lower(titleToFind);
       const exactIdx = bodyLower.indexOf(titleLower);
       if (exactIdx !== -1) {
-        return { ...prev, body: body.substring(0, exactIdx) + richMention + body.substring(exactIdx + titleToFind.length) };
-      }
-      const searchLower = lower(matchText);
-      if (searchLower) {
-        const matchIdx = bodyLower.indexOf(searchLower);
+        newBody = currentBody.substring(0, exactIdx) + richMention + currentBody.substring(exactIdx + titleToFind.length);
+      } else {
+        const searchLower = lower(matchText);
+        const matchIdx = searchLower ? bodyLower.indexOf(searchLower) : -1;
         if (matchIdx !== -1) {
-          return { ...prev, body: body.substring(0, matchIdx) + richMention + body.substring(matchIdx + matchText.length) };
+          newBody = currentBody.substring(0, matchIdx) + richMention + currentBody.substring(matchIdx + matchText.length);
+        } else {
+          newBody = currentBody + (currentBody ? "\n\n" : "") + richMention;
         }
       }
-      return { ...prev, body: body + (body ? "\n\n" : "") + richMention };
-    });
+    }
+
+    // Update editor DOM directly + sync formData
+    updateEditorBody(newBody);
   };
 
   // ─── Article Editor Helpers ────────────────────────────────────
@@ -2011,28 +2016,54 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     return html.replace(/<[^>]*>/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
   }, []);
 
-  // Sync contentEditable → formData.body (user typing)
+  // Sync contentEditable → formData.body (debounced to prevent cursor resets)
+  const articleBodyTimerRef = useRef(null);
   const handleArticleBodyInput = useCallback(() => {
     if (!articleBodyRef.current) return;
-    articleBodyInternalRef.current = true;
-    const html = articleBodyRef.current.innerHTML || "";
-    setFormData((p) => ({ ...p, body: html }));
+    // Debounce the state update — contentEditable is source of truth while typing
+    clearTimeout(articleBodyTimerRef.current);
+    articleBodyTimerRef.current = setTimeout(() => {
+      if (!articleBodyRef.current) return;
+      const html = articleBodyRef.current.innerHTML || "";
+      articleLastTypedRef.current = html;
+      setFormData((p) => ({ ...p, body: html }));
+    }, 300);
   }, []);
 
-  // Initialize or re-sync contentEditable from formData
-  const syncEditorContent = useCallback(() => {
-    if (!articleBodyRef.current) return;
-    const html = plainToHtml(formData.body);
-    articleBodyRef.current.innerHTML = html;
-  }, [formData.body, plainToHtml]);
-
-  // When switching from preview to edit, or when editor first mounts, populate it
-  const articleEditorMounted = useCallback((node) => {
-    articleBodyRef.current = node;
-    if (node) {
-      node.innerHTML = plainToHtml(formData.body);
+  // Flush pending body changes immediately (called before save/preview)
+  const flushArticleBody = useCallback(() => {
+    clearTimeout(articleBodyTimerRef.current);
+    if (articleBodyRef.current) {
+      const html = articleBodyRef.current.innerHTML || "";
+      articleLastTypedRef.current = html;
+      setFormData((p) => ({ ...p, body: html }));
     }
-  }, [formData.body, plainToHtml]);
+  }, []);
+
+  // Initialize editor content when starting a new edit session or switching out of preview
+  useEffect(() => {
+    if (view !== "create" || articlePreviewMode) return;
+    const sessionKey = (editingId || "new") + "_" + (createCat || "");
+    if (articleInitSessionRef.current === sessionKey) return;
+    articleInitSessionRef.current = sessionKey;
+    requestAnimationFrame(() => {
+      if (articleBodyRef.current) {
+        articleBodyRef.current.innerHTML = plainToHtml(formData.body);
+        articleLastTypedRef.current = articleBodyRef.current.innerHTML;
+      }
+    });
+  }, [view, editingId, createCat, articlePreviewMode]);
+
+  // Re-initialize when switching from preview back to edit
+  useEffect(() => {
+    if (view !== "create" || articlePreviewMode) return;
+    requestAnimationFrame(() => {
+      if (articleBodyRef.current && !articleBodyRef.current.innerHTML) {
+        articleBodyRef.current.innerHTML = plainToHtml(formData.body);
+        articleLastTypedRef.current = articleBodyRef.current.innerHTML;
+      }
+    });
+  }, [articlePreviewMode]);
 
   const execArticleCmd = useCallback((cmd, value) => {
     articleBodyRef.current?.focus();
@@ -2108,15 +2139,18 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     });
   }, [articles]);
 
-  // Sync formData.body → contentEditable only for EXTERNAL changes (smartInsertLink, resolveRef)
-  useEffect(() => {
-    if (!articleBodyRef.current) return;
-    if (articleBodyInternalRef.current) { articleBodyInternalRef.current = false; return; }
-    // External change — re-populate editor
-    articleBodyRef.current.innerHTML = plainToHtml(formData.body);
-  }, [formData.body, plainToHtml]);
+  // For EXTERNAL body changes (smartInsertLink, resolveRef), update the editor DOM directly
+  const updateEditorBody = useCallback((newBody) => {
+    articleLastTypedRef.current = newBody;
+    setFormData((p) => ({ ...p, body: newBody }));
+    // Also update the DOM if editor is mounted
+    if (articleBodyRef.current) {
+      articleBodyRef.current.innerHTML = newBody;
+    }
+  }, []);
 
   const attemptSave = () => {
+    flushArticleBody(); // ensure editor content is synced to formData
     const dupes = findDuplicates(formData.title, articles, editingId);
     if (dupes.length > 0) { setPendingDupes(dupes); setShowDupeModal(true); return; }
     // Check integrity — gate on errors/warnings
@@ -2366,8 +2400,10 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     { id: "staging", icon: "📋", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length > 0 ? aiStaging.filter((e) => e._status === "pending").length : undefined },
     { divider: true },
     { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
+    { id: "collaboration", icon: "👥", label: "Collaboration", action: () => setView("collaboration") },
     { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
-    { id: "support", icon: "♥", label: "Support", action: () => setShowDonate(true) },
+    { id: "support_page", icon: "📬", label: "Support", action: () => setView("support_page") },
+    { id: "donate", icon: "♥", label: "Donate", action: () => setShowDonate(true) },
   ];
 
   const isAct = (item) => {
@@ -2385,6 +2421,8 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     if (item.id === "ai_import" && view === "ai_import") return true;
     if (item.id === "staging" && view === "staging") return true;
     if (item.id === "settings" && view === "settings") return true;
+    if (item.id === "collaboration" && view === "collaboration") return true;
+    if (item.id === "support_page" && view === "support_page") return true;
     if (view === "codex" && codexFilter === item.id) return true;
     if ((view === "article" || view === "create") && (activeArticle?.category === item.id || createCat === item.id)) return true;
     return false;
@@ -3873,6 +3911,25 @@ const renderArchives = () => (<>
           </div>)}
   </>);
 
+  const renderSupportPage = () => (<>
+          {view === "support_page" && (
+            <SupportPage theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament} isMobile={isMobile} />
+          )}
+  </>);
+
+  const renderCollaboration = () => (<>
+          {view === "collaboration" && (
+            <CollaborationPanel theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
+              activeWorld={activeWorld} user={user} isMobile={isMobile}
+              onWorldsRefresh={async () => {
+                if (supabase && user) {
+                  const worlds = await fetchWorlds(user.id);
+                  setAllWorlds(worlds);
+                }
+              }} />
+          )}
+  </>);
+
   const renderCodex = () => (<>
           {/* === CODEX === */}
           {view === "codex" && (<div>
@@ -4735,7 +4792,7 @@ const renderArchives = () => (<>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                   <label style={{ fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: theme.textDim }}>— rich text editor</span></label>
-                  <button onClick={() => setArticlePreviewMode((p) => !p)}
+                  <button onClick={() => { flushArticleBody(); setArticlePreviewMode((p) => !p); }}
                     style={{ fontSize: 10, padding: "3px 10px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", background: articlePreviewMode ? ta("#c084fc", 0.15) : "transparent", border: "1px solid " + (articlePreviewMode ? "rgba(192,132,252,0.3)" : theme.border), color: articlePreviewMode ? "#c084fc" : theme.textDim }}>
                     {articlePreviewMode ? "✎ Edit" : "👁 Preview"}
                   </button>
@@ -4845,7 +4902,7 @@ const renderArchives = () => (<>
                     {!formData.body && <span style={{ color: theme.textDim, opacity: 0.5 }}>Nothing to preview yet...</span>}
                   </div>
                 ) : (
-                  <div ref={articleEditorMounted} contentEditable suppressContentEditableWarning
+                  <div ref={articleBodyRef} contentEditable suppressContentEditableWarning
                     onInput={handleArticleBodyInput}
                     onPaste={handleArticlePaste}
                     data-placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...\n\nUse the toolbar above for formatting.`}
@@ -5262,6 +5319,8 @@ const renderArchives = () => (<>
           {renderSettings()}
           {renderAIImport()}
           {renderStaging()}
+          {renderSupportPage()}
+          {renderCollaboration()}
           {renderCodex()}
           {renderArticle()}
           {renderCreateEdit()}
