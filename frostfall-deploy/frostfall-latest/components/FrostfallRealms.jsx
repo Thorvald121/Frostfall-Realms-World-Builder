@@ -1943,9 +1943,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       updateEditorBody(newBody);
     }
   };
-    // Don't close expandedWarning — the fixed warning disappears naturally from the recalculated list,
-    // and other expanded warnings remain visible for the user to continue fixing
-  };
 
   // Smart insert a link suggestion — find where the name appears in body and wrap it in-place
   const smartInsertLink = (sug) => {
