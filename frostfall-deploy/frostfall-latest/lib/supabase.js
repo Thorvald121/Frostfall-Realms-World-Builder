@@ -127,15 +127,19 @@ export async function createWorldInvite(worldId, role = "viewer", maxUses = null
 
 // Fetch active invites for a world
 export async function fetchWorldInvites(worldId) {
-  if (!supabase) return [];
+  if (!supabase) return { invites: [], error: "no_supabase" };
   const { data, error } = await supabase
     .from("world_invites")
     .select("*")
     .eq("world_id", worldId)
     .eq("is_active", true)
     .order("created_at", { ascending: false });
-  if (error) { console.error("Fetch invites error:", error); return []; }
-  return data;
+  if (error) {
+    console.error("Fetch invites error:", error);
+    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
+    return { invites: [], error: isTableMissing ? "table_missing" : error.message };
+  }
+  return { invites: data, error: null };
 }
 
 // Deactivate an invite
@@ -190,21 +194,25 @@ export async function acceptInvite(inviteCode) {
 
 // Fetch members of a world
 export async function fetchWorldMembers(worldId) {
-  if (!supabase) return [];
+  if (!supabase) return { members: [], error: "no_supabase" };
   const { data, error } = await supabase
     .from("world_members")
     .select("*, profiles:user_id(display_name, avatar_url)")
     .eq("world_id", worldId)
     .order("joined_at", { ascending: true });
-  if (error) { console.error("Fetch members error:", error); return []; }
-  return data.map((m) => ({
+  if (error) {
+    console.error("Fetch members error:", error);
+    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
+    return { members: [], error: isTableMissing ? "table_missing" : error.message };
+  }
+  return { members: data.map((m) => ({
     id: m.id,
     userId: m.user_id,
     role: m.role,
     joinedAt: m.joined_at,
     displayName: m.profiles?.display_name || "Unknown User",
     avatarUrl: m.profiles?.avatar_url || null,
-  }));
+  })), error: null };
 }
 
 // Update a member's role
@@ -226,7 +234,7 @@ export async function removeMember(memberId) {
 // ================================================================
 
 export async function submitSupportTicket(category, subject, description) {
-  if (!supabase) return { error: "No database connection" };
+  if (!supabase) return { error: "No database connection. Supabase is not configured." };
   const user = (await supabase.auth.getUser())?.data?.user;
   if (!user) return { error: "Not logged in" };
 
@@ -242,19 +250,27 @@ export async function submitSupportTicket(category, subject, description) {
     })
     .select()
     .single();
-  if (error) return { error: error.message };
+  if (error) {
+    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
+    if (isTableMissing) return { error: "table_missing" };
+    return { error: error.message };
+  }
   return { success: true, ticket: data };
 }
 
 export async function fetchMyTickets() {
-  if (!supabase) return [];
+  if (!supabase) return { tickets: [], error: "no_supabase" };
   const { data, error } = await supabase
     .from("support_tickets")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(50);
-  if (error) { console.error("Fetch tickets error:", error); return []; }
-  return data;
+  if (error) {
+    console.error("Fetch tickets error:", error);
+    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
+    return { tickets: [], error: isTableMissing ? "table_missing" : error.message };
+  }
+  return { tickets: data, error: null };
 }
 
 // === TRANSFORM: DB row → app article format ===
