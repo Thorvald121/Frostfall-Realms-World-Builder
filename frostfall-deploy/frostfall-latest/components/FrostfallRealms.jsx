@@ -2514,11 +2514,12 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     { id: "staging", icon: "📋", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length > 0 ? aiStaging.filter((e) => e._status === "pending").length : undefined },
     { divider: true },
     { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
+    { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
     { id: "collaboration", icon: "👥", label: "Collaboration", action: () => setView("collaboration") },
     { divider: true },
     { id: "support_page", icon: "📬", label: "Support", action: () => setView("support_page") },
     { id: "donate", icon: "♥", label: "Donate", action: () => setShowDonate(true) },
-    ...(adminRole ? [{ id: "admin", icon: "🔐", label: "Admin Panel", action: () => setView("admin") }] : []),
+    ...(adminRole ? [{ divider: true }, { id: "admin", icon: "🔐", label: "Admin Panel", action: () => setView("admin") }] : []),
   ];
 
   const isAct = (item) => {

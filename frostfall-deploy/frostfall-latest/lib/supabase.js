@@ -463,10 +463,23 @@ export async function confirmCharacterRelation(worldId, fromId, toId, relationTy
 
 export async function fetchAdminRole() {
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("app_admins").select("admin_role, user_email").single();
-  if (error) return null; // not an admin or table missing
-  return data?.admin_role || null;
+  try {
+    const { data, error } = await supabase
+      .from("app_admins")
+      .select("admin_role, user_email")
+      .limit(1)
+      .maybeSingle(); // maybeSingle returns null (not error) when no row found
+    if (error) {
+      // Table missing is expected before schema is run — stay silent
+      const isMissing = error.code === "42P01" || /app_admins.*does not exist/i.test(error.message || "");
+      if (!isMissing) console.warn("fetchAdminRole error:", error.message);
+      return null;
+    }
+    return data?.admin_role || null;
+  } catch (e) {
+    console.warn("fetchAdminRole exception:", e);
+    return null;
+  }
 }
 
 export async function fetchAllTickets() {
