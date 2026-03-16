@@ -2,8 +2,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import _ from "lodash";
 import * as mammoth from "mammoth";
-import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds, logActivity, fetchWorldActivity } from "../lib/supabase";
-import { WorldHomePage } from "@/features/world/WorldHomePage";
+import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds, logActivity, fetchWorldActivity, fetchAdminRole } from "../lib/supabase";
+import { FamilyTreeView } from "@/features/family/FamilyTreeView";
+import { AdminPanel } from "@/features/admin/AdminPanel";
 import { THEMES } from "@/lib/themes";
 import { findFuzzyMatches, checkArticleIntegrity, detectConflicts } from "@/lib/domain/integrity";
 import { buildTemporalGraph } from "@/lib/domain/truth/temporalGraph";
@@ -356,8 +357,8 @@ export default function FrostfallRealms({ user, onLogout }) {
   const realtimeChannelRef = useRef(null);
   const toastTimerRef = useRef(null);
 
-  // === URL INVITE CODE (pre-fills the join input when landing on ?invite=CODE) ===
-  const [urlInviteCode, setUrlInviteCode] = useState("");
+  // === ADMIN ===
+  const [adminRole, setAdminRole] = useState(null); // null = not admin, else 'super_admin' | 'support_admin' | 'tech_admin'
 
   // === RESPONSIVE ===
   const [screenW, setScreenW] = useState(1200);
@@ -520,7 +521,8 @@ export default function FrostfallRealms({ user, onLogout }) {
               setArchived(dedup(dbArticles.filter((a) => a.isArchived)));
             }
           }
-          // If no worlds, the welcome screen will show
+          // Check admin role (silently — null if not admin)
+          fetchAdminRole().then((role) => setAdminRole(role));
           setSaveStatus("saved");
         } catch (e) { console.error("Supabase load:", e); setSaveStatus("idle"); }
       } else {
@@ -556,8 +558,9 @@ export default function FrostfallRealms({ user, onLogout }) {
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get("invite");
     if (inviteCode) {
+      // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);
-      setUrlInviteCode(inviteCode.toUpperCase());
+      // Navigate to collaboration page with the code pre-filled
       setView("collaboration");
     }
   }, [user]);
@@ -730,44 +733,10 @@ const saveScratchpad = (text) => { setScratchpadText(text); try { localStorage.s
   const [generatorResults, setGeneratorResults] = useState([]);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
 
-  // ═══ FAMILY TREE / LINEAGE ═══
-  const RELATIONS_KEY = "ff_relationships";
-  const [ftSelected, setFtSelected] = useState(null); // selected character ID
-  const [ftAddingRel, setFtAddingRel] = useState(null); // { fromId, type }
-  const loadRelations = () => {
-  if (typeof window === "undefined") return {};
-  try { return JSON.parse(localStorage.getItem(RELATIONS_KEY) || "{}"); } catch { return {}; }
-};
-// Hydration-safe: start deterministic, then load after mount
-const [relations, setRelations] = useState({});
-useEffect(() => {
-  const r = loadRelations();
-  setRelations(r);
-}, []);
-const saveRelations = (r) => { setRelations(r); try { localStorage.setItem(RELATIONS_KEY, JSON.stringify(r)); } catch {} };
-  const addRelation = (fromId, toId, type) => {
-    const r = { ...relations };
-    if (!r[fromId]) r[fromId] = [];
-    if (!r[toId]) r[toId] = [];
-    // Prevent duplicates
-    if (r[fromId].find((rel) => rel.targetId === toId && rel.type === type)) return;
-    r[fromId].push({ targetId: toId, type });
-    // Mirror relationship
-    const mirror = type === "parent" ? "child" : type === "child" ? "parent" : type === "spouse" ? "spouse" : "sibling";
-    if (!r[toId].find((rel) => rel.targetId === fromId && rel.type === mirror)) {
-      r[toId].push({ targetId: fromId, type: mirror });
-    }
-    saveRelations(r);
-  };
-  const removeRelation = (fromId, toId, type) => {
-    const r = { ...relations };
-    if (r[fromId]) r[fromId] = r[fromId].filter((rel) => !(rel.targetId === toId && rel.type === type));
-    const mirror = type === "parent" ? "child" : type === "child" ? "parent" : type === "spouse" ? "spouse" : "sibling";
-    if (r[toId]) r[toId] = r[toId].filter((rel) => !(rel.targetId === fromId && rel.type === mirror));
-    saveRelations(r);
-  };
-  const getRelationsFor = (id) => relations[id] || [];
+
+  // ═══ FAMILY TREE — now handled by FamilyTreeView component ═══
   const characters = useMemo(() => articles.filter((a) => a.category === "character"), [articles]);
+
 
   // ═══ SESSION / CAMPAIGN NOTES ═══
   const SESSIONS_KEY = "ff_sessions";
@@ -2524,7 +2493,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
 
   const navItems = [
     { id: "dashboard", icon: "◈", label: "Dashboard", action: goDash },
-    { id: "world_home", icon: "🏰", label: "World Home", action: () => setView("world_home") },
     { id: "codex", icon: "📖", label: "Full Codex", action: () => goCodex("all") },
     { divider: true },
     ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
@@ -2547,14 +2515,14 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     { divider: true },
     { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
     { id: "collaboration", icon: "👥", label: "Collaboration", action: () => setView("collaboration") },
-    { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
+    { divider: true },
     { id: "support_page", icon: "📬", label: "Support", action: () => setView("support_page") },
     { id: "donate", icon: "♥", label: "Donate", action: () => setShowDonate(true) },
+    ...(adminRole ? [{ id: "admin", icon: "🔐", label: "Admin Panel", action: () => setView("admin") }] : []),
   ];
 
   const isAct = (item) => {
     if (item.id === "dashboard" && view === "dashboard") return true;
-    if (item.id === "world_home" && view === "world_home") return true;
     if (item.id === "codex" && view === "codex" && codexFilter === "all") return true;
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "timeline" && view === "timeline") return true;
@@ -2570,6 +2538,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     if (item.id === "settings" && view === "settings") return true;
     if (item.id === "collaboration" && view === "collaboration") return true;
     if (item.id === "support_page" && view === "support_page") return true;
+    if (item.id === "admin" && view === "admin") return true;
     if (view === "codex" && codexFilter === item.id) return true;
     if ((view === "article" || view === "create") && (activeArticle?.category === item.id || createCat === item.id)) return true;
     return false;
@@ -3191,200 +3160,18 @@ const renderArchives = () => (<>
   // ╔══════════════════════════════════════════════════════════════╗
   // ║  FAMILY TREE / LINEAGE                                     ║
   // ╚══════════════════════════════════════════════════════════════╝
-  const renderFamilyTree = () => (<>
-          {view === "family_tree" && (<div style={{ marginTop: 24 }}>
-            <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexDirection: isMobile ? "column" : "row" }}>
-              <div>
-                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🌳 Family Tree & Lineage</h2>
-                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{characters.length} characters · {Object.values(relations).reduce((s, r) => s + r.length, 0)} relationships</p>
-              </div>
-            </div>
-            <Ornament width={300} />
+  const renderFamilyTree = () => (
+    view === "family_tree" && activeWorld ? (
+      <FamilyTreeView
+        theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
+        articles={articles}
+        activeWorld={activeWorld}
+        isMobile={isMobile}
+        onOpenArticle={(article) => { setActiveArticle(article); setView("article"); }}
+      />
+    ) : null
+  );
 
-            {characters.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}><div style={{ fontSize: 36, marginBottom: 12 }}>🌳</div><p>No characters yet. Create some character entries in the Codex first.</p></div>
-            ) : (
-              <div style={{ display: "flex", gap: 20, marginTop: 20, flexDirection: isMobile ? "column" : "row" }}>
-                {/* Character list panel */}
-                <div style={{ width: isMobile ? "100%" : 260, flexShrink: 0 }}>
-                  <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Characters</div>
-                  <div style={{ maxHeight: 500, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-                    {characters.map((ch) => {
-                      const rels = getRelationsFor(ch.id);
-                      const relCount = rels.length;
-                      return (
-                        <div key={ch.id} onClick={() => { setFtSelected(ftSelected === ch.id ? null : ch.id); setFtAddingRel(null); }}
-                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: ftSelected === ch.id ? ta(theme.accent, 0.1) : ta(theme.surface, 0.5), border: "1px solid " + (ftSelected === ch.id ? ta(theme.accent, 0.3) : theme.divider), transition: "all 0.15s" }}
-                          onMouseEnter={(e) => { if (ftSelected !== ch.id) e.currentTarget.style.background = ta(theme.surface, 0.7); }}
-                          onMouseLeave={(e) => { if (ftSelected !== ch.id) e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
-                          {ch.portrait ? (
-                            <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", border: "1px solid " + CATEGORIES.character.color + "40", flexShrink: 0 }}><img src={ch.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
-                          ) : (
-                            <div style={{ width: 28, height: 28, borderRadius: "50%", background: ta(CATEGORIES.character.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: CATEGORIES.character.color, flexShrink: 0 }}>🧙</div>
-                          )}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: ftSelected === ch.id ? theme.accent : theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.title}</div>
-                            <div style={{ fontSize: 10, color: theme.textDim }}>{ch.fields?.char_race || "Unknown"}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
-                          </div>
-                          {relCount > 0 && <span style={{ fontSize: 9, color: theme.textDim, background: ta(theme.accent, 0.06), padding: "2px 6px", borderRadius: 8 }}>{relCount}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Detail / relationship panel */}
-                <div style={{ flex: 1 }}>
-                  {ftSelected ? (() => {
-                    const ch = articles.find((a) => a.id === ftSelected);
-                    if (!ch) return <div style={{ color: theme.textDim }}>Character not found.</div>;
-                    const rels = getRelationsFor(ch.id);
-                    const parents = rels.filter((r) => r.type === "parent").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
-                    const children = rels.filter((r) => r.type === "child").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
-                    const spouses = rels.filter((r) => r.type === "spouse").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
-                    const siblings = rels.filter((r) => r.type === "sibling").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
-                    const REL_TYPES = [
-                      { key: "parent", label: "Parents", icon: "👑", list: parents, color: "#d4a060" },
-                      { key: "spouse", label: "Spouses", icon: "💍", list: spouses, color: "#f472b6" },
-                      { key: "sibling", label: "Siblings", icon: "👥", list: siblings, color: "#7ec8e3" },
-                      { key: "child", label: "Children", icon: "🌱", list: children, color: "#8ec8a0" },
-                    ];
-
-                    return (
-                      <div>
-                        {/* Character header */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-                          {ch.portrait ? (
-                            <div style={{ width: 56, height: 56, borderRadius: "50%", overflow: "hidden", border: "2px solid " + CATEGORIES.character.color + "40" }}><img src={ch.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
-                          ) : (
-                            <div style={{ width: 56, height: 56, borderRadius: "50%", background: ta(CATEGORIES.character.color, 0.1), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: CATEGORIES.character.color }}>🧙</div>
-                          )}
-                          <div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif" }}>{ch.title}</div>
-                            <div style={{ fontSize: 12, color: theme.textMuted }}>{ch.fields?.char_race || ""}{ch.fields?.titles ? " · " + ch.fields.titles : ""}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
-                          </div>
-                          <button onClick={() => navigate(ch.id)} style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", marginLeft: "auto" }}>View Article</button>
-                        </div>
-
-                        {/* Relationship groups */}
-                        {REL_TYPES.map((rt) => (
-                          <div key={rt.key} style={{ marginBottom: 16 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                              <span style={{ fontSize: 14 }}>{rt.icon}</span>
-                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: rt.color, letterSpacing: 0.5 }}>{rt.label}</span>
-                              <span style={{ fontSize: 10, color: theme.textDim }}>({rt.list.length})</span>
-                              <button onClick={() => setFtAddingRel(ftAddingRel?.type === rt.key ? null : { fromId: ch.id, type: rt.key })}
-                                style={{ fontSize: 10, color: rt.color, background: ftAddingRel?.type === rt.key ? ta(rt.color, 0.15) : ta(rt.color, 0.06), border: "1px solid " + ta(rt.color, 0.2), borderRadius: 6, padding: "2px 10px", cursor: "pointer", fontFamily: "inherit", marginLeft: "auto" }}>
-                                {ftAddingRel?.type === rt.key ? "Cancel" : "+ Add"}
-                              </button>
-                            </div>
-                            {/* Add relationship picker */}
-                            {ftAddingRel?.type === rt.key && (
-                              <div style={{ marginBottom: 10, padding: "8px 12px", background: ta(theme.surface, 0.5), border: "1px solid " + ta(rt.color, 0.2), borderRadius: 8, maxHeight: 180, overflowY: "auto" }}>
-                                <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 6 }}>Select a character:</div>
-                                {characters.filter((c) => c.id !== ch.id && !rt.list.find((r) => r.id === c.id)).map((c) => (
-                                  <div key={c.id} onClick={() => { addRelation(ch.id, c.id, rt.key); setFtAddingRel(null); }}
-                                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 6, cursor: "pointer", transition: "background 0.1s" }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = ta(rt.color, 0.1); }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                                    <span style={{ fontSize: 12, color: CATEGORIES.character.color }}>🧙</span>
-                                    <span style={{ fontSize: 12, color: theme.text }}>{c.title}</span>
-                                    <span style={{ fontSize: 10, color: theme.textDim }}>{c.fields?.char_race || ""}</span>
-                                  </div>
-                                ))}
-                                {characters.filter((c) => c.id !== ch.id && !rt.list.find((r) => r.id === c.id)).length === 0 && (
-                                  <div style={{ fontSize: 11, color: theme.textDim, padding: 4 }}>No available characters.</div>
-                                )}
-                              </div>
-                            )}
-                            {/* Listed relations */}
-                            {rt.list.length > 0 ? (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                {rt.list.map((rel) => (
-                                  <div key={rel.id} style={{ display: "flex", alignItems: "center", gap: 6, background: ta(rt.color, 0.06), border: "1px solid " + ta(rt.color, 0.15), borderRadius: 8, padding: "6px 10px" }}>
-                                    {rel.portrait ? (
-                                      <div style={{ width: 22, height: 22, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}><img src={rel.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
-                                    ) : (
-                                      <span style={{ fontSize: 12, color: rt.color }}>🧙</span>
-                                    )}
-                                    <span onClick={() => setFtSelected(rel.id)} style={{ fontSize: 12, color: theme.text, fontWeight: 500, cursor: "pointer" }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.color = rt.color; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.text; }}>{rel.title}</span>
-                                    <span onClick={(e) => { e.stopPropagation(); removeRelation(ch.id, rel.id, rt.key); }} title="Remove relationship" style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.5, marginLeft: 2 }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}>✕</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic", padding: "4px 0" }}>None</div>
-                            )}
-                          </div>
-                        ))}
-
-                        {/* Mini visual tree */}
-                        {(parents.length > 0 || children.length > 0 || spouses.length > 0) && (
-                          <div style={{ marginTop: 24, padding: "16px 20px", background: ta(theme.surface, 0.4), border: "1px solid " + theme.divider, borderRadius: 10 }}>
-                            <div style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>Lineage View</div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-                              {/* Parents row */}
-                              {parents.length > 0 && (<>
-                                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-                                  {parents.map((p) => (
-                                    <div key={p.id} onClick={() => setFtSelected(p.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#d4a060", 0.06), border: "1px solid " + ta("#d4a060", 0.15), transition: "all 0.15s" }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#d4a060"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#d4a060", 0.15); }}>
-                                      <div style={{ fontSize: 11, fontWeight: 600, color: "#d4a060" }}>{p.title}</div>
-                                      <div style={{ fontSize: 9, color: theme.textDim }}>{p.fields?.char_race || "Parent"}</div>
-                                    </div>
-                                  ))}
-                                </div>
-                                <div style={{ width: 2, height: 20, background: theme.divider }} />
-                              </>)}
-
-                              {/* Center: selected character + spouses */}
-                              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                {spouses.length > 0 && spouses.map((sp) => (<React.Fragment key={sp.id}>
-                                  <div onClick={() => setFtSelected(sp.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#f472b6", 0.06), border: "1px solid " + ta("#f472b6", 0.15) }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#f472b6"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#f472b6", 0.15); }}>
-                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#f472b6" }}>{sp.title}</div>
-                                    <div style={{ fontSize: 9, color: theme.textDim }}>Spouse</div>
-                                  </div>
-                                  <span style={{ fontSize: 12, color: "#f472b6" }}>💍</span>
-                                </React.Fragment>))}
-                                <div style={{ textAlign: "center", padding: "10px 20px", borderRadius: 10, background: ta(theme.accent, 0.12), border: "2px solid " + ta(theme.accent, 0.4) }}>
-                                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.accent, fontFamily: "'Cinzel', serif" }}>{ch.title}</div>
-                                  <div style={{ fontSize: 10, color: theme.textMuted }}>{ch.fields?.char_race || ""}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
-                                </div>
-                              </div>
-
-                              {/* Children row */}
-                              {children.length > 0 && (<>
-                                <div style={{ width: 2, height: 20, background: theme.divider }} />
-                                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-                                  {children.map((kid) => (
-                                    <div key={kid.id} onClick={() => setFtSelected(kid.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#8ec8a0", 0.06), border: "1px solid " + ta("#8ec8a0", 0.15), transition: "all 0.15s" }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#8ec8a0"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#8ec8a0", 0.15); }}>
-                                      <div style={{ fontSize: 11, fontWeight: 600, color: "#8ec8a0" }}>{kid.title}</div>
-                                      <div style={{ fontSize: 9, color: theme.textDim }}>{kid.fields?.char_race || "Child"}</div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </>)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })() : (
-                    <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}>
-                      <div style={{ fontSize: 36, marginBottom: 12 }}>🌳</div>
-                      <p>Select a character to view and manage their family relationships.</p>
-                      <p style={{ fontSize: 11 }}>Click a name, then use the + Add buttons to link parents, spouses, siblings, and children.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>)}
-  </>);
 
   // ╔══════════════════════════════════════════════════════════════╗
   // ║  RANDOM GENERATORS                                         ║
@@ -4009,28 +3796,6 @@ const renderArchives = () => (<>
     </>);
   };
 
-  const renderWorldHome = () => (
-    view === "world_home" && activeWorld ? (
-      <WorldHomePage
-        theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
-        activeWorld={activeWorld}
-        articles={articles}
-        archived={archived}
-        stats={stats}
-        CATEGORIES={CATEGORIES}
-        allConflicts={allConflicts}
-        totalIntegrityIssues={totalIntegrityIssues}
-        user={user}
-        isMobile={isMobile}
-        onNavigate={(v, filter) => {
-          if (v === "codex") { goCodex(filter || "all"); }
-          else setView(v);
-        }}
-        onOpenArticle={(article) => { setActiveArticle(article); setView("article"); }}
-      />
-    ) : null
-  );
-
   const renderSettings = () => (<>
           {view === "settings" && (<>
             <SettingsPanel
@@ -4171,6 +3936,16 @@ const renderArchives = () => (<>
           </div>)}
   </>);
 
+  const renderAdmin = () => (
+    view === "admin" && adminRole ? (
+      <AdminPanel
+        theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
+        adminRole={adminRole}
+        isMobile={isMobile}
+      />
+    ) : null
+  );
+
   const renderSupportPage = () => (<>
           {view === "support_page" && (
             <SupportPage theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament} isMobile={isMobile} />
@@ -4181,8 +3956,6 @@ const renderArchives = () => (<>
           {view === "collaboration" && (
             <CollaborationPanel theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
               activeWorld={activeWorld} user={user} isMobile={isMobile}
-              initialJoinCode={urlInviteCode}
-              onJoinCodeConsumed={() => setUrlInviteCode("")}
               onWorldsRefresh={async () => {
                 if (supabase && user) {
                   const worlds = await fetchWorlds(user.id);
@@ -5608,7 +5381,6 @@ const renderArchives = () => (<>
           {renderWelcome()}
           {renderWorldCreate()}
           {renderDashboard()}
-          {renderWorldHome()}
           {renderIntegrity()}
           {renderArchives()}
           {renderTimeline()}
@@ -5623,6 +5395,7 @@ const renderArchives = () => (<>
           {renderStaging()}
           {renderSupportPage()}
           {renderCollaboration()}
+          {renderAdmin()}
           {renderCodex()}
           {renderArticle()}
           {renderCreateEdit()}
