@@ -13,7 +13,7 @@ const ROLES = {
 
 const SETUP_HINT = "Run schema_collaboration.sql in Supabase Dashboard → SQL Editor to create the required tables.";
 
-export function CollaborationPanel({ theme, ta, tBtnP, tBtnS, S, Ornament, activeWorld, user, isMobile, onWorldsRefresh }) {
+export function CollaborationPanel({ theme, ta, tBtnP, tBtnS, S, Ornament, activeWorld, user, isMobile, onWorldsRefresh, initialJoinCode = "", onJoinCodeConsumed }) {
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +26,15 @@ export function CollaborationPanel({ theme, ta, tBtnP, tBtnS, S, Ornament, activ
   const [joinResult, setJoinResult] = useState(null);
   const [joinLoading, setJoinLoading] = useState(false);
   const [tab, setTab] = useState("members");
+
+  // Pre-fill join input when landing via invite URL (?invite=CODE)
+  useEffect(() => {
+    if (initialJoinCode) {
+      setJoinCode(initialJoinCode.toUpperCase());
+      setTab("join");
+      if (onJoinCodeConsumed) onJoinCodeConsumed();
+    }
+  }, [initialJoinCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isWorldCreator = activeWorld?.user_id === user?.id;
   const memberRecord = members.find((m) => m.userId === user?.id);

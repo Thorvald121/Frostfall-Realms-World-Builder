@@ -348,3 +348,104 @@ function articleToDb(worldId, article) {
     archived_at: article.archivedAt || null,
   };
 }
+
+// ================================================================
+// ACTIVITY FEED
+// ================================================================
+
+/**
+ * Log an activity event to the DB (silently fails if table missing).
+ * Falls back gracefully — caller never needs to await for correctness.
+ */
+export async function logActivity(worldId, eventType, {
+  articleId = null, articleTitle = null, category = null, meta = {}
+} = {}) {
+  if (!supabase || !worldId) return;
+  try {
+    const user = (await supabase.auth.getUser())?.data?.user;
+    if (!user) return;
+    const actorName =
+      user.user_metadata?.display_name ||
+      user.email?.split("@")[0] ||
+      "Someone";
+    await supabase.from("world_activity").insert({
+      world_id: worldId,
+      user_id: user.id,
+      actor_name: actorName,
+      event_type: eventType,
+      article_id: articleId,
+      article_title: articleTitle,
+      category,
+      meta,
+    });
+  } catch (_) { /* always silent — activity is non-critical */ }
+}
+
+/**
+ * Fetch the 60 most recent activity events for a world.
+ * Returns { events: [], error: null | "table_missing" | string }
+ */
+export async function fetchWorldActivity(worldId, limit = 60) {
+  if (!supabase || !worldId) return { events: [], error: "no_supabase" };
+  const { data, error } = await supabase
+    .from("world_activity")
+    .select("*")
+    .eq("world_id", worldId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    const msg = error.message || "";
+    const isTableMissing =
+      error.code === "42P01" ||
+      /relation.*world_activity.*does not exist/i.test(msg);
+    return { events: [], error: isTableMissing ? "table_missing" : msg };
+  }
+  return { events: data || [], error: null };
+}
+// ================================================================
+// WORLD HOMEPAGE
+// ================================================================
+
+/** Upload a world cover image; returns the public URL or null */
+export async function uploadWorldCover(userId, worldId, file) {
+  if (!supabase) return null;
+  const ext = file.name.split(".").pop();
+  const path = `${userId}/${worldId}.${ext}`;
+  const { data, error } = await supabase.storage
+    .from("world-covers")
+    .upload(path, file, { upsert: true });
+  if (error) { console.error("Cover upload error:", error); return null; }
+  const { data: urlData } = supabase.storage
+    .from("world-covers")
+    .getPublicUrl(data.path);
+  return urlData.publicUrl;
+}
+
+/** Save world homepage fields (cover, tagline, description, featured pins) */
+export async function updateWorldHome(worldId, { coverUrl, tagline, descriptionHtml, featuredIds }) {
+  if (!supabase || !worldId) return { error: "no_supabase" };
+  const patch = { home_updated_at: new Date().toISOString() };
+  if (coverUrl      !== undefined) patch.cover_url        = coverUrl;
+  if (tagline       !== undefined) patch.tagline           = tagline;
+  if (descriptionHtml !== undefined) patch.description_html = descriptionHtml;
+  if (featuredIds   !== undefined) patch.featured_ids     = featuredIds;
+  const { error } = await supabase.from("worlds").update(patch).eq("id", worldId);
+  if (error) { console.error("Update world home error:", error); return { error: error.message }; }
+  return { success: true };
+}
+
+/** Fetch world homepage fields for a single world */
+export async function fetchWorldHome(worldId) {
+  if (!supabase || !worldId) return { data: null, error: "no_supabase" };
+  const { data, error } = await supabase
+    .from("worlds")
+    .select("id, name, description, cover_url, tagline, description_html, featured_ids, home_updated_at, updated_at")
+    .eq("id", worldId)
+    .single();
+  if (error) {
+    const msg = error.message || "";
+    const colMissing = /column.*cover_url.*does not exist|column.*tagline.*does not exist/i.test(msg);
+    return { data: null, error: colMissing ? "schema_missing" : msg };
+  }
+  return { data, error: null };
+}
