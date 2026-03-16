@@ -86,8 +86,8 @@ export async function fetchWorlds(userId) {
     .from("user_worlds")
     .select("*")
     .order("updated_at", { ascending: false });
-  if (!viewError && viewData) return viewData;
-  // Fallback: owner-only query
+  if (!viewError && viewData && viewData.length > 0) return viewData;
+  // Fallback: direct query on worlds table (owner-only, always works)
   const { data, error } = await supabase
     .from("worlds")
     .select("*")
@@ -136,10 +136,11 @@ export async function fetchWorldInvites(worldId) {
     .order("created_at", { ascending: false });
   if (error) {
     console.error("Fetch invites error:", error);
-    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
-    return { invites: [], error: isTableMissing ? "table_missing" : error.message };
+    const msg = error.message || "";
+    const isTableMissing = error.code === "42P01" || /relation.*world_invites.*does not exist/i.test(msg);
+    return { invites: [], error: isTableMissing ? "table_missing" : msg };
   }
-  return { invites: data, error: null };
+  return { invites: data || [], error: null };
 }
 
 // Deactivate an invite
@@ -195,24 +196,57 @@ export async function acceptInvite(inviteCode) {
 // Fetch members of a world
 export async function fetchWorldMembers(worldId) {
   if (!supabase) return { members: [], error: "no_supabase" };
+
   const { data, error } = await supabase
     .from("world_members")
-    .select("*, profiles:user_id(display_name, avatar_url)")
+    .select("*")
     .eq("world_id", worldId)
     .order("joined_at", { ascending: true });
+
   if (error) {
     console.error("Fetch members error:", error);
-    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
-    return { members: [], error: isTableMissing ? "table_missing" : error.message };
+    const msg = error.message || "";
+    // Only flag as table_missing for genuine 42P01 or "relation ... does not exist"
+    const isTableMissing = error.code === "42P01" || /relation.*world_members.*does not exist/i.test(msg);
+    return { members: [], error: isTableMissing ? "table_missing" : msg };
   }
-  return { members: data.map((m) => ({
+
+  // Fetch display names separately (profiles may or may not be joinable)
+  const members = (data || []).map((m) => ({
     id: m.id,
     userId: m.user_id,
     role: m.role,
     joinedAt: m.joined_at,
-    displayName: m.profiles?.display_name || "Unknown User",
-    avatarUrl: m.profiles?.avatar_url || null,
-  })), error: null };
+    displayName: null,
+    avatarUrl: null,
+  }));
+
+  // Try to enrich with profile data (non-blocking)
+  try {
+    const userIds = members.map((m) => m.userId).filter(Boolean);
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", userIds);
+      if (profiles) {
+        const profileMap = {};
+        profiles.forEach((p) => { profileMap[p.id] = p; });
+        members.forEach((m) => {
+          const p = profileMap[m.userId];
+          if (p) {
+            m.displayName = p.display_name || null;
+            m.avatarUrl = p.avatar_url || null;
+          }
+        });
+      }
+    }
+  } catch (_) { /* profiles table may not exist — that's OK */ }
+
+  // Fill in missing display names
+  members.forEach((m) => { if (!m.displayName) m.displayName = "User"; });
+
+  return { members, error: null };
 }
 
 // Update a member's role
@@ -251,9 +285,10 @@ export async function submitSupportTicket(category, subject, description) {
     .select()
     .single();
   if (error) {
-    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
+    const msg = error.message || "";
+    const isTableMissing = error.code === "42P01" || /relation.*support_tickets.*does not exist/i.test(msg);
     if (isTableMissing) return { error: "table_missing" };
-    return { error: error.message };
+    return { error: msg };
   }
   return { success: true, ticket: data };
 }
@@ -267,10 +302,11 @@ export async function fetchMyTickets() {
     .limit(50);
   if (error) {
     console.error("Fetch tickets error:", error);
-    const isTableMissing = error.message?.includes("does not exist") || error.message?.includes("schema cache") || error.code === "42P01";
-    return { tickets: [], error: isTableMissing ? "table_missing" : error.message };
+    const msg = error.message || "";
+    const isTableMissing = error.code === "42P01" || /relation.*support_tickets.*does not exist/i.test(msg);
+    return { tickets: [], error: isTableMissing ? "table_missing" : msg };
   }
-  return { tickets: data, error: null };
+  return { tickets: data || [], error: null };
 }
 
 // === TRANSFORM: DB row → app article format ===
