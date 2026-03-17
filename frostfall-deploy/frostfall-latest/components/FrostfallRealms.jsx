@@ -521,8 +521,7 @@ export default function FrostfallRealms({ user, onLogout }) {
               setArchived(dedup(dbArticles.filter((a) => a.isArchived)));
             }
           }
-          // Check admin role (silently — null if not admin)
-          fetchAdminRole().then((role) => setAdminRole(role));
+          // If no worlds, the welcome screen will show
           setSaveStatus("saved");
         } catch (e) { console.error("Supabase load:", e); setSaveStatus("idle"); }
       } else {
@@ -552,11 +551,32 @@ export default function FrostfallRealms({ user, onLogout }) {
     loadData();
   }, [user?.id]);
 
+  // === ADMIN ROLE — own effect so it's independent of loadData timing ===
+  // Retries once after 1.5s to handle Google OAuth JWT propagation lag.
+  useEffect(() => {
+    if (!supabase || !user?.id) { setAdminRole(null); return; }
+    let cancelled = false;
+    let retryTimer = null;
+
+    const check = async (isRetry = false) => {
+      const role = await fetchAdminRole();
+      if (cancelled) return;
+      if (role) {
+        setAdminRole(role);
+      } else if (!isRetry) {
+        // JWT may not have propagated to PostgREST yet after OAuth redirect — retry once
+        retryTimer = setTimeout(() => check(true), 1500);
+      } else {
+        setAdminRole(null);
+      }
+    };
+
+    check();
+    return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Check for invite code in URL (e.g. ?invite=AB3XK7QR)
   useEffect(() => {
-    if (typeof window === "undefined" || !user) return;
-    const params = new URLSearchParams(window.location.search);
-    const inviteCode = params.get("invite");
     if (inviteCode) {
       // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);

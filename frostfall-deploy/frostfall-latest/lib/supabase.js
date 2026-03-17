@@ -464,28 +464,15 @@ export async function confirmCharacterRelation(worldId, fromId, toId, relationTy
 export async function fetchAdminRole() {
   if (!supabase) return null;
   try {
-    // Log current auth user for debugging
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { console.warn("fetchAdminRole: no authenticated user"); return null; }
-    console.debug("fetchAdminRole: checking for user_id", user.id, "email", user.email);
-
     const { data, error } = await supabase
       .from("app_admins")
-      .select("admin_role, user_email")
-      .limit(1)
+      .select("admin_role")
       .maybeSingle();
-
     if (error) {
       const isMissing = error.code === "42P01" || /app_admins.*does not exist/i.test(error.message || "");
-      if (isMissing) {
-        console.debug("fetchAdminRole: app_admins table not yet created");
-      } else {
-        console.warn("fetchAdminRole error:", error.message, "code:", error.code);
-      }
+      if (!isMissing) console.warn("fetchAdminRole:", error.message, "code:", error.code);
       return null;
     }
-
-    console.debug("fetchAdminRole result:", data);
     return data?.admin_role || null;
   } catch (e) {
     console.warn("fetchAdminRole exception:", e);
