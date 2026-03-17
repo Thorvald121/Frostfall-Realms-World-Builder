@@ -2,9 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import _ from "lodash";
 import * as mammoth from "mammoth";
-import { supabase, fetchArticles, fetchWorldsAndArticles, bulkUpsertArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds, logActivity, fetchWorldActivity, fetchAdminRole } from "../lib/supabase";
-import { FamilyTreeView } from "@/features/family/FamilyTreeView";
-import { AdminPanel } from "@/features/admin/AdminPanel";
+import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds } from "../lib/supabase";
 import { THEMES } from "@/lib/themes";
 import { findFuzzyMatches, checkArticleIntegrity, detectConflicts } from "@/lib/domain/integrity";
 import { buildTemporalGraph } from "@/lib/domain/truth/temporalGraph";
@@ -19,8 +17,6 @@ import { CATEGORIES, categoryPluralLabel, ERAS, SWIM_LANE_ORDER, FIELD_LABELS, f
 import { ImportPage } from "@/features/import/ImportPage";
 import { SupportPage } from "@/features/support/SupportPage";
 import { CollaborationPanel } from "@/features/collab/CollaborationPanel";
-import { RelationshipGraph } from "@/features/graph/RelationshipGraph";
-import { WorldHomePage } from "@/features/world/WorldHomePage";
 
 // === SAFE STRING HELPERS ===
 const safeText = (v) => (v == null ? "" : String(v));
@@ -345,22 +341,6 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [worldForm, setWorldForm] = useState({ name: "", description: "" });
   const [worldSwitcherOpen, setWorldSwitcherOpen] = useState(false);
 
-  // === ACTIVITY FEED ===
-  const [activityFeed, setActivityFeed] = useState([]); // { id, type, articleId, articleTitle, category, actor, timestamp }
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [activityUnread, setActivityUnread] = useState(0);
-  const activityFeedRef = useRef([]);
-
-  // === REALTIME SYNC ===
-  const [realtimeLive, setRealtimeLive] = useState(false);   // true when subscription connected
-  const [realtimeToast, setRealtimeToast] = useState(null);  // { title, actor, type }
-  const [remoteEditBanner, setRemoteEditBanner] = useState(false); // true when editing article changed remotely
-  const realtimeChannelRef = useRef(null);
-  const toastTimerRef = useRef(null);
-
-  // === ADMIN ===
-  const [adminRole, setAdminRole] = useState(null); // null = not admin, else 'super_admin' | 'support_admin' | 'tech_admin'
-
   // === RESPONSIVE ===
   const [screenW, setScreenW] = useState(1200);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -401,86 +381,6 @@ export default function FrostfallRealms({ user, onLogout }) {
   const { tlZoom, setTlZoom, tlSelected, setTlSelected, tlPanelOpen, setTlPanelOpen, tlData, tlRange, tlPxPerYear, yearToX, tlTotalWidth, tlTicks, tlSelectArticle, tlClosePanel, tlLaneHeights } = useTimeline(articles);
   const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, temporalGraph, INTEGRITY_PAGE } = useIntegrity(articles, settings, { detectConflicts, checkArticleIntegrity, buildTemporalGraph });
 
-  // Fire activity event when integrity issue count rises
-  const prevIntegrityCount = useRef(0);
-  useEffect(() => {
-    if (!dataLoaded) return;
-    if (totalIntegrityIssues > prevIntegrityCount.current) {
-      const delta = totalIntegrityIssues - prevIntegrityCount.current;
-      addActivity("integrity", null, { meta: { count: totalIntegrityIssues, delta } });
-    }
-    prevIntegrityCount.current = totalIntegrityIssues;
-  }, [totalIntegrityIssues, dataLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // === REALTIME SUBSCRIPTION ===
-  useEffect(() => {
-    if (!supabase || !activeWorld?.id) {
-      setRealtimeLive(false);
-      return;
-    }
-    if (realtimeChannelRef.current) {
-      supabase.removeChannel(realtimeChannelRef.current);
-      realtimeChannelRef.current = null;
-    }
-    const showToast = (title, actor, type) => {
-      setRealtimeToast({ title, actor, type });
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setRealtimeToast(null), 4500);
-    };
-    const toDb = (row) => ({
-      _uuid: row.id, id: row.slug, title: row.title,
-      category: row.category, summary: row.summary || "",
-      fields: row.fields || {}, body: row.body || "",
-      tags: row.tags || [], linkedIds: row.linked_ids || [],
-      temporal: row.temporal || null, portrait: row.portrait_url || null,
-      isArchived: row.is_archived || false, archivedAt: row.archived_at,
-      createdAt: row.created_at, updatedAt: row.updated_at,
-    });
-    const channel = supabase
-      .channel(`world-articles-${activeWorld.id}`)
-      .on("postgres_changes", {
-        event: "*", schema: "public", table: "articles",
-        filter: `world_id=eq.${activeWorld.id}`,
-      }, ({ eventType, new: row, old }) => {
-        if (eventType === "INSERT" && row) {
-          const a = toDb(row);
-          setArticles((prev) => {
-            if (prev.some((x) => x._uuid === row.id || x.id === row.slug)) return prev;
-            return dedup([a, ...prev]);
-          });
-          showToast(row.title, "A collaborator", "created");
-          addActivity("created", a);
-        } else if (eventType === "UPDATE" && row) {
-          const a = toDb(row);
-          if (row.is_archived) {
-            setArticles((prev) => prev.filter((x) => x._uuid !== row.id && x.id !== row.slug));
-            setArchived((prev) => dedup([{ ...a, archivedAt: row.archived_at || new Date().toISOString() }, ...prev]));
-          } else {
-            setArticles((prev) => prev.map((x) => (x._uuid === row.id || x.id === row.slug) ? a : x));
-          }
-          // Warn if currently editing this article
-          setActiveArticle((cur) => {
-            if (cur && (cur._uuid === row.id || cur.id === row.slug)) setRemoteEditBanner(true);
-            return cur;
-          });
-          showToast(row.title, "A collaborator", "edited");
-          addActivity("edited", a);
-        } else if (eventType === "DELETE" && old) {
-          setArticles((prev) => prev.filter((x) => x._uuid !== old.id && x.id !== old.slug));
-          showToast(old.title || "an article", "A collaborator", "deleted");
-        }
-      })
-      .subscribe((status) => setRealtimeLive(status === "SUBSCRIBED"));
-    realtimeChannelRef.current = channel;
-    return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-      setRealtimeLive(false);
-    };
-  }, [activeWorld?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const [codexSort, setCodexSort] = useState("recent");
   const [codexViewMode, setCodexViewMode] = useState("list"); // "list" or "grid"
   const [codexBulkMode, setCodexBulkMode] = useState(false);
@@ -511,17 +411,18 @@ export default function FrostfallRealms({ user, onLogout }) {
     const loadData = async () => {
       if (supabase && user) {
         try {
-          // Fetch worlds + first world's articles in a single parallel operation
-          const { worlds, articles: dbArticles } = await fetchWorldsAndArticles(user.id);
+          const worlds = await fetchWorlds(user.id);
           setAllWorlds(worlds);
           if (worlds.length > 0) {
             const world = worlds[0];
             setActiveWorld(world);
+            const dbArticles = await fetchArticles(world.id);
             if (dbArticles.length > 0) {
               setArticles(dedup(dbArticles.filter((a) => !a.isArchived)));
               setArchived(dedup(dbArticles.filter((a) => a.isArchived)));
             }
           }
+          // If no worlds, the welcome screen will show
           setSaveStatus("saved");
         } catch (e) { console.error("Supabase load:", e); setSaveStatus("idle"); }
       } else {
@@ -551,38 +452,15 @@ export default function FrostfallRealms({ user, onLogout }) {
     loadData();
   }, [user?.id]);
 
-  // === ADMIN ROLE — own effect so it's independent of loadData timing ===
-  // Retries once after 1.5s to handle Google OAuth JWT propagation lag.
-  useEffect(() => {
-    if (!supabase || !user?.id) { setAdminRole(null); return; }
-    let cancelled = false;
-    let retryTimer = null;
-
-    const check = async (isRetry = false) => {
-      const role = await fetchAdminRole();
-      if (cancelled) return;
-      if (role) {
-        setAdminRole(role);
-      } else if (!isRetry) {
-        // JWT may not have propagated to PostgREST yet after OAuth redirect — retry once
-        retryTimer = setTimeout(() => check(true), 1500);
-      } else {
-        setAdminRole(null);
-      }
-    };
-
-    check();
-    return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Check for invite code in URL (e.g. ?invite=AB3XK7QR)
   useEffect(() => {
     if (typeof window === "undefined" || !user) return;
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get("invite");
     if (inviteCode) {
+      // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);
-      setUrlInviteCode(inviteCode.toUpperCase());
+      // Navigate to collaboration page with the code pre-filled
       setView("collaboration");
     }
   }, [user]);
@@ -627,8 +505,7 @@ const handleCreateWorld = async () => {
       try {
         if (supabase && user && activeWorld?.id) {
           const all = [...articles, ...archived.map((a) => ({ ...a, isArchived: true }))];
-          // Single round-trip instead of N sequential awaits
-          await bulkUpsertArticles(activeWorld.id, all);
+          for (const article of all) await upsertArticle(activeWorld.id, article);
         } else if (typeof window !== "undefined" && window.storage) {
           await window.storage.set("frostfall-world-v2", JSON.stringify({ articles, archived, worldName: activeWorld?.name, worldDesc: activeWorld?.description, version: 2, savedAt: new Date().toISOString() }));
         }
@@ -756,10 +633,44 @@ const saveScratchpad = (text) => { setScratchpadText(text); try { localStorage.s
   const [generatorResults, setGeneratorResults] = useState([]);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
 
-
-  // ═══ FAMILY TREE — now handled by FamilyTreeView component ═══
+  // ═══ FAMILY TREE / LINEAGE ═══
+  const RELATIONS_KEY = "ff_relationships";
+  const [ftSelected, setFtSelected] = useState(null); // selected character ID
+  const [ftAddingRel, setFtAddingRel] = useState(null); // { fromId, type }
+  const loadRelations = () => {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(RELATIONS_KEY) || "{}"); } catch { return {}; }
+};
+// Hydration-safe: start deterministic, then load after mount
+const [relations, setRelations] = useState({});
+useEffect(() => {
+  const r = loadRelations();
+  setRelations(r);
+}, []);
+const saveRelations = (r) => { setRelations(r); try { localStorage.setItem(RELATIONS_KEY, JSON.stringify(r)); } catch {} };
+  const addRelation = (fromId, toId, type) => {
+    const r = { ...relations };
+    if (!r[fromId]) r[fromId] = [];
+    if (!r[toId]) r[toId] = [];
+    // Prevent duplicates
+    if (r[fromId].find((rel) => rel.targetId === toId && rel.type === type)) return;
+    r[fromId].push({ targetId: toId, type });
+    // Mirror relationship
+    const mirror = type === "parent" ? "child" : type === "child" ? "parent" : type === "spouse" ? "spouse" : "sibling";
+    if (!r[toId].find((rel) => rel.targetId === fromId && rel.type === mirror)) {
+      r[toId].push({ targetId: fromId, type: mirror });
+    }
+    saveRelations(r);
+  };
+  const removeRelation = (fromId, toId, type) => {
+    const r = { ...relations };
+    if (r[fromId]) r[fromId] = r[fromId].filter((rel) => !(rel.targetId === toId && rel.type === type));
+    const mirror = type === "parent" ? "child" : type === "child" ? "parent" : type === "spouse" ? "spouse" : "sibling";
+    if (r[toId]) r[toId] = r[toId].filter((rel) => !(rel.targetId === fromId && rel.type === mirror));
+    saveRelations(r);
+  };
+  const getRelationsFor = (id) => relations[id] || [];
   const characters = useMemo(() => articles.filter((a) => a.category === "character"), [articles]);
-
 
   // ═══ SESSION / CAMPAIGN NOTES ═══
   const SESSIONS_KEY = "ff_sessions";
@@ -1058,7 +969,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     const committedIds = new Set(toAdd.map((e) => e._stagingId));
     setAiStaging((prev) => prev.filter((e) => !committedIds.has(e._stagingId)));
     if (count > 0) {
-      addActivity("imported", null, { meta: { count, source: aiSourceName } });
       setShowConfirm({ title: "Import Complete", message: `${count} entr${count === 1 ? "y" : "ies"} added to the codex from "${aiSourceName}".`, confirmLabel: "OK", confirmColor: "#8ec8a0", onConfirm: () => setShowConfirm(null) });
     }
   };
@@ -1863,51 +1773,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } if (isMobile) setSidebarOpen(false); }, [articles, isMobile]);
   const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); closeSidebar(); };
   const goDash = () => { setView("dashboard"); closeSidebar(); };
-  // === ACTIVITY FEED HELPERS ===
-  const addActivity = useCallback((type, article = null, extra = {}) => {
-    const actorName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "You";
-    const event = {
-      id: Date.now() + Math.random(),
-      type,
-      articleId: article?.id || null,
-      articleTitle: article?.title || null,
-      category: article?.category || null,
-      actor: actorName,
-      timestamp: new Date().toISOString(),
-      ...extra,
-    };
-    setActivityFeed((prev) => [event, ...prev].slice(0, 100));
-    setActivityUnread((n) => n + 1);
-    // Fire-and-forget DB log for collaborative worlds
-    if (supabase && activeWorld?.id) {
-      logActivity(activeWorld.id, type, {
-        articleId: article?.id || null,
-        articleTitle: article?.title || null,
-        category: article?.category || null,
-        meta: extra.meta || {},
-      });
-    }
-  }, [user, activeWorld?.id]);
-
-  // Load DB activity when world changes (collaborative worlds)
-  useEffect(() => {
-    if (!activeWorld?.id || !supabase) return;
-    fetchWorldActivity(activeWorld.id).then(({ events, error }) => {
-      if (error === "table_missing" || !events.length) return;
-      const mapped = events.map((e) => ({
-        id: e.id,
-        type: e.event_type,
-        articleId: e.article_id,
-        articleTitle: e.article_title,
-        category: e.category,
-        actor: e.actor_name || "Someone",
-        timestamp: e.created_at,
-        meta: e.meta || {},
-      }));
-      setActivityFeed(mapped);
-    });
-  }, [activeWorld?.id]);
-
   const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
     setCreateCat(article.category);
@@ -2317,10 +2182,8 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       const prev = articles.find((x) => x.id === editingId);
       if (prev) saveArticleSnapshot(editingId, prev);
       setArticles((prev) => prev.map((x) => x.id === editingId ? a : x));
-      addActivity("edited", a);
     } else {
       setArticles((prev) => dedup([a, ...prev]));
-      addActivity("created", a);
     }
     setActiveArticle(a); setShowDupeModal(false); setPendingDupes([]); setEditingId(null); setIntegrityGate(null); setView("article");
   };
@@ -2329,7 +2192,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const doArchive = (article) => {
     setArchived((prev) => [{ ...article, archivedAt: new Date().toISOString() }, ...prev]);
     setArticles((prev) => prev.filter((a) => a.id !== article.id));
-    addActivity("archived", article);
     setShowDeleteModal(null); goDash();
   };
   const doPermanentDelete = (article) => {
@@ -2341,7 +2203,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       confirmColor: "#e07050",
       onConfirm: () => {
         setArticles((prev) => prev.filter((a) => a.id !== article.id));
-        addActivity("deleted", article);
         setShowConfirm(null); goDash();
       },
     });
@@ -2350,7 +2211,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     const { archivedAt, ...clean } = article;
     setArticles((prev) => dedup([{ ...clean, updatedAt: new Date().toISOString() }, ...prev]));
     setArchived((prev) => prev.filter((a) => a.id !== article.id));
-    addActivity("restored", clean);
   };
   const permanentDeleteFromArchive = (article) => {
     setShowConfirm({
@@ -2516,7 +2376,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
 
   const navItems = [
     { id: "dashboard", icon: "◈", label: "Dashboard", action: goDash },
-    { id: "world_home", icon: "🏰", label: "World Home", action: () => setView("world_home") },
     { id: "codex", icon: "📖", label: "Full Codex", action: () => goCodex("all") },
     { divider: true },
     ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
@@ -2538,17 +2397,14 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     { id: "staging", icon: "📋", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length > 0 ? aiStaging.filter((e) => e._status === "pending").length : undefined },
     { divider: true },
     { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
-    { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
     { id: "collaboration", icon: "👥", label: "Collaboration", action: () => setView("collaboration") },
-    { divider: true },
+    { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
     { id: "support_page", icon: "📬", label: "Support", action: () => setView("support_page") },
     { id: "donate", icon: "♥", label: "Donate", action: () => setShowDonate(true) },
-    ...(adminRole ? [{ divider: true }, { id: "admin", icon: "🔐", label: "Admin Panel", action: () => setView("admin") }] : []),
   ];
 
   const isAct = (item) => {
     if (item.id === "dashboard" && view === "dashboard") return true;
-    if (item.id === "world_home" && view === "world_home") return true;
     if (item.id === "codex" && view === "codex" && codexFilter === "all") return true;
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "timeline" && view === "timeline") return true;
@@ -2564,7 +2420,6 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     if (item.id === "settings" && view === "settings") return true;
     if (item.id === "collaboration" && view === "collaboration") return true;
     if (item.id === "support_page" && view === "support_page") return true;
-    if (item.id === "admin" && view === "admin") return true;
     if (view === "codex" && codexFilter === item.id) return true;
     if ((view === "article" || view === "create") && (activeArticle?.category === item.id || createCat === item.id)) return true;
     return false;
@@ -2939,21 +2794,96 @@ const renderArchives = () => (<>
   // ║  RELATIONSHIP GRAPH                                        ║
   // ╚══════════════════════════════════════════════════════════════╝
   const renderGraph = () => (<>
-          {view === "graph" && (
-            <div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <RelationshipGraph
-                articles={articles}
-                CATEGORIES={CATEGORIES}
-                theme={theme}
-                ta={ta}
-                isMobile={isMobile}
-                onOpenArticle={(articleId) => {
-                  const a = articles.find((x) => x.id === articleId);
-                  if (a) { setActiveArticle(a); setView("article"); }
-                }}
-              />
+          {view === "graph" && (<div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "16px 28px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexShrink: 0, flexDirection: isMobile ? "column" : "row", gap: 10 }}>
+              <div>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>◉ Relationship Web</h2>
+                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{articles.length} entries · {articles.reduce((s, a) => s + (a.linkedIds?.length || 0), 0)} connections — click a node to view</p>
+              </div>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {[{ key: "all", label: "All", color: theme.accent }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((f) => (
+                  <div key={f.key} onClick={() => setGraphFilter(f.key)} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 14, cursor: "pointer", fontWeight: graphFilter === f.key ? 600 : 400, background: graphFilter === f.key ? f.color + "20" : "transparent", color: graphFilter === f.key ? f.color : theme.textDim, border: "1px solid " + (graphFilter === f.key ? f.color + "40" : "transparent"), transition: "all 0.15s" }}>{f.label}</div>
+                ))}
+              </div>
             </div>
-          )}
+            <div ref={graphRef} style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+              {(() => {
+                const gArticles = graphFilter === "all" ? articles : articles.filter((a) => a.category === graphFilter);
+                const ids = new Set(gArticles.map((a) => a.id));
+                const svgW = 900;
+                const svgH = 650;
+                const cx = svgW / 2;
+                const cy = svgH / 2;
+                const nodes = gArticles.map((a, i) => {
+                  const angle = i * 2.39996; // golden angle in radians
+                  const r = 60 + Math.sqrt(i) * 42;
+                  return { ...a, gx: cx + r * Math.cos(angle), gy: cy + r * Math.sin(angle) };
+                });
+                const nodeMap = {};
+                nodes.forEach((n) => { nodeMap[n.id] = n; });
+                const edges = [];
+                nodes.forEach((n) => {
+                  (n.linkedIds || []).forEach((lid) => {
+                    if (nodeMap[lid]) edges.push({ from: n.id, to: lid });
+                  });
+                });
+                const hNode = graphHover ? nodeMap[graphHover] : null;
+                const hConnected = hNode ? new Set([...(hNode.linkedIds || []), ...articles.filter((a) => a.linkedIds?.includes(hNode.id)).map((a) => a.id)]) : new Set();
+                return (
+                  <svg viewBox={"0 0 " + svgW + " " + svgH} style={{ width: "100%", height: "100%", background: ta(theme.deepBg, 0.5) }} preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                      <radialGradient id="graph-glow"><stop offset="0%" stopColor={theme.accent} stopOpacity="0.1" /><stop offset="100%" stopColor={theme.accent} stopOpacity="0" /></radialGradient>
+                    </defs>
+                    <circle cx={cx} cy={cy} r={280} fill="url(#graph-glow)" />
+                    {edges.map((e, i) => {
+                      const from = nodeMap[e.from];
+                      const to = nodeMap[e.to];
+                      if (!from || !to) return null;
+                      const isHovered = graphHover && (graphHover === e.from || graphHover === e.to);
+                      return <line key={i} x1={from.gx} y1={from.gy} x2={to.gx} y2={to.gy}
+                        stroke={isHovered ? theme.accent : theme.textDim} strokeWidth={isHovered ? 1.8 : 0.6} opacity={isHovered ? 0.8 : (graphHover ? 0.08 : 0.2)} />;
+                    })}
+                    {nodes.map((n) => {
+                      const cat = CATEGORIES[n.category] || {};
+                      const isH = graphHover === n.id;
+                      const isConn = graphHover && hConnected.has(n.id);
+                      const linkCount = (n.linkedIds || []).filter((l) => nodeMap[l]).length;
+                      const backLinks = nodes.filter((o) => o.linkedIds?.includes(n.id)).length;
+                      const totalConns = linkCount + backLinks;
+                      const r = Math.max(7, Math.min(22, 5 + totalConns * 1.5));
+                      const dimmed = graphHover && !isH && !isConn;
+                      return (
+                        <g key={n.id} style={{ cursor: "pointer" }}
+                          onMouseEnter={() => setGraphHover(n.id)}
+                          onMouseLeave={() => setGraphHover(null)}
+                          onClick={() => navigate(n.id)}>
+                          {isH && <circle cx={n.gx} cy={n.gy} r={r + 8} fill={cat.color || theme.accent} opacity={0.15} />}
+                          <circle cx={n.gx} cy={n.gy} r={r}
+                            fill={isH ? (cat.color || theme.accent) : (cat.color || theme.accent) + (dimmed ? "20" : "50")}
+                            stroke={isH ? "#fff" : isConn ? cat.color || theme.accent : (cat.color || theme.accent) + (dimmed ? "30" : "80")}
+                            strokeWidth={isH ? 2.5 : isConn ? 1.5 : 0.8} />
+                          <text x={n.gx} y={n.gy + r + 13} textAnchor="middle"
+                            fill={isH ? theme.text : dimmed ? theme.textDim + "40" : theme.textMuted}
+                            fontSize={isH ? 11 : 9} fontWeight={isH ? 700 : 400}
+                            fontFamily="'Cinzel', serif">{n.title.length > 20 ? n.title.slice(0, 18) + "…" : n.title}</text>
+                        </g>
+                      );
+                    })}
+                    {hNode && (
+                      <foreignObject x={Math.min(hNode.gx + 24, svgW - 210)} y={Math.max(hNode.gy - 70, 10)} width="200" height="90">
+                        <div xmlns="http://www.w3.org/1999/xhtml" style={{ background: theme.surface, border: "1px solid " + theme.border, borderRadius: 8, padding: "8px 12px", boxShadow: "0 4px 20px rgba(0,0,0,0.4)", pointerEvents: "none" }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 3 }}>{(CATEGORIES[hNode.category]?.icon || "") + " " + hNode.title}</div>
+                          <div style={{ fontSize: 10, color: CATEGORIES[hNode.category]?.color || theme.textDim }}>{CATEGORIES[hNode.category]?.label} · {(hNode.linkedIds || []).length} outgoing · {articles.filter((a) => a.linkedIds?.includes(hNode.id)).length} incoming</div>
+                          {hNode.summary && <div style={{ fontSize: 9, color: theme.textDim, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hNode.summary}</div>}
+                        </div>
+                      </foreignObject>
+                    )}
+                    {nodes.length === 0 && <text x={cx} y={cy} textAnchor="middle" fill={theme.textDim} fontSize="14" fontFamily="'Cinzel', serif">No entries to graph</text>}
+                  </svg>
+                );
+              })()}
+            </div>
+          </div>)}
   </>);
 
   // ╔══════════════════════════════════════════════════════════════╗
@@ -3186,18 +3116,200 @@ const renderArchives = () => (<>
   // ╔══════════════════════════════════════════════════════════════╗
   // ║  FAMILY TREE / LINEAGE                                     ║
   // ╚══════════════════════════════════════════════════════════════╝
-  const renderFamilyTree = () => (
-    view === "family_tree" && activeWorld ? (
-      <FamilyTreeView
-        theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
-        articles={articles}
-        activeWorld={activeWorld}
-        isMobile={isMobile}
-        onOpenArticle={(article) => { setActiveArticle(article); setView("article"); }}
-      />
-    ) : null
-  );
+  const renderFamilyTree = () => (<>
+          {view === "family_tree" && (<div style={{ marginTop: 24 }}>
+            <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexDirection: isMobile ? "column" : "row" }}>
+              <div>
+                <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1 }}>🌳 Family Tree & Lineage</h2>
+                <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{characters.length} characters · {Object.values(relations).reduce((s, r) => s + r.length, 0)} relationships</p>
+              </div>
+            </div>
+            <Ornament width={300} />
 
+            {characters.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}><div style={{ fontSize: 36, marginBottom: 12 }}>🌳</div><p>No characters yet. Create some character entries in the Codex first.</p></div>
+            ) : (
+              <div style={{ display: "flex", gap: 20, marginTop: 20, flexDirection: isMobile ? "column" : "row" }}>
+                {/* Character list panel */}
+                <div style={{ width: isMobile ? "100%" : 260, flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Characters</div>
+                  <div style={{ maxHeight: 500, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                    {characters.map((ch) => {
+                      const rels = getRelationsFor(ch.id);
+                      const relCount = rels.length;
+                      return (
+                        <div key={ch.id} onClick={() => { setFtSelected(ftSelected === ch.id ? null : ch.id); setFtAddingRel(null); }}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: ftSelected === ch.id ? ta(theme.accent, 0.1) : ta(theme.surface, 0.5), border: "1px solid " + (ftSelected === ch.id ? ta(theme.accent, 0.3) : theme.divider), transition: "all 0.15s" }}
+                          onMouseEnter={(e) => { if (ftSelected !== ch.id) e.currentTarget.style.background = ta(theme.surface, 0.7); }}
+                          onMouseLeave={(e) => { if (ftSelected !== ch.id) e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
+                          {ch.portrait ? (
+                            <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", border: "1px solid " + CATEGORIES.character.color + "40", flexShrink: 0 }}><img src={ch.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
+                          ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: "50%", background: ta(CATEGORIES.character.color, 0.15), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: CATEGORIES.character.color, flexShrink: 0 }}>🧙</div>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: ftSelected === ch.id ? theme.accent : theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.title}</div>
+                            <div style={{ fontSize: 10, color: theme.textDim }}>{ch.fields?.char_race || "Unknown"}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
+                          </div>
+                          {relCount > 0 && <span style={{ fontSize: 9, color: theme.textDim, background: ta(theme.accent, 0.06), padding: "2px 6px", borderRadius: 8 }}>{relCount}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Detail / relationship panel */}
+                <div style={{ flex: 1 }}>
+                  {ftSelected ? (() => {
+                    const ch = articles.find((a) => a.id === ftSelected);
+                    if (!ch) return <div style={{ color: theme.textDim }}>Character not found.</div>;
+                    const rels = getRelationsFor(ch.id);
+                    const parents = rels.filter((r) => r.type === "parent").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const children = rels.filter((r) => r.type === "child").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const spouses = rels.filter((r) => r.type === "spouse").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const siblings = rels.filter((r) => r.type === "sibling").map((r) => articles.find((a) => a.id === r.targetId)).filter(Boolean);
+                    const REL_TYPES = [
+                      { key: "parent", label: "Parents", icon: "👑", list: parents, color: "#d4a060" },
+                      { key: "spouse", label: "Spouses", icon: "💍", list: spouses, color: "#f472b6" },
+                      { key: "sibling", label: "Siblings", icon: "👥", list: siblings, color: "#7ec8e3" },
+                      { key: "child", label: "Children", icon: "🌱", list: children, color: "#8ec8a0" },
+                    ];
+
+                    return (
+                      <div>
+                        {/* Character header */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
+                          {ch.portrait ? (
+                            <div style={{ width: 56, height: 56, borderRadius: "50%", overflow: "hidden", border: "2px solid " + CATEGORIES.character.color + "40" }}><img src={ch.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
+                          ) : (
+                            <div style={{ width: 56, height: 56, borderRadius: "50%", background: ta(CATEGORIES.character.color, 0.1), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: CATEGORIES.character.color }}>🧙</div>
+                          )}
+                          <div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif" }}>{ch.title}</div>
+                            <div style={{ fontSize: 12, color: theme.textMuted }}>{ch.fields?.char_race || ""}{ch.fields?.titles ? " · " + ch.fields.titles : ""}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
+                          </div>
+                          <button onClick={() => navigate(ch.id)} style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", marginLeft: "auto" }}>View Article</button>
+                        </div>
+
+                        {/* Relationship groups */}
+                        {REL_TYPES.map((rt) => (
+                          <div key={rt.key} style={{ marginBottom: 16 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 14 }}>{rt.icon}</span>
+                              <span style={{ fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600, color: rt.color, letterSpacing: 0.5 }}>{rt.label}</span>
+                              <span style={{ fontSize: 10, color: theme.textDim }}>({rt.list.length})</span>
+                              <button onClick={() => setFtAddingRel(ftAddingRel?.type === rt.key ? null : { fromId: ch.id, type: rt.key })}
+                                style={{ fontSize: 10, color: rt.color, background: ftAddingRel?.type === rt.key ? ta(rt.color, 0.15) : ta(rt.color, 0.06), border: "1px solid " + ta(rt.color, 0.2), borderRadius: 6, padding: "2px 10px", cursor: "pointer", fontFamily: "inherit", marginLeft: "auto" }}>
+                                {ftAddingRel?.type === rt.key ? "Cancel" : "+ Add"}
+                              </button>
+                            </div>
+                            {/* Add relationship picker */}
+                            {ftAddingRel?.type === rt.key && (
+                              <div style={{ marginBottom: 10, padding: "8px 12px", background: ta(theme.surface, 0.5), border: "1px solid " + ta(rt.color, 0.2), borderRadius: 8, maxHeight: 180, overflowY: "auto" }}>
+                                <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 6 }}>Select a character:</div>
+                                {characters.filter((c) => c.id !== ch.id && !rt.list.find((r) => r.id === c.id)).map((c) => (
+                                  <div key={c.id} onClick={() => { addRelation(ch.id, c.id, rt.key); setFtAddingRel(null); }}
+                                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 6, cursor: "pointer", transition: "background 0.1s" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = ta(rt.color, 0.1); }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                                    <span style={{ fontSize: 12, color: CATEGORIES.character.color }}>🧙</span>
+                                    <span style={{ fontSize: 12, color: theme.text }}>{c.title}</span>
+                                    <span style={{ fontSize: 10, color: theme.textDim }}>{c.fields?.char_race || ""}</span>
+                                  </div>
+                                ))}
+                                {characters.filter((c) => c.id !== ch.id && !rt.list.find((r) => r.id === c.id)).length === 0 && (
+                                  <div style={{ fontSize: 11, color: theme.textDim, padding: 4 }}>No available characters.</div>
+                                )}
+                              </div>
+                            )}
+                            {/* Listed relations */}
+                            {rt.list.length > 0 ? (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {rt.list.map((rel) => (
+                                  <div key={rel.id} style={{ display: "flex", alignItems: "center", gap: 6, background: ta(rt.color, 0.06), border: "1px solid " + ta(rt.color, 0.15), borderRadius: 8, padding: "6px 10px" }}>
+                                    {rel.portrait ? (
+                                      <div style={{ width: 22, height: 22, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}><img src={rel.portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
+                                    ) : (
+                                      <span style={{ fontSize: 12, color: rt.color }}>🧙</span>
+                                    )}
+                                    <span onClick={() => setFtSelected(rel.id)} style={{ fontSize: 12, color: theme.text, fontWeight: 500, cursor: "pointer" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.color = rt.color; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.text; }}>{rel.title}</span>
+                                    <span onClick={(e) => { e.stopPropagation(); removeRelation(ch.id, rel.id, rt.key); }} title="Remove relationship" style={{ fontSize: 10, color: "#e07050", cursor: "pointer", opacity: 0.5, marginLeft: 2 }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}>✕</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic", padding: "4px 0" }}>None</div>
+                            )}
+                          </div>
+                        ))}
+
+                        {/* Mini visual tree */}
+                        {(parents.length > 0 || children.length > 0 || spouses.length > 0) && (
+                          <div style={{ marginTop: 24, padding: "16px 20px", background: ta(theme.surface, 0.4), border: "1px solid " + theme.divider, borderRadius: 10 }}>
+                            <div style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: theme.textMuted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>Lineage View</div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
+                              {/* Parents row */}
+                              {parents.length > 0 && (<>
+                                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+                                  {parents.map((p) => (
+                                    <div key={p.id} onClick={() => setFtSelected(p.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#d4a060", 0.06), border: "1px solid " + ta("#d4a060", 0.15), transition: "all 0.15s" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#d4a060"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#d4a060", 0.15); }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: "#d4a060" }}>{p.title}</div>
+                                      <div style={{ fontSize: 9, color: theme.textDim }}>{p.fields?.char_race || "Parent"}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ width: 2, height: 20, background: theme.divider }} />
+                              </>)}
+
+                              {/* Center: selected character + spouses */}
+                              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                {spouses.length > 0 && spouses.map((sp) => (<React.Fragment key={sp.id}>
+                                  <div onClick={() => setFtSelected(sp.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#f472b6", 0.06), border: "1px solid " + ta("#f472b6", 0.15) }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#f472b6"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#f472b6", 0.15); }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#f472b6" }}>{sp.title}</div>
+                                    <div style={{ fontSize: 9, color: theme.textDim }}>Spouse</div>
+                                  </div>
+                                  <span style={{ fontSize: 12, color: "#f472b6" }}>💍</span>
+                                </React.Fragment>))}
+                                <div style={{ textAlign: "center", padding: "10px 20px", borderRadius: 10, background: ta(theme.accent, 0.12), border: "2px solid " + ta(theme.accent, 0.4) }}>
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.accent, fontFamily: "'Cinzel', serif" }}>{ch.title}</div>
+                                  <div style={{ fontSize: 10, color: theme.textMuted }}>{ch.fields?.char_race || ""}{ch.fields?.role ? " · " + ch.fields.role : ""}</div>
+                                </div>
+                              </div>
+
+                              {/* Children row */}
+                              {children.length > 0 && (<>
+                                <div style={{ width: 2, height: 20, background: theme.divider }} />
+                                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+                                  {children.map((kid) => (
+                                    <div key={kid.id} onClick={() => setFtSelected(kid.id)} style={{ textAlign: "center", cursor: "pointer", padding: "6px 12px", borderRadius: 8, background: ta("#8ec8a0", 0.06), border: "1px solid " + ta("#8ec8a0", 0.15), transition: "all 0.15s" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + "#8ec8a0"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + ta("#8ec8a0", 0.15); }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: "#8ec8a0" }}>{kid.title}</div>
+                                      <div style={{ fontSize: 9, color: theme.textDim }}>{kid.fields?.char_race || "Child"}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })() : (
+                    <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}>
+                      <div style={{ fontSize: 36, marginBottom: 12 }}>🌳</div>
+                      <p>Select a character to view and manage their family relationships.</p>
+                      <p style={{ fontSize: 11 }}>Click a name, then use the + Add buttons to link parents, spouses, siblings, and children.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>)}
+  </>);
 
   // ╔══════════════════════════════════════════════════════════════╗
   // ║  RANDOM GENERATORS                                         ║
@@ -3656,194 +3768,6 @@ const renderArchives = () => (<>
           )}
   </>);
 
-  // ═══════════════════════════════════════════════════════
-  // REALTIME TOAST
-  // ═══════════════════════════════════════════════════════
-  const renderRealtimeToast = () => {
-    if (!realtimeToast) return null;
-    const typeStyle = {
-      created: { color: "#8ec8a0", icon: "✦" },
-      edited:  { color: "#7ec8e3", icon: "✎" },
-      deleted: { color: "#e07050", icon: "✕" },
-    }[realtimeToast.type] || { color: theme.accent, icon: "◈" };
-    return (
-      <div style={{
-        position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-        background: theme.surface, border: "1px solid " + theme.border,
-        borderRadius: 10, padding: "10px 18px", zIndex: 2000,
-        boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
-        display: "flex", alignItems: "center", gap: 10, maxWidth: 360,
-        animation: "toastIn 0.25s ease",
-        pointerEvents: "none",
-      }}>
-        <style>{`@keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(12px) } to { opacity:1; transform:translateX(-50%) translateY(0) } }`}</style>
-        <span style={{ fontSize: 14, color: typeStyle.color, flexShrink: 0 }}>{typeStyle.icon}</span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: typeStyle.color, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            {realtimeToast.actor} {realtimeToast.type} an article
-          </div>
-          <div style={{ fontSize: 13, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
-            {realtimeToast.title}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ═══════════════════════════════════════════════════════
-  // ACTIVITY FEED PANEL
-  // ═══════════════════════════════════════════════════════
-  const ACTIVITY_META = {
-    created:      { icon: "✦", color: "#8ec8a0", label: "Created" },
-    edited:       { icon: "✎", color: "#7ec8e3", label: "Edited" },
-    deleted:      { icon: "✕", color: "#e07050", label: "Deleted" },
-    archived:     { icon: "📦", color: "#a088d0", label: "Archived" },
-    restored:     { icon: "↩", color: "#f0c040", label: "Restored" },
-    imported:     { icon: "📄", color: "#c084fc", label: "Imported" },
-    integrity:    { icon: "🛡", color: "#e07050", label: "Integrity Warning" },
-    member_joined:{ icon: "👥", color: "#8ec8a0", label: "Member Joined" },
-    world_created:{ icon: "🌍", color: "#f0c040", label: "World Created" },
-  };
-
-  const renderActivityFeed = () => {
-    if (!activityOpen) return null;
-    const timeAgoShort = (iso) => {
-      const d = new Date(iso), now = new Date(), secs = Math.floor((now - d) / 1000);
-      if (secs < 60) return "just now";
-      const mins = Math.floor(secs / 60); if (mins < 60) return mins + "m ago";
-      const hrs = Math.floor(mins / 60); if (hrs < 24) return hrs + "h ago";
-      const days = Math.floor(hrs / 24); return days === 1 ? "yesterday" : days + "d ago";
-    };
-    return (<>
-      {/* Backdrop */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 1040 }}
-        onClick={() => setActivityOpen(false)} />
-      {/* Panel */}
-      <div style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, width: 340,
-        background: theme.sidebarBg, borderLeft: "1px solid " + theme.border,
-        zIndex: 1041, display: "flex", flexDirection: "column",
-        boxShadow: "-8px 0 40px rgba(0,0,0,0.5)",
-        animation: "slideInRight 0.22s ease",
-      }}>
-        <style>{`@keyframes slideInRight { from { transform: translateX(100%); opacity:0 } to { transform: translateX(0); opacity:1 } }`}</style>
-
-        {/* Header */}
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <span style={{ fontSize: 18 }}>🔔</span>
-          <span style={{ fontFamily: "'Cinzel', serif", fontSize: 15, fontWeight: 700, color: theme.text, flex: 1, letterSpacing: 0.5 }}>Activity</span>
-          {activeWorld && <span style={{ fontSize: 11, color: theme.textDim, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>}
-          <button onClick={() => { setActivityFeed([]); setActivityUnread(0); }}
-            title="Clear all"
-            style={{ background: "none", border: "none", color: theme.textDim, fontSize: 11, cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>Clear</button>
-          <button onClick={() => setActivityOpen(false)}
-            style={{ background: "none", border: "none", color: theme.textDim, fontSize: 18, cursor: "pointer", padding: "2px 6px", lineHeight: 1 }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>×</button>
-        </div>
-
-        {/* Feed */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-          {activityFeed.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px 20px", color: theme.textDim }}>
-              <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>🔔</div>
-              <p style={{ fontSize: 13, margin: 0 }}>No activity yet.</p>
-              <p style={{ fontSize: 11, marginTop: 6, color: theme.textDim, opacity: 0.7 }}>Events appear here as you create, edit, and manage your codex.</p>
-            </div>
-          ) : activityFeed.map((event) => {
-            const meta = ACTIVITY_META[event.type] || { icon: "◈", color: theme.textMuted, label: event.type };
-            const isClickable = event.articleId && event.type !== "deleted";
-            const targetArticle = isClickable ? articles.find((a) => a.id === event.articleId) : null;
-            const catData = event.category ? CATEGORIES[event.category] : null;
-            return (
-              <div key={event.id}
-                onClick={() => {
-                  if (targetArticle) { setActiveArticle(targetArticle); setView("article"); setActivityOpen(false); }
-                }}
-                style={{
-                  display: "flex", alignItems: "flex-start", gap: 12,
-                  padding: "10px 16px",
-                  cursor: isClickable && targetArticle ? "pointer" : "default",
-                  borderBottom: "1px solid " + ta(theme.divider, 0.5),
-                  transition: "background 0.15s",
-                }}
-                onMouseEnter={(e) => { if (isClickable && targetArticle) e.currentTarget.style.background = ta(theme.surface, 0.6); }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                {/* Icon bubble */}
-                <div style={{
-                  width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                  background: ta(meta.color, 0.12), border: "1px solid " + ta(meta.color, 0.3),
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, color: meta.color, marginTop: 1,
-                }}>{meta.icon}</div>
-
-                {/* Body */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: meta.color, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{meta.label}</span>
-                    {catData && <span style={{ fontSize: 9, color: catData.color, background: ta(catData.color, 0.12), padding: "1px 6px", borderRadius: 8, fontWeight: 600 }}>{catData.icon} {catData.label}</span>}
-                  </div>
-
-                  {event.articleTitle ? (
-                    <div style={{ fontSize: 13, color: isClickable && targetArticle ? theme.accent : theme.text, fontWeight: 500, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {event.articleTitle}
-                    </div>
-                  ) : event.type === "integrity" ? (
-                    <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
-                      {event.meta?.count} issue{event.meta?.count !== 1 ? "s" : ""} detected
-                      {event.meta?.delta > 0 ? <span style={{ color: "#e07050", marginLeft: 6 }}>+{event.meta.delta} new</span> : null}
-                    </div>
-                  ) : event.type === "imported" ? (
-                    <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
-                      {event.meta?.count} entr{event.meta?.count !== 1 ? "ies" : "y"} from &ldquo;{event.meta?.source}&rdquo;
-                    </div>
-                  ) : null}
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                    <span style={{ fontSize: 10, color: theme.textDim }}>{event.actor}</span>
-                    <span style={{ fontSize: 9, color: ta(theme.textDim, 0.5) }}>·</span>
-                    <span style={{ fontSize: 10, color: theme.textDim }}>{timeAgoShort(event.timestamp)}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Footer */}
-        {activityFeed.length > 0 && (
-          <div style={{ padding: "10px 16px", borderTop: "1px solid " + theme.divider, fontSize: 10, color: theme.textDim, textAlign: "center", flexShrink: 0 }}>
-            {activityFeed.length} event{activityFeed.length !== 1 ? "s" : ""} · Session only for solo worlds
-          </div>
-        )}
-      </div>
-    </>);
-  };
-
-  const renderWorldHome = () => (
-    view === "world_home" && activeWorld ? (
-      <WorldHomePage
-        theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
-        activeWorld={activeWorld}
-        articles={articles}
-        archived={archived}
-        stats={stats}
-        CATEGORIES={CATEGORIES}
-        allConflicts={allConflicts}
-        totalIntegrityIssues={totalIntegrityIssues}
-        user={user}
-        isMobile={isMobile}
-        onNavigate={(v, filter) => {
-          if (v === "codex") { goCodex(filter || "all"); }
-          else setView(v);
-        }}
-        onOpenArticle={(article) => { setActiveArticle(article); setView("article"); }}
-      />
-    ) : null
-  );
-
   const renderSettings = () => (<>
           {view === "settings" && (<>
             <SettingsPanel
@@ -3983,16 +3907,6 @@ const renderArchives = () => (<>
             )}
           </div>)}
   </>);
-
-  const renderAdmin = () => (
-    view === "admin" && adminRole ? (
-      <AdminPanel
-        theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
-        adminRole={adminRole}
-        isMobile={isMobile}
-      />
-    ) : null
-  );
 
   const renderSupportPage = () => (<>
           {view === "support_page" && (
@@ -4873,17 +4787,6 @@ const renderArchives = () => (<>
               </>)}
 
               <div style={{ marginBottom: 16 }}>
-                {/* Remote edit warning banner */}
-                {remoteEditBanner && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "rgba(240,192,64,0.08)", border: "1px solid rgba(240,192,64,0.25)", borderRadius: 8, marginBottom: 10 }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
-                    <div style={{ flex: 1, fontSize: 12, color: "#f0c040", lineHeight: 1.5 }}>
-                      This article was updated by a collaborator. Your edits are safe — reload the article to see their version.
-                    </div>
-                    <button onClick={() => setRemoteEditBanner(false)}
-                      style={{ background: "none", border: "none", color: "#f0c040", cursor: "pointer", fontSize: 14, flexShrink: 0, padding: "0 4px" }}>×</button>
-                  </div>
-                )}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                   <label style={{ fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>Body <span style={{ fontWeight: 400, color: theme.textDim }}>— rich text editor</span></label>
                   <button onClick={() => { flushArticleBody(); setArticlePreviewMode((p) => !p); }}
@@ -5390,35 +5293,7 @@ const renderArchives = () => (<>
               ))}
             </div>
           </>)}
-          {/* Realtime live badge */}
-          {realtimeLive && activeWorld && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 10, background: "rgba(142,200,160,0.12)", border: "1px solid rgba(142,200,160,0.25)", flexShrink: 0 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#8ec8a0", boxShadow: "0 0 6px #8ec8a0", display: "inline-block", animation: "rtPulse 2s ease-in-out infinite" }} />
-              <span style={{ fontSize: 9, color: "#8ec8a0", fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Live</span>
-              <style>{`@keyframes rtPulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }`}</style>
-            </div>
-          )}
-          {/* Activity bell */}
-          {activeWorld && (
-            <button
-              onClick={() => { setActivityOpen((v) => !v); setActivityUnread(0); }}
-              aria-label={`Activity feed${activityUnread > 0 ? ", " + activityUnread + " unread" : ""}`}
-              title="Activity Feed"
-              style={{ position: "relative", background: "none", border: "none", color: activityOpen ? theme.accent : theme.textMuted, fontSize: 18, cursor: "pointer", padding: "4px 6px", lineHeight: 1, flexShrink: 0, transition: "color 0.15s" }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = theme.accent; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = activityOpen ? theme.accent : theme.textMuted; }}>
-              🔔
-              {activityUnread > 0 && (
-                <span style={{ position: "absolute", top: 0, right: 0, minWidth: 16, height: 16, borderRadius: 8, background: "#e07050", color: "#fff", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1, pointerEvents: "none" }}>
-                  {activityUnread > 99 ? "99+" : activityUnread}
-                </span>
-              )}
-            </button>
-          )}
         </div>
-
-        {renderActivityFeed()}
-        {renderRealtimeToast()}
 
         <div className="fr-content" style={{ ...S.content, opacity: fadeIn ? 1 : 0, transition: "opacity 0.3s ease", ...(isMobile ? { padding: "0 14px 24px" } : {}) }}>
 
@@ -5429,7 +5304,6 @@ const renderArchives = () => (<>
           {renderWelcome()}
           {renderWorldCreate()}
           {renderDashboard()}
-          {renderWorldHome()}
           {renderIntegrity()}
           {renderArchives()}
           {renderTimeline()}
@@ -5444,7 +5318,6 @@ const renderArchives = () => (<>
           {renderStaging()}
           {renderSupportPage()}
           {renderCollaboration()}
-          {renderAdmin()}
           {renderCodex()}
           {renderArticle()}
           {renderCreateEdit()}
