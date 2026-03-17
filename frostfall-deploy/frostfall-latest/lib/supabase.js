@@ -509,13 +509,26 @@ export async function fetchAllAdmins() {
 export async function grantAdminRole(userEmail, role, notes = "") {
   if (!supabase) return { error: "no_supabase" };
   const grantedBy = (await supabase.auth.getUser())?.data?.user?.id;
-  // Look up user_id by email via auth.users (requires service role in prod;
-  // in practice the invited user must have signed up first)
-  const { data: users } = await supabase.rpc("get_user_id_by_email", { email: userEmail }).single().catch(() => ({ data: null }));
-  const userId = users?.id || null;
+
+  // Look up user_id by email if they've already signed up
+  // Falls back to null — user_id will be linked on their next login via the auto-link trigger
+  let userId = null;
+  try {
+    const { data: existingUsers } = await supabase
+      .from("app_admins")
+      .select("user_id")
+      .eq("user_email", userEmail)
+      .maybeSingle();
+    // If they're already in the table somehow, reuse their user_id
+    if (existingUsers?.user_id) userId = existingUsers.user_id;
+  } catch (_) {}
+
   const { error } = await supabase.from("app_admins").insert({
-    user_id: userId, user_email: userEmail, admin_role: role,
-    granted_by: grantedBy, notes,
+    user_id: userId,
+    user_email: userEmail,
+    admin_role: role,
+    granted_by: grantedBy,
+    notes,
   });
   if (error) return { error: error.message };
   return { success: true };
