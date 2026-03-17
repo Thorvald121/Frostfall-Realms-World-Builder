@@ -36,31 +36,6 @@ export async function fetchArticles(worldId) {
   return data.map(dbToArticle);
 }
 
-// === HELPER: Fetch worlds AND first world's articles in parallel ===
-export async function fetchWorldsAndArticles(userId) {
-  if (!supabase) return { worlds: [], articles: [] };
-
-  // Step 1: fetch worlds
-  const worlds = await fetchWorlds(userId);
-  if (worlds.length === 0) return { worlds, articles: [] };
-
-  // Step 2: fetch articles for the first (most recently updated) world
-  const articles = await fetchArticles(worlds[0].id);
-  return { worlds, articles };
-}
-
-// === HELPER: Bulk upsert articles (single round-trip instead of N) ===
-export async function bulkUpsertArticles(worldId, articles) {
-  if (!supabase || !articles.length) return true;
-  const rows = articles.map((a) => articleToDb(worldId, a));
-  // Supabase upsert accepts arrays — one network call for all rows
-  const { error } = await supabase
-    .from("articles")
-    .upsert(rows, { onConflict: "world_id,slug" });
-  if (error) { console.error("Bulk upsert error:", error); return false; }
-  return true;
-}
-
 // === HELPER: Upsert article ===
 export async function upsertArticle(worldId, article) {
   if (!supabase) return null;
@@ -427,59 +402,81 @@ export async function fetchWorldActivity(worldId, limit = 60) {
   }
   return { events: data || [], error: null };
 }
+
 // ================================================================
-// CHARACTER RELATIONS (replaces localStorage)
+// CHARACTER RELATIONS
 // ================================================================
 
 export async function fetchCharacterRelations(worldId) {
   if (!supabase || !worldId) return { relations: {}, error: "no_supabase" };
-  const { data, error } = await supabase
-    .from("character_relations")
-    .select("*")
-    .eq("world_id", worldId);
+  const { data, error } = await supabase.from("character_relations").select("*").eq("world_id", worldId);
   if (error) {
     const msg = error.message || "";
     const missing = error.code === "42P01" || /character_relations.*does not exist/i.test(msg);
     return { relations: {}, error: missing ? "table_missing" : msg };
   }
-  // Rebuild into the same { [fromId]: [{targetId, type, confirmed, source, id}] } shape
   const relations = {};
   (data || []).forEach((row) => {
     if (!relations[row.from_id]) relations[row.from_id] = [];
-    relations[row.from_id].push({
-      id: row.id, targetId: row.to_id,
-      type: row.relation_type, confirmed: row.confirmed, source: row.source,
-    });
+    relations[row.from_id].push({ id: row.id, targetId: row.to_id, type: row.relation_type, confirmed: row.confirmed, source: row.source });
   });
   return { relations, error: null };
 }
 
 export async function saveCharacterRelation(worldId, fromId, toId, relationType, confirmed = true, source = "manual") {
   if (!supabase || !worldId) return { error: "no_supabase" };
-  const { error } = await supabase.from("character_relations").upsert({
-    world_id: worldId, from_id: fromId, to_id: toId,
-    relation_type: relationType, confirmed, source,
-  }, { onConflict: "world_id,from_id,to_id,relation_type", ignoreDuplicates: false });
+  const { error } = await supabase.from("character_relations").upsert({ world_id: worldId, from_id: fromId, to_id: toId, relation_type: relationType, confirmed, source }, { onConflict: "world_id,from_id,to_id,relation_type", ignoreDuplicates: false });
   if (error) { console.error("Save relation error:", error); return { error: error.message }; }
   return { success: true };
 }
 
 export async function deleteCharacterRelation(worldId, fromId, toId, relationType) {
   if (!supabase || !worldId) return false;
-  const { error } = await supabase.from("character_relations")
-    .delete()
-    .eq("world_id", worldId).eq("from_id", fromId)
-    .eq("to_id", toId).eq("relation_type", relationType);
+  const { error } = await supabase.from("character_relations").delete().eq("world_id", worldId).eq("from_id", fromId).eq("to_id", toId).eq("relation_type", relationType);
   return !error;
 }
 
 export async function confirmCharacterRelation(worldId, fromId, toId, relationType) {
   if (!supabase || !worldId) return false;
-  const { error } = await supabase.from("character_relations")
-    .update({ confirmed: true })
-    .eq("world_id", worldId).eq("from_id", fromId)
-    .eq("to_id", toId).eq("relation_type", relationType);
+  const { error } = await supabase.from("character_relations").update({ confirmed: true }).eq("world_id", worldId).eq("from_id", fromId).eq("to_id", toId).eq("relation_type", relationType);
   return !error;
+}
+
+// ================================================================
+// WORLD HOMEPAGE
+// ================================================================
+
+export async function uploadWorldCover(userId, worldId, file) {
+  if (!supabase) return null;
+  const ext = file.name.split(".").pop();
+  const path = `${userId}/${worldId}.${ext}`;
+  const { data, error } = await supabase.storage.from("world-covers").upload(path, file, { upsert: true });
+  if (error) { console.error("Cover upload error:", error); return null; }
+  const { data: urlData } = supabase.storage.from("world-covers").getPublicUrl(data.path);
+  return urlData.publicUrl;
+}
+
+export async function updateWorldHome(worldId, { coverUrl, tagline, descriptionHtml, featuredIds }) {
+  if (!supabase || !worldId) return { error: "no_supabase" };
+  const patch = { home_updated_at: new Date().toISOString() };
+  if (coverUrl !== undefined) patch.cover_url = coverUrl;
+  if (tagline !== undefined) patch.tagline = tagline;
+  if (descriptionHtml !== undefined) patch.description_html = descriptionHtml;
+  if (featuredIds !== undefined) patch.featured_ids = featuredIds;
+  const { error } = await supabase.from("worlds").update(patch).eq("id", worldId);
+  if (error) { console.error("Update world home error:", error); return { error: error.message }; }
+  return { success: true };
+}
+
+export async function fetchWorldHome(worldId) {
+  if (!supabase || !worldId) return { data: null, error: "no_supabase" };
+  const { data, error } = await supabase.from("worlds").select("id, name, description, cover_url, tagline, description_html, featured_ids, home_updated_at, updated_at").eq("id", worldId).single();
+  if (error) {
+    const msg = error.message || "";
+    const colMissing = /column.*cover_url.*does not exist|column.*tagline.*does not exist/i.test(msg);
+    return { data: null, error: colMissing ? "schema_missing" : msg };
+  }
+  return { data, error: null };
 }
 
 // ================================================================
@@ -489,36 +486,17 @@ export async function confirmCharacterRelation(worldId, fromId, toId, relationTy
 export async function fetchAdminRole() {
   if (!supabase) return null;
   try {
-    // Primary: match by user_id via RLS
-    const { data, error } = await supabase
-      .from("app_admins")
-      .select("admin_role")
-      .maybeSingle();
-
+    const { data, error } = await supabase.from("app_admins").select("admin_role").maybeSingle();
     if (!error && data?.admin_role) return data.admin_role;
-
-    // Fallback: use security-definer function that also checks by email
-    // Handles edge case where user_id hasn't been linked yet
-    const { data: rpcData, error: rpcErr } = await supabase
-      .rpc("get_my_admin_role");
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("get_my_admin_role");
     if (!rpcErr && rpcData) return rpcData;
-
-    if (error) {
-      const isMissing = error.code === "42P01" || /app_admins.*does not exist/i.test(error.message || "");
-      if (!isMissing) console.warn("fetchAdminRole:", error.message, "code:", error.code);
-    }
     return null;
-  } catch (e) {
-    console.warn("fetchAdminRole exception:", e);
-    return null;
-  }
+  } catch (_) { return null; }
 }
 
 export async function fetchAllTickets() {
   if (!supabase) return { tickets: [], error: "no_supabase" };
-  const { data, error } = await supabase
-    .from("support_tickets").select("*")
-    .order("created_at", { ascending: false }).limit(200);
+  const { data, error } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false }).limit(200);
   if (error) return { tickets: [], error: error.message };
   return { tickets: data || [], error: null };
 }
@@ -526,7 +504,7 @@ export async function fetchAllTickets() {
 export async function updateTicket(ticketId, { status, adminNotes }) {
   if (!supabase) return { error: "no_supabase" };
   const patch = { updated_at: new Date().toISOString() };
-  if (status     !== undefined) patch.status      = status;
+  if (status !== undefined) patch.status = status;
   if (adminNotes !== undefined) patch.admin_notes = adminNotes;
   const { error } = await supabase.from("support_tickets").update(patch).eq("id", ticketId);
   if (error) return { error: error.message };
@@ -543,27 +521,7 @@ export async function fetchAllAdmins() {
 export async function grantAdminRole(userEmail, role, notes = "") {
   if (!supabase) return { error: "no_supabase" };
   const grantedBy = (await supabase.auth.getUser())?.data?.user?.id;
-
-  // Look up user_id by email if they've already signed up
-  // Falls back to null — user_id will be linked on their next login via the auto-link trigger
-  let userId = null;
-  try {
-    const { data: existingUsers } = await supabase
-      .from("app_admins")
-      .select("user_id")
-      .eq("user_email", userEmail)
-      .maybeSingle();
-    // If they're already in the table somehow, reuse their user_id
-    if (existingUsers?.user_id) userId = existingUsers.user_id;
-  } catch (_) {}
-
-  const { error } = await supabase.from("app_admins").insert({
-    user_id: userId,
-    user_email: userEmail,
-    admin_role: role,
-    granted_by: grantedBy,
-    notes,
-  });
+  const { error } = await supabase.from("app_admins").insert({ user_id: null, user_email: userEmail, admin_role: role, granted_by: grantedBy, notes });
   if (error) return { error: error.message };
   return { success: true };
 }
@@ -575,49 +533,21 @@ export async function revokeAdminRole(adminId) {
 }
 
 // ================================================================
-// WORLD HOMEPAGE
+// PERFORMANCE HELPERS
 // ================================================================
 
-/** Upload a world cover image; returns the public URL or null */
-export async function uploadWorldCover(userId, worldId, file) {
-  if (!supabase) return null;
-  const ext = file.name.split(".").pop();
-  const path = `${userId}/${worldId}.${ext}`;
-  const { data, error } = await supabase.storage
-    .from("world-covers")
-    .upload(path, file, { upsert: true });
-  if (error) { console.error("Cover upload error:", error); return null; }
-  const { data: urlData } = supabase.storage
-    .from("world-covers")
-    .getPublicUrl(data.path);
-  return urlData.publicUrl;
+export async function fetchWorldsAndArticles(userId) {
+  if (!supabase) return { worlds: [], articles: [] };
+  const worlds = await fetchWorlds(userId);
+  if (worlds.length === 0) return { worlds, articles: [] };
+  const articles = await fetchArticles(worlds[0].id);
+  return { worlds, articles };
 }
 
-/** Save world homepage fields (cover, tagline, description, featured pins) */
-export async function updateWorldHome(worldId, { coverUrl, tagline, descriptionHtml, featuredIds }) {
-  if (!supabase || !worldId) return { error: "no_supabase" };
-  const patch = { home_updated_at: new Date().toISOString() };
-  if (coverUrl        !== undefined) patch.cover_url        = coverUrl;
-  if (tagline         !== undefined) patch.tagline          = tagline;
-  if (descriptionHtml !== undefined) patch.description_html = descriptionHtml;
-  if (featuredIds     !== undefined) patch.featured_ids     = featuredIds;
-  const { error } = await supabase.from("worlds").update(patch).eq("id", worldId);
-  if (error) { console.error("Update world home error:", error); return { error: error.message }; }
-  return { success: true };
-}
-
-/** Fetch world homepage fields for a single world */
-export async function fetchWorldHome(worldId) {
-  if (!supabase || !worldId) return { data: null, error: "no_supabase" };
-  const { data, error } = await supabase
-    .from("worlds")
-    .select("id, name, description, cover_url, tagline, description_html, featured_ids, home_updated_at, updated_at")
-    .eq("id", worldId)
-    .single();
-  if (error) {
-    const msg = error.message || "";
-    const colMissing = /column.*cover_url.*does not exist|column.*tagline.*does not exist/i.test(msg);
-    return { data: null, error: colMissing ? "schema_missing" : msg };
-  }
-  return { data, error: null };
+export async function bulkUpsertArticles(worldId, articles) {
+  if (!supabase || !articles.length) return true;
+  const rows = articles.map((a) => articleToDb(worldId, a));
+  const { error } = await supabase.from("articles").upsert(rows, { onConflict: "world_id,slug" });
+  if (error) { console.error("Bulk upsert error:", error); return false; }
+  return true;
 }
