@@ -577,10 +577,12 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   // Check for invite code in URL (e.g. ?invite=AB3XK7QR)
   useEffect(() => {
+    if (typeof window === "undefined" || !user) return;
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get("invite");
     if (inviteCode) {
-      // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);
-      // Navigate to collaboration page with the code pre-filled
+      setUrlInviteCode(inviteCode.toUpperCase());
       setView("collaboration");
     }
   }, [user]);
