@@ -402,3 +402,174 @@ export async function fetchWorldActivity(worldId, limit = 60) {
   }
   return { events: data || [], error: null };
 }
+
+// ================================================================
+// CHARACTER RELATIONS
+// ================================================================
+
+export async function fetchCharacterRelations(worldId) {
+  if (!supabase || !worldId) return { relations: {}, error: "no_supabase" };
+  const { data, error } = await supabase.from("character_relations").select("*").eq("world_id", worldId);
+  if (error) {
+    const msg = error.message || "";
+    const missing = error.code === "42P01" || /character_relations.*does not exist/i.test(msg);
+    return { relations: {}, error: missing ? "table_missing" : msg };
+  }
+  const relations = {};
+  (data || []).forEach((row) => {
+    if (!relations[row.from_id]) relations[row.from_id] = [];
+    relations[row.from_id].push({ id: row.id, targetId: row.to_id, type: row.relation_type, confirmed: row.confirmed, source: row.source });
+  });
+  return { relations, error: null };
+}
+
+export async function saveCharacterRelation(worldId, fromId, toId, relationType, confirmed = true, source = "manual") {
+  if (!supabase || !worldId) return { error: "no_supabase" };
+  const { error } = await supabase.from("character_relations").upsert({ world_id: worldId, from_id: fromId, to_id: toId, relation_type: relationType, confirmed, source }, { onConflict: "world_id,from_id,to_id,relation_type", ignoreDuplicates: false });
+  if (error) { console.error("Save relation error:", error); return { error: error.message }; }
+  return { success: true };
+}
+
+export async function deleteCharacterRelation(worldId, fromId, toId, relationType) {
+  if (!supabase || !worldId) return false;
+  const { error } = await supabase.from("character_relations").delete().eq("world_id", worldId).eq("from_id", fromId).eq("to_id", toId).eq("relation_type", relationType);
+  return !error;
+}
+
+export async function confirmCharacterRelation(worldId, fromId, toId, relationType) {
+  if (!supabase || !worldId) return false;
+  const { error } = await supabase.from("character_relations").update({ confirmed: true }).eq("world_id", worldId).eq("from_id", fromId).eq("to_id", toId).eq("relation_type", relationType);
+  return !error;
+}
+
+// ================================================================
+// WORLD HOMEPAGE
+// ================================================================
+
+export async function uploadWorldCover(userId, worldId, file) {
+  if (!supabase) return null;
+  const ext = file.name.split(".").pop();
+  const path = `${userId}/${worldId}.${ext}`;
+  const { data, error } = await supabase.storage.from("world-covers").upload(path, file, { upsert: true });
+  if (error) { console.error("Cover upload error:", error); return null; }
+  const { data: urlData } = supabase.storage.from("world-covers").getPublicUrl(data.path);
+  return urlData.publicUrl;
+}
+
+export async function updateWorldHome(worldId, { coverUrl, tagline, descriptionHtml, featuredIds }) {
+  if (!supabase || !worldId) return { error: "no_supabase" };
+  const patch = { home_updated_at: new Date().toISOString() };
+  if (coverUrl !== undefined) patch.cover_url = coverUrl;
+  if (tagline !== undefined) patch.tagline = tagline;
+  if (descriptionHtml !== undefined) patch.description_html = descriptionHtml;
+  if (featuredIds !== undefined) patch.featured_ids = featuredIds;
+  const { error } = await supabase.from("worlds").update(patch).eq("id", worldId);
+  if (error) { console.error("Update world home error:", error); return { error: error.message }; }
+  return { success: true };
+}
+
+export async function fetchWorldHome(worldId) {
+  if (!supabase || !worldId) return { data: null, error: "no_supabase" };
+  const { data, error } = await supabase.from("worlds").select("id, name, description, cover_url, tagline, description_html, featured_ids, home_updated_at, updated_at").eq("id", worldId).single();
+  if (error) {
+    const msg = error.message || "";
+    const colMissing = /column.*cover_url.*does not exist|column.*tagline.*does not exist/i.test(msg);
+    return { data: null, error: colMissing ? "schema_missing" : msg };
+  }
+  return { data, error: null };
+}
+
+// ================================================================
+// APP ADMIN
+// ================================================================
+
+export async function fetchAdminRole() {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.from("app_admins").select("admin_role").maybeSingle();
+    if (!error && data?.admin_role) return data.admin_role;
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("get_my_admin_role");
+    if (!rpcErr && rpcData) return rpcData;
+    return null;
+  } catch (_) { return null; }
+}
+
+export async function fetchAllTickets() {
+  if (!supabase) return { tickets: [], error: "no_supabase" };
+  const { data, error } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false }).limit(200);
+  if (error) return { tickets: [], error: error.message };
+  return { tickets: data || [], error: null };
+}
+
+export async function updateTicket(ticketId, { status, adminNotes }) {
+  if (!supabase) return { error: "no_supabase" };
+  const patch = { updated_at: new Date().toISOString() };
+  if (status !== undefined) patch.status = status;
+  if (adminNotes !== undefined) patch.admin_notes = adminNotes;
+  const { error } = await supabase.from("support_tickets").update(patch).eq("id", ticketId);
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+export async function fetchAllAdmins() {
+  if (!supabase) return { admins: [], error: "no_supabase" };
+  const { data, error } = await supabase.from("app_admins").select("*").order("granted_at");
+  if (error) return { admins: [], error: error.message };
+  return { admins: data || [], error: null };
+}
+
+export async function grantAdminRole(userEmail, role, notes = "") {
+  if (!supabase) return { error: "no_supabase" };
+  const grantedBy = (await supabase.auth.getUser())?.data?.user?.id;
+
+  // Try to find existing user_id for this email via the RPC function
+  // (requires service role in strict setups, but works with anon key + RLS
+  // if the granting user is a super_admin)
+  let userId = null;
+  try {
+    const { data } = await supabase
+      .from("app_admins")
+      .select("user_id")
+      .eq("user_email", userEmail)
+      .maybeSingle();
+    if (data?.user_id) userId = data.user_id;
+  } catch (_) {}
+
+  // Use upsert so re-granting updates role instead of erroring
+  const { error } = await supabase.from("app_admins").upsert({
+    user_id: userId,
+    user_email: userEmail,
+    admin_role: role,
+    granted_by: grantedBy,
+    notes,
+  }, { onConflict: "user_email" });
+
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+export async function revokeAdminRole(adminId) {
+  if (!supabase) return false;
+  const { error } = await supabase.from("app_admins").delete().eq("id", adminId);
+  return !error;
+}
+
+// ================================================================
+// PERFORMANCE HELPERS
+// ================================================================
+
+export async function fetchWorldsAndArticles(userId) {
+  if (!supabase) return { worlds: [], articles: [] };
+  const worlds = await fetchWorlds(userId);
+  if (worlds.length === 0) return { worlds, articles: [] };
+  const articles = await fetchArticles(worlds[0].id);
+  return { worlds, articles };
+}
+
+export async function bulkUpsertArticles(worldId, articles) {
+  if (!supabase || !articles.length) return true;
+  const rows = articles.map((a) => articleToDb(worldId, a));
+  const { error } = await supabase.from("articles").upsert(rows, { onConflict: "world_id,slug" });
+  if (error) { console.error("Bulk upsert error:", error); return false; }
+  return true;
+}
