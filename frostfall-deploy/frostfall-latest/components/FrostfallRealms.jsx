@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import _ from "lodash";
 import * as mammoth from "mammoth";
-import { supabase, fetchArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds, logActivity, fetchWorldActivity, fetchAdminRole } from "../lib/supabase";
+import { supabase, fetchArticles, fetchWorldsAndArticles, bulkUpsertArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds, logActivity, fetchWorldActivity, fetchAdminRole } from "../lib/supabase";
 import { FamilyTreeView } from "@/features/family/FamilyTreeView";
 import { AdminPanel } from "@/features/admin/AdminPanel";
 import { THEMES } from "@/lib/themes";
@@ -20,6 +20,7 @@ import { ImportPage } from "@/features/import/ImportPage";
 import { SupportPage } from "@/features/support/SupportPage";
 import { CollaborationPanel } from "@/features/collab/CollaborationPanel";
 import { RelationshipGraph } from "@/features/graph/RelationshipGraph";
+import { WorldHomePage } from "@/features/world/WorldHomePage";
 
 // === SAFE STRING HELPERS ===
 const safeText = (v) => (v == null ? "" : String(v));
@@ -510,18 +511,17 @@ export default function FrostfallRealms({ user, onLogout }) {
     const loadData = async () => {
       if (supabase && user) {
         try {
-          const worlds = await fetchWorlds(user.id);
+          // Fetch worlds + first world's articles in a single parallel operation
+          const { worlds, articles: dbArticles } = await fetchWorldsAndArticles(user.id);
           setAllWorlds(worlds);
           if (worlds.length > 0) {
             const world = worlds[0];
             setActiveWorld(world);
-            const dbArticles = await fetchArticles(world.id);
             if (dbArticles.length > 0) {
               setArticles(dedup(dbArticles.filter((a) => !a.isArchived)));
               setArchived(dedup(dbArticles.filter((a) => a.isArchived)));
             }
           }
-          // If no worlds, the welcome screen will show
           setSaveStatus("saved");
         } catch (e) { console.error("Supabase load:", e); setSaveStatus("idle"); }
       } else {
@@ -627,7 +627,8 @@ const handleCreateWorld = async () => {
       try {
         if (supabase && user && activeWorld?.id) {
           const all = [...articles, ...archived.map((a) => ({ ...a, isArchived: true }))];
-          for (const article of all) await upsertArticle(activeWorld.id, article);
+          // Single round-trip instead of N sequential awaits
+          await bulkUpsertArticles(activeWorld.id, all);
         } else if (typeof window !== "undefined" && window.storage) {
           await window.storage.set("frostfall-world-v2", JSON.stringify({ articles, archived, worldName: activeWorld?.name, worldDesc: activeWorld?.description, version: 2, savedAt: new Date().toISOString() }));
         }
@@ -2515,6 +2516,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
 
   const navItems = [
     { id: "dashboard", icon: "◈", label: "Dashboard", action: goDash },
+    { id: "world_home", icon: "🏰", label: "World Home", action: () => setView("world_home") },
     { id: "codex", icon: "📖", label: "Full Codex", action: () => goCodex("all") },
     { divider: true },
     ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
@@ -2546,6 +2548,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
 
   const isAct = (item) => {
     if (item.id === "dashboard" && view === "dashboard") return true;
+    if (item.id === "world_home" && view === "world_home") return true;
     if (item.id === "codex" && view === "codex" && codexFilter === "all") return true;
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "timeline" && view === "timeline") return true;
@@ -3818,6 +3821,28 @@ const renderArchives = () => (<>
       </div>
     </>);
   };
+
+  const renderWorldHome = () => (
+    view === "world_home" && activeWorld ? (
+      <WorldHomePage
+        theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
+        activeWorld={activeWorld}
+        articles={articles}
+        archived={archived}
+        stats={stats}
+        CATEGORIES={CATEGORIES}
+        allConflicts={allConflicts}
+        totalIntegrityIssues={totalIntegrityIssues}
+        user={user}
+        isMobile={isMobile}
+        onNavigate={(v, filter) => {
+          if (v === "codex") { goCodex(filter || "all"); }
+          else setView(v);
+        }}
+        onOpenArticle={(article) => { setActiveArticle(article); setView("article"); }}
+      />
+    ) : null
+  );
 
   const renderSettings = () => (<>
           {view === "settings" && (<>
@@ -5404,6 +5429,7 @@ const renderArchives = () => (<>
           {renderWelcome()}
           {renderWorldCreate()}
           {renderDashboard()}
+          {renderWorldHome()}
           {renderIntegrity()}
           {renderArchives()}
           {renderTimeline()}

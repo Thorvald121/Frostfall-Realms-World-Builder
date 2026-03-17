@@ -36,6 +36,31 @@ export async function fetchArticles(worldId) {
   return data.map(dbToArticle);
 }
 
+// === HELPER: Fetch worlds AND first world's articles in parallel ===
+export async function fetchWorldsAndArticles(userId) {
+  if (!supabase) return { worlds: [], articles: [] };
+
+  // Step 1: fetch worlds
+  const worlds = await fetchWorlds(userId);
+  if (worlds.length === 0) return { worlds, articles: [] };
+
+  // Step 2: fetch articles for the first (most recently updated) world
+  const articles = await fetchArticles(worlds[0].id);
+  return { worlds, articles };
+}
+
+// === HELPER: Bulk upsert articles (single round-trip instead of N) ===
+export async function bulkUpsertArticles(worldId, articles) {
+  if (!supabase || !articles.length) return true;
+  const rows = articles.map((a) => articleToDb(worldId, a));
+  // Supabase upsert accepts arrays — one network call for all rows
+  const { error } = await supabase
+    .from("articles")
+    .upsert(rows, { onConflict: "world_id,slug" });
+  if (error) { console.error("Bulk upsert error:", error); return false; }
+  return true;
+}
+
 // === HELPER: Upsert article ===
 export async function upsertArticle(worldId, article) {
   if (!supabase) return null;
@@ -464,16 +489,25 @@ export async function confirmCharacterRelation(worldId, fromId, toId, relationTy
 export async function fetchAdminRole() {
   if (!supabase) return null;
   try {
+    // Primary: match by user_id via RLS
     const { data, error } = await supabase
       .from("app_admins")
       .select("admin_role")
       .maybeSingle();
+
+    if (!error && data?.admin_role) return data.admin_role;
+
+    // Fallback: use security-definer function that also checks by email
+    // Handles edge case where user_id hasn't been linked yet
+    const { data: rpcData, error: rpcErr } = await supabase
+      .rpc("get_my_admin_role");
+    if (!rpcErr && rpcData) return rpcData;
+
     if (error) {
       const isMissing = error.code === "42P01" || /app_admins.*does not exist/i.test(error.message || "");
       if (!isMissing) console.warn("fetchAdminRole:", error.message, "code:", error.code);
-      return null;
     }
-    return data?.admin_role || null;
+    return null;
   } catch (e) {
     console.warn("fetchAdminRole exception:", e);
     return null;
