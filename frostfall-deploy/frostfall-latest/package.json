@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "A dark fantasy worldbuilding engine inspired by World Anvil",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "dev": "NEXT_PUBLIC_DEV_RUN_ID=$(date +%s) next dev -H 0.0.0.0 -p 5000",
@@ -10,7 +11,9 @@
     "start": "next start -H 0.0.0.0 -p 5000",
     "lint": "next lint",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:modernization": "node --experimental-default-type=module --test tests/modernization/*.test.mjs",
+    "test:syntax": "node scripts/source-syntax-check.cjs"
   },
   "engines": {
     "node": ">=20",
@@ -25,13 +28,16 @@
     "mammoth": "^1.11.0",
     "next": "^16.1.6",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "@tabler/core": "1.7.4",
+    "lucide-react": "1.72.0"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.24",
     "only-allow": "^1.2.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "typescript": "5.9.3"
   }
 }

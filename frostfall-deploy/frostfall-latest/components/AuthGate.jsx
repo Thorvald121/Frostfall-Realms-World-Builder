@@ -22,14 +22,23 @@ export default function AuthGate({ children }) {
   // Check session on mount
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user || null);
-      setLoading(false);
+    let mounted = true;
+    // getUser validates the token with Supabase Auth. A cached getSession user alone
+    // must not open an authenticated workspace.
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (mounted) { setUser(error ? null : data?.user || null); setLoading(false); }
+    }).catch(() => {
+      if (mounted) { setUser(null); setLoading(false); setError("Could not verify the sign-in session. Please try again."); }
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser((prev) => (prev?.id && session?.user?.id && prev.id === session.user.id) ? prev : (session?.user || null));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") setUser(null);
+      else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+        // The sign-in flow has already contacted Auth; authenticated API calls
+        // independently verify bearer tokens server-side.
+        setUser(session?.user || null);
+      }
     });
-    return () => listener?.subscription?.unsubscribe();
+    return () => { mounted = false; listener?.subscription?.unsubscribe(); };
   }, []);
 
   const handleLogin = async () => {
@@ -72,8 +81,17 @@ export default function AuthGate({ children }) {
     if (error) setError(error.message);
   };
 
-  // If no Supabase configured, skip auth (local dev mode)
-  if (!supabase) return children({ user: null, onLogout: () => {} });
+  // Fail closed. A missing Auth configuration is never a demo/login bypass.
+  // Standalone offline HTML previews are separate from this deployed application.
+  if (!supabase) return (
+    <main role="alert" style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#0a0e1a", color: "#e8dcc8", fontFamily: "system-ui, sans-serif" }}>
+      <section style={{ maxWidth: 480, padding: 30, border: "1px solid #41506a", borderRadius: 14, background: "#111827" }}>
+        <h1 style={{ fontSize: 23, margin: "0 0 12px" }}>Frostfall Realms configuration required</h1>
+        <p style={{ lineHeight: 1.6 }}>Authentication is not configured for this deployment. No private world data has been loaded or changed.</p>
+        <p style={{ color: "#b8c5d8", lineHeight: 1.5 }}>Contact the deployment administrator to configure the Supabase project before signing in.</p>
+      </section>
+    </main>
+  );
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ textAlign: "center", color: "#f0c040" }}>

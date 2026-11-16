@@ -1,4 +1,5 @@
 // app/layout.jsx
+import "@tabler/core/dist/css/tabler.min.css";
 import "./themes.css";
 import { Cinzel, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
