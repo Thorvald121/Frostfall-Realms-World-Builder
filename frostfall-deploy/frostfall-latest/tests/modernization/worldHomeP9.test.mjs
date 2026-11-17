@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import ts from '/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript/lib/typescript.js';
+import ts from 'typescript';
 
-const home = readFileSync(new URL('./WorldHomePage.jsx', import.meta.url), 'utf8');
-const css = readFileSync(new URL('./WorldHomePage.module.css', import.meta.url), 'utf8');
+const home = readFileSync(new URL('../../features/world/WorldHomePage.jsx', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../../features/world/WorldHomePage.module.css', import.meta.url), 'utf8');
 const parse = (source, name) => ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
 
 test('P9 World Home JSX parses without errors', () => {
