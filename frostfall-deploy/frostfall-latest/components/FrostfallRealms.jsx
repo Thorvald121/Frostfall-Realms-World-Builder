@@ -32,6 +32,8 @@ import { RelationshipGraph } from "@/features/graph/RelationshipGraph";
 import { WorldHomePage } from "@/features/world/WorldHomePage";
 import { CanonStudio } from "@/features/canon/CanonStudio";
 import { CodexCanonPanel } from "@/features/codex/CodexCanonPanel";
+import EntryTypeMenu from "@/components/ui/EntryTypeMenu";
+import { CodexWorkspaceHeader, CodexEmptyState } from "@/features/codex/CodexWorkspaceHeader";
 import { loadManuscriptWorld, saveManuscriptWorld } from "@/lib/domain/manuscripts/manuscriptRepository";
 import { chooseManuscriptHydration, readBrowserDraft, writeBrowserDraft, sameSnapshot, journalKey } from "@/lib/domain/manuscripts/manuscriptSync";
 
@@ -2631,7 +2633,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     return { list: l, matchMap };
   }, [articles, codexFilter, searchQuery, codexSort, codexTagFilter, codexRefFilter, refStats]);
   // Reset pagination when filters/sort/search change
-  useEffect(() => { setCodexVisible(CODEX_PAGE); setShowCodexCreate(false); }, [codexFilter, searchQuery, codexSort, codexTagFilter, codexRefFilter]);
+  useEffect(() => { setCodexVisible(CODEX_PAGE); }, [codexFilter, searchQuery, codexSort, codexTagFilter, codexRefFilter]);
   useEffect(() => { setNovelCodexVisible(NOVEL_CODEX_PAGE); }, [novelCodexFilter, novelCodexSearch]);
 
   // Memoized integrity results for codex list view — avoids O(n²) per render
@@ -2729,17 +2731,13 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     : (navItems.find((item) => item.id && isAct(item))?.label || "Workspace");
 
   // Accessible global create menu and existing Codex-specific create actions.
-  const [showMoreCats, setShowMoreCats] = useState(false);
-  const [showCodexCreate, setShowCodexCreate] = useState(false);
   const [showMobileFab, setShowMobileFab] = useState(false);
 
   // Accessibility: Escape key closes open modals/dropdowns
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === "Escape") {
-        if (showMoreCats) setShowMoreCats(false);
-        else if (showCodexCreate) setShowCodexCreate(false);
-        else if (showMobileFab) setShowMobileFab(false);
+        if (showMobileFab) setShowMobileFab(false);
         else if (worldSwitcherOpen) setWorldSwitcherOpen(false);
         else if (showDupeModal) { setShowDupeModal(false); setPendingDupes([]); }
         else if (showDeleteModal) setShowDeleteModal(null);
@@ -2751,7 +2749,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [showMoreCats, showCodexCreate, showMobileFab, worldSwitcherOpen, showDupeModal, showDeleteModal, showMoveMenu, showConfirm, importConflicts]);
+  }, [showMobileFab, worldSwitcherOpen, showDupeModal, showDeleteModal, showMoveMenu, showConfirm, importConflicts]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -4024,72 +4022,26 @@ const renderArchives = () => (<>
   const renderCodex = () => (<>
           {/* === CODEX === */}
           {view === "codex" && (<div>
-            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 16, marginTop: 24, marginBottom: 16 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "Codex Studio" : categoryPluralLabel(codexFilter)}</h2>
-              <Ornament width={120} /><span style={{ fontSize: 12, color: theme.textMuted }}>{filtered.list.length} entries{searchQuery.trim() ? " matching \"" + searchQuery + "\"" : ""}{filtered.list.length > codexVisible ? " · showing " + Math.min(codexVisible, filtered.list.length) : ""}</span>
-              <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                <button title="Open the structured canon facts and review queue" onClick={() => setView("canon_studio")} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: theme.text, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: navTone(theme, "canon_studio") }}><FrostfallNavIcon id="canon_studio" size={15} /></span> Canon Studio</button>
-                <button onClick={() => { setCodexBulkMode((v) => !v); setCodexSelected(new Set()); }} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: codexBulkMode ? theme.accent : theme.textDim, border: "1px solid " + (codexBulkMode ? ta(theme.accent, 0.4) : theme.border), background: codexBulkMode ? ta(theme.accent, 0.08) : "transparent" }}>
-                  {codexBulkMode ? "✓ Selecting" : "☐ Select"}
-                </button>
-                {codexFilter !== "all" ? (
-                  <button onClick={() => goCreate(codexFilter)} style={{ ...tBtnP, fontSize: 11, padding: "7px 16px", display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New {CATEGORIES[codexFilter]?.label}
-                  </button>
-                ) : (
-                  <div style={{ position: "relative" }}>
-                    <button onClick={() => setShowCodexCreate((v) => !v)} style={{ ...tBtnP, fontSize: 11, padding: "7px 16px", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New Entry <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
-                    </button>
-                    {showCodexCreate && (
-                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: theme.cardBg, border: "1px solid " + theme.divider, borderRadius: 8, padding: "6px 0", zIndex: 50, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
-                        {Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => (
-                          <div key={k} role="menuitem" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowCodexCreate(false); goCreate(k); } }}
-                            onClick={() => { setShowCodexCreate(false); goCreate(k); }}
-                            style={{ fontSize: 12, color: c.color, padding: "8px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = ta(c.color, 0.1); }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                            <span style={{ fontSize: 14, width: 20, textAlign: "center" }}>{c.icon}</span> {c.label}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* Category filter pills */}
-            <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
-              {[{ key: "all", label: "All", color: theme.accent }, ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((f) => (
-                <div key={f.key} role="button" tabIndex={0} aria-pressed={codexFilter === f.key} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCodexFilter(f.key); } }} onClick={() => setCodexFilter(f.key)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, cursor: "pointer", letterSpacing: 0.5, fontWeight: codexFilter === f.key ? 600 : 400, background: codexFilter === f.key ? f.color + "20" : "transparent", color: codexFilter === f.key ? f.color : theme.textDim, border: "1px solid " + (codexFilter === f.key ? f.color + "40" : theme.border), transition: "all 0.15s" }}>{f.label}</div>
-              ))}
-            </div>
-            {/* Sort options bar */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, padding: "8px 14px", background: theme.cardBg, border: "1px solid " + theme.border, borderRadius: 8 }}>
-              <span style={{ fontSize: 10, color: theme.textMuted, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", flexShrink: 0 }}>Sort</span>
-              <div style={{ width: 1, height: 16, background: theme.border, flexShrink: 0 }} />
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {[
-                  { id: "recent", label: "Most Recent" },
-                  { id: "alpha_asc", label: "A → Z" },
-                  { id: "alpha_desc", label: "Z → A" },
-                  { id: "oldest", label: "Oldest" },
-                  { id: "words", label: "Word Count" },
-                  { id: "era", label: "Time Period" },
-                  { id: "category", label: "Category" },
-                ].map((s) => (
-                  <button key={s.id} onClick={() => setCodexSort(s.id)}
-                    style={{ padding: "5px 14px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: codexSort === s.id ? 600 : 400, letterSpacing: 0.3, border: "1px solid " + (codexSort === s.id ? theme.accent + "50" : "transparent"), background: codexSort === s.id ? theme.accentBg : "transparent", color: codexSort === s.id ? theme.accent : theme.textMuted, transition: "all 0.15s" }}>
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
-                <button onClick={() => setCodexViewMode("list")} title="List view" style={{ padding: "5px 8px", borderRadius: "6px 0 0 6px", cursor: "pointer", fontSize: 13, fontFamily: "inherit", border: "1px solid " + (codexViewMode === "list" ? theme.accent + "50" : theme.border), background: codexViewMode === "list" ? theme.accentBg : "transparent", color: codexViewMode === "list" ? theme.accent : theme.textDim, transition: "all 0.15s" }}>☰</button>
-                <button onClick={() => setCodexViewMode("grid")} title="Card view" style={{ padding: "5px 8px", borderRadius: "0 6px 6px 0", cursor: "pointer", fontSize: 13, fontFamily: "inherit", border: "1px solid " + (codexViewMode === "grid" ? theme.accent + "50" : theme.border), background: codexViewMode === "grid" ? theme.accentBg : "transparent", color: codexViewMode === "grid" ? theme.accent : theme.textDim, transition: "all 0.15s" }}>⊞</button>
-              </div>
-            </div>
-
+            <CodexWorkspaceHeader
+              worldName={activeWorld?.name}
+              articles={articles}
+              categories={CATEGORIES}
+              disabledCategories={settings.disabledCategories || []}
+              categoryFilter={codexFilter}
+              onCategoryFilter={setCodexFilter}
+              results={filtered.list.length}
+              search={searchQuery}
+              onSearch={setSearchQuery}
+              sort={codexSort}
+              onSort={setCodexSort}
+              viewMode={codexViewMode}
+              onViewMode={setCodexViewMode}
+              bulkMode={codexBulkMode}
+              onBulkToggle={() => { setCodexBulkMode((value) => !value); setCodexSelected(new Set()); }}
+              onCanon={() => setView("canon_studio")}
+              onCreate={goCreate}
+              canWrite={!!activeWorld && activeWorld.member_role !== "viewer"}
+            />
             {/* Advanced filters bar — tag + reference filters */}
             {(codexTagFilter || codexRefFilter !== "all" || allTags.length > 0) && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, padding: "8px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.border, borderRadius: 8, flexWrap: "wrap" }}>
@@ -4126,6 +4078,18 @@ const renderArchives = () => (<>
                   </span>
                 )}
               </div>
+            )}
+
+            {filtered.list.length === 0 && (
+              <CodexEmptyState
+                hasEntries={articles.length > 0}
+                onClear={() => { setSearchQuery(""); setCodexFilter("all"); setCodexTagFilter(""); setCodexRefFilter("all"); }}
+                onCreate={goCreate}
+                categories={CATEGORIES}
+                disabledCategories={settings.disabledCategories || []}
+                contextKey={activeWorld?.id}
+                canWrite={!!activeWorld && activeWorld.member_role !== "viewer"}
+              />
             )}
 
             {/* Bulk action bar */}
@@ -5417,24 +5381,14 @@ const renderArchives = () => (<>
             {!isMobile && <span className="fr-toolbar-theme-label">Theme</span>}
             {!isMobile && <ThemeSelect value={settings.theme} compact onChange={(next) => setSettings((previous) => ({ ...previous, theme: next }))} />}
             {activeWorld && activeWorld.member_role !== "viewer" && (
-              <button type="button" className="fr-new-entry-btn" aria-haspopup="menu" aria-expanded={showMoreCats}
-                onClick={() => setShowMoreCats((v) => !v)}>
-                <span aria-hidden="true">＋</span> <span>New Entry</span>
-              </button>
+              <EntryTypeMenu
+                categories={CATEGORIES}
+                disabledCategories={settings.disabledCategories || []}
+                contextKey={`${activeWorld.id}:${view}`}
+                onSelect={goCreate}
+              />
             )}
           </div>
-          {showMoreCats && (<>
-            <div className="fr-create-dismiss" onClick={() => setShowMoreCats(false)} aria-hidden="true" />
-            <div className="fr-create-menu" role="menu" aria-label="Choose entry category">
-              <div className="fr-create-menu-label">Create a codex entry</div>
-              {Object.entries(CATEGORIES).filter(([key]) => !settings.disabledCategories.includes(key)).map(([k, c]) => (
-                <button type="button" role="menuitem" key={k} onClick={() => { setShowMoreCats(false); goCreate(k); }}>
-                  <span style={{ color: c.color }} aria-hidden="true"><FrostfallNavIcon id={k} size={17}/></span>
-                  <span>{c.label}</span>
-                </button>
-              ))}
-            </div>
-          </>)}
           {/* Realtime live badge */}
           {realtimeLive && activeWorld && (
             <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 10, background: "rgba(142,200,160,0.12)", border: "1px solid rgba(142,200,160,0.25)", flexShrink: 0 }}>

@@ -1,0 +1,37 @@
+.root { width:100%; min-width:0; max-width:1540px; margin:0 auto 18px; color:var(--text); }
+.heading { display:flex; gap:20px; align-items:flex-start; justify-content:space-between; margin:8px 0 20px; }
+.eyebrow { color:var(--accent); font:800 10px/1.5 var(--uiFont); letter-spacing:.15em; text-transform:uppercase; margin-bottom:6px; }
+.title { font:700 clamp(23px,2.4vw,32px)/1.25 var(--displayFont); margin:0; color:var(--text); }
+.subtitle { font-size:13px; color:var(--textMuted); line-height:1.6; margin:8px 0 0; max-width:650px; }
+.actions { display:flex; flex-wrap:wrap; gap:9px; align-items:center; justify-content:flex-end; }
+.secondary { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:39px; padding:9px 13px; border:1px solid var(--border); border-radius:9px; color:var(--text); background:var(--cardBg); font:700 12px var(--uiFont); cursor:pointer; white-space:nowrap; }
+.secondary:hover { border-color:var(--accent); }
+.stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:15px; }
+.stat { position:relative; display:grid; gap:5px; min-width:0; padding:15px 17px; border:1px solid var(--border); border-radius:12px; background:var(--cardBg); }
+.statIcon { color:var(--accent); }
+.stat strong { font:700 clamp(21px,2vw,26px)/1.2 var(--displayFont); color:var(--text); }
+.stat span { font-size:11px; color:var(--textMuted); }
+.catalog { background:var(--cardBg); border:1px solid var(--border); border-radius:12px; padding:15px; min-width:0; }
+.searchRow { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
+.finder { flex:1 1 260px; min-width:150px; }
+.sortWrap { flex:0 1 190px; min-width:145px; }
+.finder label,.sortWrap label { display:flex; align-items:center; gap:6px; color:var(--textMuted); font:700 11px var(--uiFont); margin-bottom:7px; }
+.finder input,.sortWrap select { box-sizing:border-box; min-height:40px; width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; color:var(--text); background:var(--inputBg); font:12px var(--uiFont); outline-offset:3px; }
+.finder input:focus,.sortWrap select:focus { outline:2px solid var(--accent); border-color:var(--accent); }
+.toggleGroup { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; flex:none; }
+.toggleGroup button { background:transparent; color:var(--textMuted); border:0; cursor:pointer; min-height:39px; min-width:42px; display:grid; place-items:center; }
+.toggleGroup button + button { border-left:1px solid var(--border); }
+.toggleGroup .activeToggle,.activeToggle { color:var(--accent); background:var(--accentBg); }
+.categoryRow { display:flex; align-items:center; gap:7px; overflow-x:auto; padding:13px 0 4px; scrollbar-width:thin; max-width:100%; overscroll-behavior-x:contain; }
+.categoryRow button { background:var(--surface); color:var(--textMuted); border:1px solid var(--border); border-radius:999px; padding:8px 12px; display:inline-flex; gap:7px; align-items:center; white-space:nowrap; cursor:pointer; font:700 11px var(--uiFont); flex:0 0 auto; }
+.categoryRow button:hover,.categoryRow .selectedCategory { color:var(--text); border-color:var(--accent); background:var(--accentBg); }
+.categoryRow button span:not(.categoryMark) { font-size:10px; opacity:.8; }
+.categoryMark { width:7px; height:7px; border-radius:50%; flex:none; }
+.resultLabel { color:var(--textMuted); margin:10px 0 0; font-size:11px; }
+.empty { display:grid; justify-items:center; text-align:center; gap:11px; padding:50px 18px; margin-top:12px; border:1px dashed var(--border); border-radius:12px; background:var(--cardBg); color:var(--textMuted); }
+.empty svg { color:var(--accent); }
+.empty h2 { margin:0; font:700 18px var(--displayFont); color:var(--text); }
+.empty p { max-width:420px; margin:0; line-height:1.65; font-size:13px; }
+.emptyActions { display:flex; gap:10px; margin-top:5px; }
+@media(max-width:850px){.heading{flex-wrap:wrap}.actions{justify-content:flex-start}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.finder{flex-basis:100%}}
+@media(max-width:480px){.stats{gap:7px}.stat{padding:12px}.catalog{padding:11px}.sortWrap{flex:1 1 145px}.toggleGroup{margin-left:0}.heading{margin-top:4px}}
