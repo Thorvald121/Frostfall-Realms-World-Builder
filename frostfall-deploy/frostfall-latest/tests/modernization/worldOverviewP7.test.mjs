@@ -57,7 +57,7 @@ test('P7 preserves registered modules and groups sidebar by function', () => {
 test('P7 keeps one theme selector in the desktop toolbar and one accessible on mobile', () => {
   assert.match(appSource,/fr-studio-toolbar-actions/);
   assert.match(appSource,/fr-mobile-theme/);
-  assert.match(appSource,/showMoreCats/);
+  assert.match(appSource,/<EntryTypeMenu/);
 });
 
 test('P7 retains 9 theme-driven color tokens and viewport containment', () => {
