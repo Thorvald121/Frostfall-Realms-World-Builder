@@ -1,0 +1,71 @@
+.root {width:100%;min-width:0;max-width:none;padding:24px 0 60px;color:var(--text);font-family:var(--uiFont)}
+.root button {font-family:inherit;cursor:pointer}
+.root button:disabled {cursor:not-allowed;opacity:.6}
+.pageIntro {display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.pageIntro h1 {font:700 clamp(1.45rem,2.8vw,2rem)/1.18 var(--displayFont);margin:5px 0 6px}
+.pageIntro p {font-size:13px;color:var(--textMuted);margin:0;line-height:1.6}
+.eyebrow {font:800 10px/1.4 var(--uiFont);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.hero {position:relative;display:flex;align-items:flex-end;overflow:hidden;min-height:240px;border:1px solid var(--border);border-radius:16px;background:radial-gradient(circle at 95% 0%,var(--accentBg),transparent 45%),var(--cardBg);background-position:center;background-size:cover;margin-bottom:14px}
+.heroCopy {position:relative;z-index:1;padding:34px 36px;max-width:min(680px,85%);min-width:0}
+.hero h2 {font:700 clamp(2rem,4vw,3.3rem)/1.15 var(--displayFont);letter-spacing:.025em;margin:9px 0 12px;overflow-wrap:anywhere}
+.hero p {font-size:14px;color:var(--textMuted);line-height:1.65;margin:0;max-width:620px}
+.heroEmblem {position:absolute;right:8%;top:17%;width:128px;height:128px;display:grid;place-items:center;border-radius:30px;background:var(--accentBg);border:1px solid var(--border);color:var(--accent);transform:rotate(-9deg);opacity:.65}
+.heroActions {display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+.primary,.secondary,.textAction {display:inline-flex;align-items:center;justify-content:center;gap:9px;border-radius:9px;min-height:38px;padding:9px 15px;font-size:12px;font-weight:750}
+.primary {background:var(--accent);color:var(--deepBg,#111);border:1px solid var(--accent)}
+.secondary {background:var(--cardBg);color:var(--text);border:1px solid var(--border)}
+.primary:hover,.secondary:hover,.textAction:hover {filter:brightness(1.1);border-color:var(--accent)}
+.textAction {background:transparent;border:0;color:var(--accent);min-height:30px;padding:4px 0}
+.coverButton {position:absolute;z-index:2;right:13px;top:13px;display:inline-flex;align-items:center;gap:7px;border-radius:8px;padding:8px 11px;background:var(--inputBg);border:1px solid var(--border);font-size:11px;color:var(--text)}
+.stats {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:22px}
+.stat {position:relative;min-width:0;display:grid;grid-template-columns:1fr auto;gap:3px;text-align:left;padding:18px 20px;border:1px solid var(--border);border-radius:12px;background:var(--cardBg);color:var(--accent);transition:border-color .15s}
+.stat:hover,.starterSteps button:hover,.recentCard:hover {border-color:var(--accent)}
+.stat strong {grid-column:1;font:700 25px var(--displayFont);color:var(--text)}
+.stat span {grid-column:1;font-size:11px;color:var(--textMuted)}
+.stat svg:last-child {position:absolute;right:15px;top:18px;color:var(--textDim)}
+.starter {background:linear-gradient(110deg,var(--accentBg),transparent 70%),var(--cardBg);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin:0 0 20px}
+.starterHeading {display:flex;align-items:center;gap:12px;color:var(--accent);margin-bottom:16px}
+.starter h2 {font:700 20px var(--displayFont);color:var(--text);margin:3px 0 0}
+.starterSteps {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.starterSteps button {min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;padding:19px;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--accent)}
+.starterSteps strong {font-size:13px;color:var(--text)}
+.starterSteps span {font-size:11px;color:var(--textMuted);line-height:1.6;min-height:36px}
+.starterSteps svg:last-child {align-self:flex-end}
+.bodyGrid {display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);gap:14px;margin-bottom:14px;align-items:stretch}
+.panel {min-width:0;background:var(--cardBg);border:1px solid var(--border);border-radius:13px;padding:22px 24px}
+.panelHeading {display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+.panelHeading h2 {font:700 clamp(16px,1.4vw,20px) var(--displayFont);margin:4px 0 0}
+.emptyInline {min-height:165px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;border:1px dashed var(--border);border-radius:10px;color:var(--accent)}
+.emptyInline h3 {font:700 15px var(--displayFont);color:var(--text);margin:10px 0 3px}
+.emptyInline p {font-size:12px;color:var(--textMuted);line-height:1.6;margin:0;max-width:410px}
+.description {font-size:13px;line-height:1.8;color:var(--textMuted);overflow-wrap:anywhere}
+.formLabel {display:grid;gap:8px;font-size:11px;color:var(--textMuted);font-weight:700;margin:12px 0}
+.formLabel input,.formLabel textarea {width:100%;box-sizing:border-box;background:var(--inputBg);border:1px solid var(--border);border-radius:9px;padding:12px;color:var(--text);font:400 13px/1.6 var(--uiFont)}
+.hero .formLabel {max-width:480px}
+.featuredList,.categoryList {display:grid;gap:7px}
+.featuredList button,.categoryList button {min-width:0;text-align:left;display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-left:3px solid var(--entry-color);border-radius:8px;padding:12px;background:var(--surface);color:var(--entry-color)}
+.featuredList button:hover,.categoryList button:hover {background:var(--accentBg)}
+.featuredList button span {min-width:0;flex:1;display:grid;gap:2px}
+.featuredList strong {color:var(--text);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.featuredList small {color:var(--textMuted)}
+.categoryList button span:nth-child(2) {color:var(--text);flex:1;font-size:12px}
+.categoryList strong {color:var(--entry-color)}
+.categoryDot {width:8px;height:8px;border-radius:50%;background:var(--entry-color)}
+.recentGrid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.recentCard {display:flex;flex-direction:column;gap:8px;min-width:0;min-height:120px;text-align:left;border:1px solid var(--border);border-top:2px solid var(--entry-color);border-radius:9px;background:var(--surface);padding:13px}
+.recentCategory {font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--entry-color)}
+.recentCard strong {font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recentCard small {font-size:11px;color:var(--textMuted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recentDate {font-size:10px;color:var(--textDim);display:flex;align-items:center;justify-content:space-between;margin-top:auto}
+.pinList {max-height:300px;overflow:auto;display:grid;gap:5px}
+.pinList p {color:var(--textMuted);font-size:11px}
+.pinList label {display:flex;gap:8px;align-items:center;padding:8px;color:var(--text);font-size:12px;border:1px solid var(--border);border-radius:7px;cursor:pointer}
+.editActions {display:flex;align-items:center;gap:9px;flex-wrap:wrap;border:1px solid var(--border);background:var(--cardBg);border-radius:12px;padding:12px 16px;margin:14px 0}
+.editActions span {font-size:11px;color:var(--textMuted);margin-right:auto}
+.saveMessage {color:var(--accent);font-size:12px;margin:12px 0}
+.error {padding:13px 17px;margin-bottom:15px;border:1px solid #dd816c;border-radius:9px;background:rgba(221,129,108,.09);color:var(--text);font-size:13px}
+.loading {padding:80px 20px;text-align:center;color:var(--textMuted)}
+.footer {display:flex;align-items:center;gap:7px;color:var(--textDim);font-size:11px;margin:20px 0}
+@media(max-width:1050px){.bodyGrid{grid-template-columns:minmax(0,1fr)}.heroCopy{max-width:90%}}
+@media(max-width:750px){.root{padding:15px 0 35px}.hero{min-height:230px}.heroCopy{padding:28px 20px;max-width:100%}.heroEmblem{display:none}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.starterSteps{grid-template-columns:1fr}.starterSteps button{min-height:0}.panel{padding:18px}.recentGrid{grid-template-columns:1fr}.pageIntro h1{font-size:24px}}
+@media(max-width:380px){.heroActions{flex-direction:column;align-items:stretch}.stat{padding:13px}.stat strong{font-size:20px}.panel{padding:14px}}

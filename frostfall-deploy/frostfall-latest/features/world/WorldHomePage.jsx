@@ -1,426 +1,254 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { uploadWorldCover, updateWorldHome, fetchWorldHome } from "@/lib/supabase";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowRight, BookOpen, CalendarClock, Check, ChevronRight, FilePenLine,
+  FileText, ImagePlus, Layers3, Link2, Map, Pencil, Save,
+  ShieldCheck, Sparkles, Star, UploadCloud, X,
+} from "lucide-react";
+import { fetchWorldHome, updateWorldHome, uploadWorldCover } from "@/lib/supabase";
 import SafeRichText from "@/components/ui/SafeRichText";
+import styles from "./WorldHomePage.module.css";
 
-// ─── tiny helpers ────────────────────────────────────────────────
-const timeAgo = (iso) => {
-  if (!iso) return "never";
-  const d = new Date(iso), now = new Date(), hrs = Math.floor((now - d) / 36e5);
-  if (hrs < 1) return "just now";
-  if (hrs < 24) return hrs + "h ago";
-  const days = Math.floor(hrs / 24);
-  return days === 1 ? "yesterday" : days + "d ago";
+const wordCount = (html) => String(html || "")
+  .replace(/<[^>]*>/g, " ").trim().split(/\s+/).filter(Boolean).length;
+
+const toTime = (value) => {
+  const date = new Date(value || 0).getTime();
+  return Number.isFinite(date) ? date : 0;
 };
 
-const wordCount = (html) => {
-  if (!html) return 0;
-  return html.replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean).length;
+const fmtDate = (value) => {
+  if (!value) return "Not yet updated";
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? "Date unavailable" : date.toLocaleDateString(undefined, {
+    month: "short", day: "numeric", year: "numeric",
+  });
 };
 
-// ─────────────────────────────────────────────────────────────────
+function PanelTitle({ eyebrow, title, action }) {
+  return <div className={styles.panelHeading}>
+    <div><span className={styles.eyebrow}>{eyebrow}</span><h2>{title}</h2></div>
+    {action}
+  </div>;
+}
+
+/** World-scoped homepage. This view never mixes the previous world's fetched home data. */
 export function WorldHomePage({
-  theme, ta, tBtnP, tBtnS, S, Ornament,
-  activeWorld, articles, archived, stats, CATEGORIES,
-  allConflicts, totalIntegrityIssues,
-  user, isMobile,
-  onNavigate,          // (view, filter?) => void
-  onOpenArticle,       // (article) => void
+  activeWorld, articles = [], archived = [], CATEGORIES = {}, totalIntegrityIssues = 0,
+  user, onNavigate, onOpenArticle,
 }) {
-  const isOwner = activeWorld?.user_id === user?.id || activeWorld?.member_role === "owner";
-
-  // ── home data state ──
-  const [homeData, setHomeData]         = useState(null);  // fetched from DB
-  const [schemaReady, setSchemaReady]   = useState(true);  // false if columns missing
-  const [loading, setLoading]           = useState(true);
-
-  // ── edit mode state ──
-  const [editing, setEditing]           = useState(false);
+  const worldId = activeWorld?.id;
+  const canEdit = !!worldId && (activeWorld?.user_id === user?.id || activeWorld?.member_role === "owner");
+  const coverInputRef = useRef(null);
+  const [homeData, setHomeData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState("");
+  const [editing, setEditing] = useState(false);
   const [draftTagline, setDraftTagline] = useState("");
-  const [draftDesc, setDraftDesc]       = useState("");
-  const [draftFeatured, setDraftFeatured] = useState([]);  // array of article ids (max 3)
-  const [saving, setSaving]             = useState(false);
-  const [saveMsg, setSaveMsg]           = useState(null);
-
-  // ── cover upload ──
-  const coverInputRef   = useRef(null);
+  const [draftDesc, setDraftDesc] = useState("");
+  const [draftFeatured, setDraftFeatured] = useState([]);
+  const [saving, setSaving] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
 
-  // ── derived ──
-  const recentArticles = [...articles]
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
-    .slice(0, 6);
-
-  const featuredArticles = (homeData?.featured_ids || [])
-    .map((id) => articles.find((a) => a.id === id))
-    .filter(Boolean)
-    .slice(0, 3);
-
-  const totalWords = articles.reduce((s, a) => s + wordCount(a.body), 0);
-  const connectionCount = articles.reduce((s, a) => s + (a.linkedIds?.length || 0), 0);
-  const catBreakdown = Object.entries(CATEGORIES)
-    .map(([k, c]) => ({ key: k, ...c, count: articles.filter((a) => a.category === k).length }))
-    .filter((c) => c.count > 0)
-    .sort((a, b) => b.count - a.count);
-
-  // ── load from DB ──
-  const load = useCallback(async () => {
-    if (!activeWorld?.id) return;
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    const { data, error } = await fetchWorldHome(activeWorld.id);
-    if (error === "schema_missing") { setSchemaReady(false); }
-    else if (data) {
-      setHomeData(data);
-      setDraftTagline(data.tagline || "");
-      setDraftDesc(data.description_html || "");
-      setDraftFeatured(data.featured_ids || []);
-    }
-    setLoading(false);
-  }, [activeWorld?.id]);
+    setHomeData(null);
+    setReadError("");
+    setEditing(false);
+    setSaveMsg("");
+    setDraftFeatured([]);
+    setDraftTagline("");
+    setDraftDesc("");
+    if (!worldId) { setLoading(false); return () => { cancelled = true; }; }
+    fetchWorldHome(worldId).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        setReadError(error === "schema_missing"
+          ? "World Home storage is not configured. No world information has been changed."
+          : "World details could not be loaded. Editing is unavailable until the connection is restored.");
+      } else {
+        setHomeData(data);
+        setDraftTagline(data?.tagline || "");
+        setDraftDesc(data?.description_html || "");
+        setDraftFeatured(Array.isArray(data?.featured_ids) ? data.featured_ids : []);
+      }
+    }).catch(() => {
+      if (!cancelled) setReadError("World details could not be loaded. Please try again.");
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [worldId]);
 
-  useEffect(() => { load(); }, [load]);
+  const recentArticles = useMemo(() => [...articles]
+    .sort((a, b) => toTime(b.updatedAt || b.createdAt) - toTime(a.updatedAt || a.createdAt))
+    .slice(0, 6), [articles]);
+  const featuredArticles = useMemo(() => (homeData?.featured_ids || [])
+    .map((id) => articles.find((a) => a.id === id)).filter(Boolean).slice(0, 3), [homeData, articles]);
+  const categoryCounts = useMemo(() => Object.entries(CATEGORIES).map(([key, category]) => ({
+    key, ...category, count: articles.filter((article) => article.category === key).length,
+  })).filter(({ count }) => count).sort((a, b) => b.count - a.count), [articles, CATEGORIES]);
+  const totalWords = useMemo(() => articles.reduce((sum, a) => sum + wordCount(a.body), 0), [articles]);
+  const connections = useMemo(() => articles.reduce((sum, a) => sum + (a.linkedIds?.length || 0), 0), [articles]);
 
-  // ── cover upload ──
-  const handleCoverUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !activeWorld?.id) return;
-    setCoverUploading(true);
-    const url = await uploadWorldCover(user.id, activeWorld.id, file);
-    if (url) {
-      await updateWorldHome(activeWorld.id, { coverUrl: url });
-      setHomeData((prev) => ({ ...prev, cover_url: url }));
-    }
-    setCoverUploading(false);
-    e.target.value = "";
-  };
-
-  // ── save edits ──
-  const handleSave = async () => {
-    if (!activeWorld?.id) return;
+  const save = async () => {
+    if (!canEdit || readError || saving) return;
     setSaving(true);
-    const result = await updateWorldHome(activeWorld.id, {
-      tagline: draftTagline,
-      descriptionHtml: draftDesc,
-      featuredIds: draftFeatured,
-    });
-    setSaving(false);
-    if (result.success) {
-      setHomeData((prev) => ({
-        ...prev,
-        tagline: draftTagline,
-        description_html: draftDesc,
-        featured_ids: draftFeatured,
-      }));
-      setSaveMsg("Saved!");
-      setTimeout(() => setSaveMsg(null), 2500);
+    setSaveMsg("");
+    try {
+      const result = await updateWorldHome(worldId, {
+        tagline: draftTagline.trim(), descriptionHtml: draftDesc,
+        featuredIds: draftFeatured.slice(0, 3),
+      });
+      if (!result?.success) { setSaveMsg("Changes were not saved. Please retry."); return; }
+      setHomeData((old) => ({ ...old, tagline: draftTagline.trim(), description_html: draftDesc,
+        featured_ids: draftFeatured.slice(0, 3) }));
       setEditing(false);
-    } else {
-      setSaveMsg("Save failed — " + result.error);
+      setSaveMsg("World Home saved successfully.");
+    } catch {
+      setSaveMsg("Changes were not saved. Please retry.");
+    } finally { setSaving(false); }
+  };
+
+  const uploadCover = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!canEdit || readError || !file) return;
+    if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+      setSaveMsg("Choose an image smaller than 5 MB."); return;
     }
+    setCoverUploading(true);
+    setSaveMsg("");
+    try {
+      const url = await uploadWorldCover(user.id, worldId, file);
+      if (!url) throw new Error("upload failed");
+      const saved = await updateWorldHome(worldId, { coverUrl: url });
+      if (!saved?.success) throw new Error("save failed");
+      setHomeData((old) => ({ ...old, cover_url: url }));
+      setSaveMsg("Cover image updated.");
+    } catch { setSaveMsg("Cover image could not be saved. Please retry."); }
+    finally { setCoverUploading(false); }
   };
 
-  const toggleFeatured = (articleId) => {
-    setDraftFeatured((prev) => {
-      if (prev.includes(articleId)) return prev.filter((id) => id !== articleId);
-      if (prev.length >= 3) return prev; // max 3
-      return [...prev, articleId];
-    });
-  };
+  const toggleFeatured = (id) => setDraftFeatured((old) => old.includes(id)
+    ? old.filter((x) => x !== id) : old.length < 3 ? [...old, id] : old);
 
-  // ── style shortcuts ──
-  const cardBase = {
-    background: ta(theme.surface, 0.55),
-    border: "1px solid " + theme.border,
-    borderRadius: 10,
-    transition: "all 0.2s",
-  };
+  if (loading) return <div className={styles.loading} role="status">Loading world home…</div>;
 
-  const sectionLabel = {
-    fontFamily: "'Cinzel', serif",
-    fontSize: 11,
-    fontWeight: 700,
-    color: theme.textDim,
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-    marginBottom: 12,
-  };
-
-  if (loading) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300, color: theme.textDim }}>
-        <span>Loading world homepage…</span>
-      </div>
-    );
-  }
-
-  const cover = homeData?.cover_url || null;
+  const cover = homeData?.cover_url;
   const tagline = homeData?.tagline || activeWorld?.description || "";
-  const descHtml = homeData?.description_html || "";
-  const lastUpdated = articles[0]?.updatedAt || activeWorld?.updated_at;
+  const description = homeData?.description_html || "";
+  const readable = !readError;
+  const cards = [
+    { icon: BookOpen, label: "Codex entries", value: articles.length, action: () => onNavigate("codex") },
+    { icon: FileText, label: "Lore words", value: totalWords.toLocaleString(), action: () => onNavigate("codex") },
+    { icon: Link2, label: "Linked references", value: connections, action: () => onNavigate("graph") },
+    { icon: ShieldCheck, label: "Integrity findings", value: totalIntegrityIssues, action: () => onNavigate("integrity") },
+  ];
 
-  return (
-    <div style={{ maxWidth: 960, paddingBottom: 60 }}>
-
-      {/* ── Schema missing banner ── */}
-      {!schemaReady && (
-        <div style={{ padding: "12px 18px", background: "rgba(240,192,64,0.08)", borderLeft: "3px solid #f0c040", borderRadius: 8, marginBottom: 20, fontSize: 12, color: "#f0c040" }}>
-          ⚠ Run <code style={{ background: ta(theme.deepBg, 0.6), padding: "1px 6px", borderRadius: 4 }}>schema_world_home.sql</code> to enable cover images, taglines and featured articles.
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          HERO — cover + title + tagline
-      ══════════════════════════════════════════ */}
-      <div style={{
-        position: "relative", borderRadius: 14, overflow: "hidden",
-        marginBottom: 28, minHeight: cover ? 280 : 160,
-        background: cover
-          ? `linear-gradient(to bottom, transparent 20%, ${theme.deepBg} 100%), url(${cover}) center/cover no-repeat`
-          : `linear-gradient(135deg, ${ta(theme.accent, 0.08)} 0%, ${ta(theme.surface, 0.4)} 100%)`,
-        border: "1px solid " + theme.border,
-      }}>
-        {/* Cover upload zone */}
-        {isOwner && schemaReady && (
-          <>
-            <input ref={coverInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleCoverUpload} />
-            <button
-              onClick={() => coverInputRef.current?.click()}
-              disabled={coverUploading}
-              style={{
-                position: "absolute", top: 12, right: 12,
-                fontSize: 10, padding: "5px 12px", borderRadius: 6,
-                background: ta(theme.deepBg, 0.75), border: "1px solid " + theme.border,
-                color: theme.textMuted, cursor: "pointer", fontFamily: "inherit",
-                backdropFilter: "blur(8px)",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = theme.accent; e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = theme.textMuted; e.currentTarget.style.borderColor = theme.border; }}>
-              {coverUploading ? "Uploading…" : cover ? "🖼 Change Cover" : "🖼 Add Cover Image"}
-            </button>
-          </>
-        )}
-
-        {/* World title + tagline */}
-        <div style={{
-          position: "absolute", bottom: 0, left: 0, right: 0,
-          padding: isMobile ? "20px 20px 20px" : "28px 32px 24px",
-          background: cover ? "linear-gradient(to top, " + ta(theme.deepBg, 0.95) + " 0%, transparent 100%)" : "none",
-        }}>
-          <h1 style={{
-            fontFamily: "'Cinzel', serif", fontSize: isMobile ? 26 : 36,
-            fontWeight: 700, color: theme.text, margin: "0 0 8px",
-            letterSpacing: 2, textShadow: cover ? "0 2px 12px rgba(0,0,0,0.7)" : "none",
-          }}>
-            {activeWorld?.name}
-          </h1>
-
-          {editing ? (
-            <input
-              value={draftTagline}
-              onChange={(e) => setDraftTagline(e.target.value)}
-              placeholder="A short tagline for your world…"
-              maxLength={120}
-              style={{ ...S.input, width: "100%", fontSize: 14, background: ta(theme.deepBg, 0.8), marginTop: 4 }}
-            />
-          ) : tagline ? (
-            <p style={{ fontSize: 15, color: theme.textMuted, margin: 0, fontStyle: "italic", lineHeight: 1.5, textShadow: cover ? "0 1px 6px rgba(0,0,0,0.6)" : "none" }}>
-              {tagline}
-            </p>
-          ) : isOwner && schemaReady ? (
-            <p style={{ fontSize: 13, color: ta(theme.textDim, 0.6), margin: 0, fontStyle: "italic" }}>
-              Click Edit to add a tagline…
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      {/* ── Edit / Save toolbar (owner only) ── */}
-      {isOwner && schemaReady && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 24, alignItems: "center" }}>
-          {editing ? (
-            <>
-              <button onClick={handleSave} disabled={saving} style={{ ...tBtnP, fontSize: 12, padding: "7px 20px", opacity: saving ? 0.6 : 1 }}>
-                {saving ? "Saving…" : "✓ Save Homepage"}
-              </button>
-              <button onClick={() => { setEditing(false); setDraftTagline(homeData?.tagline || ""); setDraftDesc(homeData?.description_html || ""); setDraftFeatured(homeData?.featured_ids || []); }}
-                style={{ ...tBtnS, fontSize: 12, padding: "7px 16px" }}>Cancel</button>
-            </>
-          ) : (
-            <button onClick={() => setEditing(true)} style={{ ...tBtnS, fontSize: 12, padding: "7px 16px" }}>✎ Edit Homepage</button>
-          )}
-          {saveMsg && <span style={{ fontSize: 12, color: saveMsg.startsWith("Save failed") ? "#e07050" : "#8ec8a0" }}>{saveMsg}</span>}
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          STAT BAR
-      ══════════════════════════════════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(4,1fr)", gap: 12, marginBottom: 28 }}>
-        {[
-          { label: "Articles", value: articles.length, icon: "📖", action: () => onNavigate("codex") },
-          { label: "Words Written", value: totalWords.toLocaleString(), icon: "✍", action: null },
-          { label: "Connections", value: connectionCount, icon: "🔗", action: () => onNavigate("graph") },
-          { label: "Integrity Issues", value: totalIntegrityIssues, icon: "🛡", action: () => onNavigate("integrity"), alert: totalIntegrityIssues > 0 },
-        ].map((s) => (
-          <div key={s.label} onClick={s.action || undefined}
-            style={{ ...cardBase, padding: "16px 18px", cursor: s.action ? "pointer" : "default", textAlign: "center" }}
-            onMouseEnter={(e) => { if (s.action) e.currentTarget.style.borderColor = ta(theme.accent, 0.4); }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
-            <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
-            <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: s.alert ? "#e07050" : theme.accent, fontFamily: "'Cinzel', serif" }}>{s.value}</div>
-            <div style={{ fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ══════════════════════════════════════════
-          TWO-COLUMN LAYOUT: lore blurb | featured
-      ══════════════════════════════════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 300px", gap: 24, marginBottom: 28 }}>
-
-        {/* World lore description */}
-        <div>
-          <p style={sectionLabel}>About This World</p>
-          {editing ? (
-            <textarea
-              value={draftDesc}
-              onChange={(e) => setDraftDesc(e.target.value)}
-              placeholder="Write a lore introduction, world premise, or creator's note…"
-              style={{ ...S.textarea, minHeight: 160, fontSize: 13, lineHeight: 1.7 }}
-            />
-          ) : descHtml ? (
-            <SafeRichText
-              html={descHtml}
-              style={{ fontSize: 14, color: theme.textMuted, lineHeight: 1.8, ...cardBase, padding: "18px 20px" }}
-            />
-          ) : (
-            <div style={{ ...cardBase, padding: "24px 20px", textAlign: "center", color: ta(theme.textDim, 0.6) }}>
-              <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>📜</div>
-              <p style={{ fontSize: 13, margin: 0 }}>{isOwner ? "Click \"Edit Homepage\" to write a world introduction." : "No world description yet."}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Featured articles */}
-        <div>
-          <p style={sectionLabel}>Featured Articles</p>
-          {editing ? (
-            <div>
-              <p style={{ fontSize: 11, color: theme.textDim, marginBottom: 10 }}>Pin up to 3 articles ({draftFeatured.length}/3 selected):</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 260, overflowY: "auto" }}>
-                {articles.slice(0, 40).map((a) => {
-                  const cat = CATEGORIES[a.category] || {};
-                  const pinned = draftFeatured.includes(a.id);
-                  return (
-                    <div key={a.id} onClick={() => toggleFeatured(a.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, cursor: "pointer", background: pinned ? ta(theme.accent, 0.08) : "transparent", border: "1px solid " + (pinned ? ta(theme.accent, 0.3) : "transparent"), transition: "all 0.15s" }}
-                      onMouseEnter={(e) => { if (!pinned) e.currentTarget.style.background = ta(theme.surface, 0.6); }}
-                      onMouseLeave={(e) => { if (!pinned) e.currentTarget.style.background = "transparent"; }}>
-                      <span style={{ fontSize: 13, flexShrink: 0 }}>{cat.icon}</span>
-                      <span style={{ fontSize: 12, color: pinned ? theme.accent : theme.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
-                      <span style={{ fontSize: 14, color: pinned ? theme.accent : ta(theme.textDim, 0.3), flexShrink: 0 }}>{pinned ? "★" : "☆"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : featuredArticles.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {featuredArticles.map((a) => {
-                const cat = CATEGORIES[a.category] || {};
-                return (
-                  <div key={a.id} onClick={() => onOpenArticle(a)}
-                    style={{ ...cardBase, padding: "14px 16px", cursor: "pointer", borderLeft: "3px solid " + (cat.color || theme.accent) }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); e.currentTarget.style.transform = "translateX(3px)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.55); e.currentTarget.style.transform = "none"; }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14 }}>{cat.icon}</span>
-                      <span style={{ fontSize: 10, color: cat.color, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{cat.label}</span>
-                      <span style={{ fontSize: 12, color: "#f0c040", marginLeft: "auto" }}>★</span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, fontFamily: "'Cinzel', serif" }}>{a.title}</div>
-                    {a.summary && <div style={{ fontSize: 11, color: theme.textDim, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{a.summary}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ ...cardBase, padding: "24px 16px", textAlign: "center", color: ta(theme.textDim, 0.6) }}>
-              <div style={{ fontSize: 24, marginBottom: 8, opacity: 0.4 }}>★</div>
-              <p style={{ fontSize: 12, margin: 0 }}>{isOwner ? "Pin up to 3 key articles via Edit." : "No featured articles yet."}</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ══════════════════════════════════════════
-          RECENT ACTIVITY STRIP
-      ══════════════════════════════════════════ */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <p style={{ ...sectionLabel, margin: 0 }}>Recently Updated</p>
-          <button onClick={() => onNavigate("codex")}
-            style={{ fontSize: 11, color: theme.textDim, background: "none", border: "none", cursor: "pointer", padding: 0 }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = theme.accent; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>
-            View all →
-          </button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 10 }}>
-          {recentArticles.map((a) => {
-            const cat = CATEGORIES[a.category] || {};
-            return (
-              <div key={a.id} onClick={() => onOpenArticle(a)}
-                style={{ ...cardBase, padding: "12px 14px", cursor: "pointer" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.85); e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.3)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.55); e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                  <span style={{ fontSize: 13 }}>{cat.icon}</span>
-                  <span style={{ fontSize: 9, color: cat.color || theme.textDim, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{cat.label}</span>
-                  <span style={{ fontSize: 9, color: theme.textDim, marginLeft: "auto" }}>{timeAgo(a.updatedAt || a.createdAt)}</span>
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, fontFamily: "'Cinzel', serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
-                {a.summary && <div style={{ fontSize: 10, color: theme.textDim, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.summary}</div>}
-              </div>
-            );
-          })}
-          {recentArticles.length === 0 && (
-            <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "30px 0", color: theme.textDim, fontSize: 13 }}>
-              No articles yet. <button onClick={() => onNavigate("codex")} style={{ background: "none", border: "none", color: theme.accent, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>Create your first →</button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ══════════════════════════════════════════
-          CATEGORY BREAKDOWN
-      ══════════════════════════════════════════ */}
-      {catBreakdown.length > 0 && (
-        <div>
-          <p style={sectionLabel}>Codex Breakdown</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {catBreakdown.map((c) => (
-              <div key={c.key} onClick={() => onNavigate("codex", c.key)}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", ...cardBase, cursor: "pointer", borderLeft: "3px solid " + c.color }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = ta(c.color, 0.1); }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.55); }}>
-                <span style={{ fontSize: 14 }}>{c.icon}</span>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: c.color }}>{c.count}</div>
-                  <div style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5 }}>{c.label}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Last updated footnote */}
-      <div style={{ marginTop: 32, fontSize: 10, color: ta(theme.textDim, 0.5), textAlign: "center" }}>
-        Last activity {timeAgo(lastUpdated)} · {articles.length} articles · {archived.length} archived
-      </div>
+  return <section className={styles.root} aria-label="World Home">
+    <div className={styles.pageIntro}>
+      <div><span className={styles.eyebrow}>THE WORLD / HOME</span><h1>World Home</h1>
+        <p>Introduce your realm, curate its essential lore, and track its ongoing creation.</p></div>
+      {canEdit && readable && <button type="button" className={styles.secondary} onClick={() => setEditing((v) => !v)}>
+        {editing ? <X size={16} /> : <Pencil size={16} />} {editing ? "Stop editing" : "Edit World Home"}
+      </button>}
     </div>
-  );
+
+    {!!readError && <div className={styles.error} role="alert">{readError}</div>}
+    <div className={styles.hero} style={cover && readable ? { backgroundImage: `linear-gradient(90deg, var(--deepBg, #0a0e1a), transparent), url("${cover.replace(/"/g, "%22")}")` } : undefined}>
+      <div className={styles.heroCopy}>
+        <span className={styles.eyebrow}>{activeWorld?.member_role === "viewer" ? "SHARED WORLD" : "YOUR WORLD"} · WORLD HOME</span>
+        <h2>{activeWorld?.name || "Untitled World"}</h2>
+        {editing ? <label className={styles.formLabel}>World tagline
+          <input maxLength={120} value={draftTagline} onChange={(e) => setDraftTagline(e.target.value)} placeholder="A short description of your realm" />
+        </label> : <p>{tagline || "Every great world begins with an idea. Give this realm a story worth exploring."}</p>}
+        <div className={styles.heroActions}>
+          <button className={styles.primary} onClick={() => onNavigate("codex")} type="button"><BookOpen size={16} /> Explore Codex <ArrowRight size={15} /></button>
+          <button className={styles.secondary} onClick={() => onNavigate("timeline")} type="button"><CalendarClock size={16} /> Chronicles</button>
+        </div>
+      </div>
+      <div className={styles.heroEmblem} aria-hidden="true"><Sparkles size={46} /></div>
+      {canEdit && readable && <><input type="file" accept="image/*" ref={coverInputRef} hidden onChange={uploadCover} />
+        <button type="button" disabled={coverUploading} className={styles.coverButton} onClick={() => coverInputRef.current?.click()}>
+          {coverUploading ? <UploadCloud size={15} /> : <ImagePlus size={15} />}
+          {coverUploading ? "Uploading…" : cover ? "Change cover" : "Add cover"}
+        </button></>}
+    </div>
+
+    <div className={styles.stats} aria-label="World statistics">{cards.map(({ icon: Icon, label, value, action }) => (
+      <button type="button" className={styles.stat} onClick={action} key={label}>
+        <Icon aria-hidden="true" size={18}/><strong>{value}</strong><span>{label}</span><ChevronRight aria-hidden="true" size={15}/>
+      </button>
+    ))}</div>
+
+    {saveMsg && <p className={styles.saveMessage} role="status">{saveMsg}</p>}
+    {editing && canEdit && readable && <div className={styles.editActions}>
+      <span>Changes become visible to members of this world when saved.</span>
+      <button type="button" className={styles.primary} onClick={save} disabled={saving}><Save size={16} /> {saving ? "Saving…" : "Save world changes"}</button>
+      <button type="button" className={styles.secondary} onClick={() => { setDraftTagline(homeData?.tagline || "");setDraftDesc(homeData?.description_html || "");setDraftFeatured(homeData?.featured_ids || []);setEditing(false); }}>Discard changes</button>
+    </div>}
+
+    {articles.length === 0 && <div className={styles.starter}>
+      <div className={styles.starterHeading}><Sparkles aria-hidden="true" size={19}/>
+        <div><span className={styles.eyebrow}>START BUILDING</span><h2>Your world's first chapters</h2></div></div>
+      <div className={styles.starterSteps}>
+        <button type="button" onClick={() => onNavigate("codex")}><BookOpen size={20}/><strong>1. Create an entry</strong><span>Establish a person, place, event or other piece of lore.</span><ArrowRight size={16}/></button>
+        <button type="button" onClick={() => onNavigate("timeline")}><CalendarClock size={20}/><strong>2. Build its history</strong><span>Add dated events to give your realm a chronology.</span><ArrowRight size={16}/></button>
+        <button type="button" onClick={() => onNavigate("canon_studio")}><ShieldCheck size={20}/><strong>3. Establish canon</strong><span>Record claims and sources you want to treat as established.</span><ArrowRight size={16}/></button>
+      </div>
+    </div>}
+
+    <div className={styles.bodyGrid}>
+      <section className={styles.panel}>
+        <PanelTitle eyebrow="FOUNDATION" title="About this world" />
+        {editing ? <label className={styles.formLabel}>World introduction
+          <textarea rows={9} value={draftDesc} onChange={(e) => setDraftDesc(e.target.value)} placeholder="Describe the realm, central conflict, geography, history or your creative vision…" />
+        </label> : description ? <SafeRichText html={description} className={styles.description} /> :
+          <div className={styles.emptyInline}><Map size={23}/><h3>The story has yet to be told</h3>
+            <p>Write an introduction to give visitors context for this world.</p>
+            {canEdit && readable && <button type="button" className={styles.textAction} onClick={() => setEditing(true)}>Write an introduction <ArrowRight size={15}/></button>}
+          </div>}
+      </section>
+      <section className={styles.panel}>
+        <PanelTitle eyebrow="CURATED LORE" title="Featured entries" action={!!articles.length && !editing ? <button className={styles.textAction} onClick={() => onNavigate("codex")}>Browse Codex <ArrowRight size={14}/></button> : null}/>
+        {editing ? <div className={styles.pinList} role="group" aria-label="Feature up to three entries">
+          <p>Select up to three entries ({draftFeatured.length}/3)</p>
+          {articles.slice(0, 60).map((article) => <label key={article.id}><input type="checkbox" checked={draftFeatured.includes(article.id)} disabled={!draftFeatured.includes(article.id) && draftFeatured.length >= 3} onChange={() => toggleFeatured(article.id)} />{article.title}</label>)}
+          {!articles.length && <p>Add Codex entries before choosing featured lore.</p>}
+        </div> : featuredArticles.length ? <div className={styles.featuredList}>{featuredArticles.map((article) => {
+          const category = CATEGORIES[article.category] || {};
+          return <button type="button" key={article.id} onClick={() => onOpenArticle(article)} style={{ "--entry-color": category.color || "var(--accent)" }}>
+            <Star size={16}/><span><strong>{article.title}</strong><small>{category.label || "Codex entry"}</small></span><ChevronRight size={16}/>
+          </button>;
+        })}</div> : <div className={styles.emptyInline}><Star size={23}/><h3>Spotlight your essential lore</h3><p>Feature up to three Codex entries that define this world.</p>
+          {!!articles.length && canEdit && readable && <button className={styles.textAction} onClick={() => setEditing(true)}>Choose featured entries <ArrowRight size={15}/></button>}
+        </div>}
+      </section>
+    </div>
+
+    <div className={styles.bodyGrid}>
+      <section className={styles.panel}>
+        <PanelTitle eyebrow="WORLD ACTIVITY" title="Recently updated lore" action={<button className={styles.textAction} onClick={() => onNavigate("codex")}>All entries <ArrowRight size={14}/></button>} />
+        {recentArticles.length ? <div className={styles.recentGrid}>{recentArticles.map((article) => {
+          const category = CATEGORIES[article.category] || {};
+          return <button type="button" key={article.id} className={styles.recentCard} onClick={() => onOpenArticle(article)} style={{ "--entry-color": category.color || "var(--accent)" }}>
+            <span className={styles.recentCategory}>{category.label || "Codex"}</span>
+            <strong>{article.title}</strong><small>{article.summary || "Open this entry"}</small>
+            <span className={styles.recentDate}>{fmtDate(article.updatedAt || article.createdAt)} <ArrowRight size={14}/></span>
+          </button>;
+        })}</div> : <div className={styles.emptyInline}><FilePenLine size={23}/><h3>No recent lore yet</h3><p>As entries are written and updated, they will appear here.</p></div>}
+      </section>
+      <section className={styles.panel}>
+        <PanelTitle eyebrow="WORLD CONTENT" title="Codex breakdown" />
+        {categoryCounts.length ? <div className={styles.categoryList}>{categoryCounts.map((category) => <button type="button" key={category.key} onClick={() => onNavigate("codex",category.key)} style={{ "--entry-color": category.color || "var(--accent)" }}>
+          <span className={styles.categoryDot}/><span>{category.label}</span><strong>{category.count}</strong><ArrowRight size={15}/>
+        </button>)}</div> : <div className={styles.emptyInline}><Layers3 size={23}/><h3>Ready for a world of possibilities</h3><p>Categories fill automatically as your Codex grows.</p></div>}
+      </section>
+    </div>
+    <p className={styles.footer}><Check size={13}/> World scoped to {activeWorld?.name}. {articles.length} entries, {archived.length} archived.</p>
+  </section>;
 }
 
 export default WorldHomePage;

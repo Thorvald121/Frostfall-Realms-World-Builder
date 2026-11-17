@@ -3830,7 +3830,7 @@ const renderArchives = () => (<>
 
   const renderWorldHome = () => (
     view === "world_home" && activeWorld ? (
-      <WorldHomePage
+      <WorldHomePage key={activeWorld.id}
         theme={theme} ta={ta} tBtnP={tBtnP} tBtnS={tBtnS} S={S} Ornament={Ornament}
         activeWorld={activeWorld}
         articles={articles}
@@ -4219,7 +4219,7 @@ const renderArchives = () => (<>
                 </button>
               </div>
             )}
-            {filtered.list.length === 0 && <div style={{ textAlign: "center", padding: 60, color: theme.textDim }}><div style={{ fontSize: 32, marginBottom: 12 }}>⌕</div><p>{searchQuery.trim() ? "No entries matching \"" + searchQuery + "\"" : "No entries found."}</p></div>}
+
           </div>)}
   </>);
 
