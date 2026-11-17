@@ -14,6 +14,7 @@ import { codexRecoveryKey, makeCodexRecovery, requireSaveReceipt } from "@/lib/d
 import { aiRequestHeaders } from "@/lib/domain/aiClientAuth";
 import { FrostfallNavIcon } from "@/components/ui/FrostfallNavIcon";
 import ThemeSelect from "@/components/ThemeSelect";
+import { WorldOverview } from "@/features/studio/WorldOverview";
 import { SaveRecoveryButton } from "@/components/ui/SaveRecoveryButton";
 import { findFuzzyMatches, checkArticleIntegrity, detectConflicts } from "@/lib/domain/integrity";
 import { buildTemporalGraph } from "@/lib/domain/truth/temporalGraph";
@@ -305,7 +306,7 @@ const MS = {
 // === STYLES ===
 const S = {
   root: { fontFamily: "var(--uiFont, system-ui)", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", color: "#d4c9a8", minHeight: "100vh", display: "flex", overflow: "hidden", height: "100vh" },
-  sidebar: { width: 260, minWidth: 260, background: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", borderRight: "1px solid #1e2a3a", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
+  sidebar: { width: 286, minWidth: 286, background: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", borderRight: "1px solid #1e2a3a", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
   navItem: (a, t) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px", cursor: "pointer", background: a ? "linear-gradient(90deg, " + (t ? t.accentBg : "rgba(240,192,64,0.12)") + " 0%, transparent 100%)" : "transparent", borderLeft: a ? "2px solid " + (t ? t.accent : "#f0c040") : "2px solid transparent", color: a ? (t ? t.accent : "#f0c040") : (t ? t.textMuted : "#8899aa"), fontSize: 13, fontWeight: a ? 600 : 400, transition: "all 0.2s", letterSpacing: 0.5 }),
   topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 28px", borderBottom: "1px solid #1a2435", background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)", position: "relative", zIndex: 50, flexShrink: 0 },
   searchBox: { background: "var(--inputBg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 14px 7px 34px", color: "var(--text)", fontSize: 13, width: 320, outline: "none", fontFamily: "inherit" },
@@ -357,6 +358,7 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [showWorldCreate, setShowWorldCreate] = useState(false);
   const [worldForm, setWorldForm] = useState({ name: "", description: "" });
   const [worldSwitcherOpen, setWorldSwitcherOpen] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [canonArticleIntent, setCanonArticleIntent] = useState(null);
   const openArticleCanon = (article, mode='inspect') => {
     setCanonArticleIntent({id:article.id,mode,nonce:Date.now()});setView('canon_studio');closeSidebar();
@@ -2656,43 +2658,51 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     conflicts: allConflicts.length, archived: archived.length, ...catCounts,
   }), [articles, allConflicts, archived, catCounts]);
 
+  // P7: Grouped information architecture, preserving every existing module.
+  // Category links are collapsible so large worlds do not bury the main tools.
   const navItems = [
-    { id: "dashboard", icon: "◈", label: "Dashboard", action: goDash },
-    { id: "world_home", icon: "🏰", label: "World Home", action: () => setView("world_home") },
-    { id: "codex", icon: "📖", label: "Full Codex", action: () => goCodex("all") },
-    { divider: true },
-    ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
-      id: k, icon: c.icon, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : categoryPluralLabel(k),
-      action: () => goCodex(k), count: catCounts[k] || undefined, isCategory: true,
-    })),
-    { divider: true },
-    { id: "timeline", icon: "⏳", label: "Chronicles", action: () => setView("timeline") },
-    { id: "graph", icon: "◉", label: "Relationship Web", action: () => setView("graph") },
-    { id: "cross_refs", icon: "🔗", label: "Cross-References", action: () => setView("cross_refs") },
-    { id: "family_tree", icon: "🌳", label: "Family Tree", action: () => setView("family_tree") },
-    { id: "novel", icon: "✒", label: "Novel Writing", action: () => setView("novel") },
-    { id: "generator", icon: "🎲", label: "Generators", action: () => setView("generator") },
-    { id: "sessions", icon: "📓", label: "Session Notes", action: () => setView("sessions"), count: sessions.length > 0 ? sessions.length : undefined },
-    { id: "integrity", icon: "🛡", label: "Lore Integrity", action: () => setView("integrity"), count: totalIntegrityIssues > 0 ? totalIntegrityIssues : undefined, alert: totalIntegrityIssues > 0 },
-    { id: "canon_studio", icon: "⚖", label: "Canon Studio 2.0", action: () => setView("canon_studio") },
-    { id: "archives", icon: "📦", label: "Archives", action: () => setView("archives"), count: archived.length > 0 ? archived.length : undefined },
-    { divider: true },
-    { id: "ai_import", icon: "📄", label: "Document Import", action: () => setView("ai_import") },
-    { id: "staging", icon: "📋", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length > 0 ? aiStaging.filter((e) => e._status === "pending").length : undefined },
-    { divider: true },
-    { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
-    { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
-    { id: "collaboration", icon: "👥", label: "Collaboration", action: () => setView("collaboration") },
-    { divider: true },
-    { id: "support_page", icon: "📬", label: "Support", action: () => setView("support_page") },
-    { id: "donate", icon: "♥", label: "Donate", action: () => setShowDonate(true) },
-    ...(adminRole ? [{ divider: true }, { id: "admin", icon: "🔐", label: "Admin Panel", action: () => setView("admin") }] : []),
+    { section: "THE WORLD" },
+    { id: "dashboard", label: "Overview", action: goDash },
+    { id: "world_home", label: "World Home", action: () => setView("world_home") },
+    { id: "codex", label: "Codex Studio", action: () => goCodex("all") },
+    { id: "timeline", label: "Chronicles", action: () => setView("timeline") },
+    { id: "atlas", label: "Locations", action: () => goCodex("location") },
+    { id: "expand_categories", label: "Browse Categories", count: Object.keys(CATEGORIES).filter(k => !settings.disabledCategories.includes(k)).length,
+      expanded: categoriesExpanded, action: () => setCategoriesExpanded((v) => !v) },
+    ...(categoriesExpanded ? [
+      { section: "CODEX CATEGORIES", subSection: true },
+      ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
+        id: k, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : categoryPluralLabel(k),
+        action: () => goCodex(k), count: catCounts[k] || undefined, isCategory: true,
+      })),
+    ] : []),
+    { section: "CONNECTIONS" },
+    { id: "graph", label: "Relationships", action: () => setView("graph") },
+    { id: "cross_refs", label: "Cross-References", action: () => setView("cross_refs") },
+    { id: "family_tree", label: "Family Trees", action: () => setView("family_tree") },
+    { section: "WRITING & CANON" },
+    { id: "novel", label: "Manuscripts", action: () => setView("novel") },
+    { id: "canon_studio", label: "Canon Studio", action: () => setView("canon_studio") },
+    { id: "integrity", label: "Canon Review", action: () => setView("integrity"), count: totalIntegrityIssues > 0 ? totalIntegrityIssues : undefined, alert: totalIntegrityIssues > 0 },
+    { section: "CREATION & TOOLS" },
+    { id: "generator", label: "Generators", action: () => setView("generator") },
+    { id: "sessions", label: "Session Notes", action: () => setView("sessions"), count: sessions.length || undefined },
+    { id: "archives", label: "Archives", action: () => setView("archives"), count: archived.length || undefined },
+    { id: "ai_import", label: "Document Import", action: () => setView("ai_import") },
+    { id: "staging", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length || undefined },
+    { id: "scratchpad", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
+    { section: "ACCOUNT & HELP" },
+    { id: "settings", label: "Preferences", action: () => setView("settings") },
+    { id: "collaboration", label: "Collaboration", action: () => setView("collaboration") },
+    { id: "support_page", label: "Support", action: () => setView("support_page") },
+    { id: "donate", label: "Support the Project", action: () => setShowDonate(true) },
+    ...(adminRole ? [{ id: "admin", label: "Admin Panel", action: () => setView("admin") }] : []),
   ];
-
   const isAct = (item) => {
     if (item.id === "dashboard" && view === "dashboard") return true;
     if (item.id === "world_home" && view === "world_home") return true;
     if (item.id === "codex" && view === "codex" && codexFilter === "all") return true;
+    if (item.id === "atlas" && view === "codex" && codexFilter === "location") return true;
     if (item.id === "integrity" && view === "integrity") return true;
     if (item.id === "canon_studio" && view === "canon_studio") return true;
     if (item.id === "timeline" && view === "timeline") return true;
@@ -2714,12 +2724,14 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     return false;
   };
 
-  // Top bar quick-create: only show first 4 + a "more" dropdown state
+  const breadcrumbLabel = view === "article" ? (activeArticle?.title || "Article")
+    : view === "create" ? (editingId ? "Edit Entry" : "New Entry")
+    : (navItems.find((item) => item.id && isAct(item))?.label || "Workspace");
+
+  // Accessible global create menu and existing Codex-specific create actions.
   const [showMoreCats, setShowMoreCats] = useState(false);
   const [showCodexCreate, setShowCodexCreate] = useState(false);
   const [showMobileFab, setShowMobileFab] = useState(false);
-  const mainCats = Object.entries(CATEGORIES).slice(0, 4);
-  const extraCats = Object.entries(CATEGORIES).slice(4);
 
   // Accessibility: Escape key closes open modals/dropdowns
   useEffect(() => {
@@ -2820,187 +2832,25 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
           )}
   </>);
 
-  const renderDashboard = () => (<>
-          {/* === DASHBOARD === */}
-          {view === "dashboard" && activeWorld && (<div>
-            <div style={{ marginTop: 28, marginBottom: 8, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-              <div>
-                <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 2 }}>The Archives of {activeWorld?.name || "Your World"}</h1>
-                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4, fontStyle: "italic" }}>"Creation requires sacrifice. To give form costs essence."</p>
-              </div>
-              <button onClick={() => setDashCustomizing((v) => !v)} style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", color: dashCustomizing ? theme.accent : theme.textDim, background: dashCustomizing ? ta(theme.accent, 0.08) : "transparent" }}>
-                {dashCustomizing ? "✓ Done" : "⚙ Customize"}
-              </button>
-            </div>
-            <Ornament width={300} />
-
-            {/* Widget customization strip */}
-            {dashCustomizing && (
-              <div style={{ margin: "16px 0", padding: "12px 16px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 10 }}>
-                <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Dashboard Widgets</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {[
-                    { id: "stats", label: "📊 World Stats" },
-                    { id: "integrity", label: "🛡 Integrity" },
-                    { id: "quick_create", label: "⚒ Quick Create" },
-                    { id: "recent", label: "📜 Recent Edits" },
-                    { id: "writing_progress", label: "✒ Writing Progress" },
-                    { id: "world_links", label: "🔗 Quick Links" },
-                    { id: "sessions_preview", label: "📓 Sessions" },
-                    { id: "generators_preview", label: "🎲 Generators" },
-                  ].map((w) => {
-                    const on = dashWidgets.includes(w.id);
-                    const idx = dashWidgets.indexOf(w.id);
-                    return (
-                      <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <button onClick={() => toggleWidget(w.id)}
-                          style={{ fontSize: 11, padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", border: "1px solid " + (on ? ta(theme.accent, 0.3) : theme.border), background: on ? ta(theme.accent, 0.08) : "transparent", color: on ? theme.accent : theme.textDim, fontWeight: on ? 600 : 400 }}>
-                          {w.label}
-                        </button>
-                        {on && idx > 0 && <span onClick={() => moveWidget(w.id, -1)} style={{ fontSize: 9, cursor: "pointer", color: theme.textDim, padding: "0 2px" }}>◀</span>}
-                        {on && idx < dashWidgets.length - 1 && <span onClick={() => moveWidget(w.id, 1)} style={{ fontSize: 9, cursor: "pointer", color: theme.textDim, padding: "0 2px" }}>▶</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Render active widgets in order */}
-            {dashWidgets.map((wid) => {
-              switch (wid) {
-                case "stats": return (
-                  <div key={wid}>
-                    <div style={{ display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" }}>
-                      {[{ n: stats.total, l: "Total Articles", c: theme.accent }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
-                        <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
-                      ))}
-                    </div>
-                  </div>
-                );
-                case "integrity": return totalIntegrityIssues > 0 ? (
-                  <div key={wid}>
-                    <p style={S.sTitle}><span style={{ color: "#e07050" }} aria-hidden="true">🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{totalIntegrityIssues} issue{totalIntegrityIssues !== 1 ? "s" : ""}</span></p>
-                    <div style={{ background: "rgba(224,112,80,0.04)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: 4 }}>
-                      {allConflicts.slice(0, 3).map((c) => (
-                        <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
-                          <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : theme.accent, marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
-                          <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
-                          <span style={S.catBadge(c.severity === "error" ? "#e07050" : theme.accent)}>{c.severity}</span>
-                        </div>
-                      ))}
-                      {globalIntegrity.slice(0, Math.max(0, 4 - allConflicts.length)).map(({ article: a, issues }) => (
-                        <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(a.id)}>
-                          <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                          <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: theme.textDim }}>{issues[0].message}</div></div>
-                          <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : theme.accent)}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
-                        </div>
-                      ))}
-                      <div style={{ padding: "10px 14px", textAlign: "center", fontSize: 12, color: "#e07050", cursor: "pointer" }} onClick={() => setView("integrity")}>View full integrity report →</div>
-                    </div>
-                  </div>
-                ) : null;
-                case "quick_create": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>⚒ Quick Create</p>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : isTablet ? "repeat(3, 1fr)" : "repeat(4, 1fr)", gap: 10 }}>
-                      {Object.entries(CATEGORIES).map(([k, c]) => (
-                        <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
-                          onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + c.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + c.color + "33"; e.currentTarget.style.transform = "none"; }}>
-                          <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div><div style={{ fontSize: 11, color: c.color, fontWeight: 600 }}>New {c.label}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-                case "recent": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>📜 Recent Edits</p>
-                    {recent.map((a) => { const ac = conflictsFor(a.id); return (
-                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + (ac.length > 0 ? "rgba(224,112,80,0.3)" : theme.divider), borderRadius: 6, marginBottom: 6, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
-                        <span style={{ fontSize: 16, width: 24, textAlign: "center", color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#c8bda0" }}>{a.title}</span>
-                        {ac.length > 0 && <span style={{ fontSize: 12, color: "#e07050" }}>⚠ {ac.length}</span>}
-                        <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
-                        <span style={{ fontSize: 11, color: theme.textDim, minWidth: 60, textAlign: "right" }}>{timeAgo(a.updatedAt)}</span>
-                      </div>
-                    ); })}
-                  </div>
-                );
-                case "writing_progress": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>✒ Writing Progress</p>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12 }}>
-                      {manuscripts.slice(0, 3).map((ms) => {
-                        const wc = ms.acts?.reduce((s, a) => s + a.chapters?.reduce((s2, c) => s2 + c.scenes?.reduce((s3, sc) => { const div = document.createElement("div"); div.innerHTML = sc.body || ""; return s3 + (div.textContent || "").split(/\s+/).filter(Boolean).length; }, 0), 0), 0) || 0;
-                        const sceneCount = ms.acts?.reduce((s, a) => s + a.chapters?.reduce((s2, c) => s2 + (c.scenes?.length || 0), 0), 0) || 0;
-                        return (
-                          <div key={ms.id} onClick={() => { setActiveMs(ms); setView("novel"); }} style={{ background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 10, padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + theme.accent + "40"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + theme.divider; }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", marginBottom: 6 }}>{ms.title}</div>
-                            <div style={{ fontSize: 11, color: theme.textDim }}>{wc.toLocaleString()} words · {sceneCount} scenes</div>
-                            <div style={{ marginTop: 8, height: 4, background: theme.divider, borderRadius: 2 }}>
-                              <div style={{ height: "100%", width: Math.min(100, (wc / 50000) * 100) + "%", background: theme.accent, borderRadius: 2, transition: "width 0.3s" }} />
-                            </div>
-                            <div style={{ fontSize: 9, color: theme.textDim, marginTop: 4, textAlign: "right" }}>{Math.round((wc / 50000) * 100)}% of 50k goal</div>
-                          </div>
-                        );
-                      })}
-                      {manuscripts.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: 12 }}>No manuscripts yet. Start one in Novel Writing!</div>}
-                    </div>
-                  </div>
-                );
-                case "world_links": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>🔗 Quick Links</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {[
-                        { label: "Canon Studio", icon: "⚖", action: () => setView("canon_studio") },
-                        { label: "Timeline", icon: "⏳", action: () => setView("timeline") },
-                        { label: "Relationship Web", icon: "◉", action: () => setView("graph") },
-                        { label: "Family Tree", icon: "🌳", action: () => setView("family_tree") },
-                        { label: "Generators", icon: "🎲", action: () => setView("generator") },
-                        { label: "Session Notes", icon: "📓", action: () => setView("sessions") },
-                        { label: "Import Docs", icon: "📄", action: () => setView("ai_import") },
-                      ].map((lnk, i) => (
-                        <button key={i} onClick={lnk.action} style={{ ...tBtnS, fontSize: 11, padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 14 }}>{lnk.icon}</span> {lnk.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-                case "sessions_preview": return sessions.length > 0 ? (
-                  <div key={wid}>
-                    <p style={S.sTitle}>📓 Recent Sessions</p>
-                    {sessions.slice(0, 3).map((s) => (
-                      <div key={s.id} onClick={() => setView("sessions")} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 6, marginBottom: 6, cursor: "pointer" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
-                        <span style={{ fontSize: 14 }}>📓</span>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: theme.text }}>{s.title}</span>
-                        {s.date && <span style={{ fontSize: 10, color: theme.textDim }}>{s.date}</span>}
-                      </div>
-                    ))}
-                    <div style={{ textAlign: "center", fontSize: 11, color: theme.accent, cursor: "pointer", padding: 8 }} onClick={() => setView("sessions")}>View all sessions →</div>
-                  </div>
-                ) : null;
-                case "generators_preview": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>🎲 Quick Generate</p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {Object.entries(GENERATORS).map(([k, g]) => (
-                        <button key={k} onClick={() => { setGeneratorType(k); setView("generator"); }} style={{ ...tBtnS, fontSize: 11, padding: "6px 14px" }}>{g.icon} {g.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                );
-                default: return null;
-              }
-            })}
-          </div>)}
-  </>);
+  // P7: The real, authenticated world overview replaces the legacy stats-wall.
+  // All counts come from the active world already loaded through Supabase.
+  const renderDashboard = () => view === "dashboard" && activeWorld ? (
+    <WorldOverview
+      world={activeWorld}
+      worldCount={allWorlds.length}
+      articles={articles}
+      manuscripts={manuscripts}
+      integrityCount={totalIntegrityIssues}
+      saveStatus={saveStatus}
+      canEdit={activeWorld.member_role !== "viewer"}
+      theme={theme}
+      onOpen={setView}
+      onCodex={() => goCodex("all")}
+      onArticle={navigate}
+      onCreate={() => goCreate("character")}
+      onSwitchWorld={() => { setWorldSwitcherOpen(true); if (isMobile) setSidebarOpen(true); }}
+    />
+  ) : null;
 
   const renderIntegrity = () => {
   if (view !== "integrity") return null;
@@ -5449,41 +5299,27 @@ const renderArchives = () => (<>
 
       {/* SIDEBAR — drawer on mobile */}
       {isMobile && sidebarOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 998 }} onClick={() => setSidebarOpen(false)} />}
-      <nav aria-label="Main navigation" style={{
+      <nav className="fr-studio-sidebar" aria-label="Main navigation" style={{
         ...S.sidebar,
         background: theme.sidebarBg,
         borderRight: "1px solid " + theme.border,
         ...(isMobile ? { position: "fixed", left: 0, top: 0, zIndex: 999, transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.25s ease", boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.5)" : "none" } : {}),
-        ...(isTablet ? { width: 220, minWidth: 220 } : {}),
+        ...(isTablet ? { width: 252, minWidth: 252 } : {}),
       }}>
-        <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid " + theme.divider }}>
-          <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: theme.accent, letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
-          <p style={{ fontSize: 10, color: theme.textDim, letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
-          <Ornament width={228} />
+        <div className="fr-studio-brand">
+          <span className="fr-studio-mark" aria-hidden="true">◇</span>
+          <span><strong>Frostfall</strong><small>REALMS STUDIO</small></span>
         </div>
-        {/* User info bar */}
-        {user && (
-          <div style={{ padding: "8px 16px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: theme.deepBg }}>
-              {(user.user_metadata?.display_name || user.email || "U")[0].toUpperCase()}
-            </div>
-            <span style={{ flex: 1, fontSize: 11, color: theme.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {user.user_metadata?.display_name || user.email?.split("@")[0]}
-            </span>
-            <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>⏻</button>
-          </div>
-        )}
         {/* World switcher */}
         {activeWorld && (
-          <div style={{ padding: "8px 16px", borderBottom: "1px solid " + theme.divider }}>
-            <div role="button" tabIndex={0} aria-expanded={worldSwitcherOpen} aria-label="Switch world" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setWorldSwitcherOpen(!worldSwitcherOpen); } }} onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+          <div className="fr-world-switcher">
+            <div className="fr-world-card" role="button" tabIndex={0} aria-expanded={worldSwitcherOpen} aria-label="Switch world" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setWorldSwitcherOpen(!worldSwitcherOpen); } }} onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
               <span style={{ fontSize: 14, color: theme.accent }} aria-hidden="true">🌍</span>
-              <span style={{ flex: 1, fontSize: 12, color: theme.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>
+              <span className="fr-world-card-name"><strong>{activeWorld.name}</strong><small>Active world · {activeWorld.member_role === "viewer" ? "Viewer" : activeWorld.member_role === "editor" ? "Editor" : "Private"}</small></span>
               <span style={{ fontSize: 10, color: theme.textDim, transition: "transform 0.2s", transform: worldSwitcherOpen ? "rotate(180deg)" : "none" }}>▾</span>
             </div>
             {worldSwitcherOpen && (
-              <div style={{ marginTop: 4, background: ta(theme.surface, 0.5), borderRadius: 6, border: "1px solid " + theme.border, overflow: "hidden" }}>
+              <div className="fr-world-menu" role="listbox" aria-label="Available worlds" style={{ marginTop: 4, background: theme.surface, borderRadius: 9, border: "1px solid " + theme.border, overflow: "auto" }}>
                 {allWorlds.map((w) => (
                   <div key={w.id} role="option" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchWorld(w); } }} onClick={() => switchWorld(w)} style={{ padding: "8px 12px", fontSize: 11, color: w.id === activeWorld?.id ? theme.accent : theme.textMuted, cursor: "pointer", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, background: w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent"; }}>
@@ -5499,14 +5335,17 @@ const renderArchives = () => (<>
             )}
           </div>
         )}
-        <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
-          {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: theme.divider, margin: "8px 16px" }} /> : (
-            <div key={item.id} className="nav-row fr-nav-row" data-active={isAct(item) ? "true" : "false"} aria-current={isAct(item) ? "page" : undefined} style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), color: navTone(theme, item.id), borderLeftColor: isAct(item) ? navTone(theme, item.id) : "transparent", background: isAct(item) ? `linear-gradient(90deg, ${ta(navTone(theme, item.id), 0.15)}, transparent)` : "transparent", position: "relative" }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.action(); } }} onClick={item.action}
+        <div className="fr-studio-nav-list">
+          {navItems.map((item, i) => item.section ? (
+            <div key={`section-${i}`} className={`fr-nav-section ${item.subSection ? "fr-nav-subsection" : ""}`}>{item.section}</div>
+          ) : (
+            <div key={item.id} className={`nav-row fr-nav-row ${item.isCategory ? "fr-nav-category" : ""}`} data-active={isAct(item) ? "true" : "false"} aria-current={isAct(item) ? "page" : undefined} aria-expanded={item.id === "expand_categories" ? categoriesExpanded : undefined} style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), color: navTone(theme, item.id), borderLeftColor: isAct(item) ? navTone(theme, item.id) : "transparent", background: isAct(item) ? `linear-gradient(90deg, ${ta(navTone(theme, item.id), 0.15)}, transparent)` : "transparent", position: "relative" }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.action(); } }} onClick={item.action}
               onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = ta(navTone(theme, item.id), 0.095); }}
               onMouseLeave={(e) => { if (!isAct(item)) e.currentTarget.style.background = "transparent"; }}>
               <span className="fr-nav-icon" style={{ width: 24, color: navTone(theme, item.id), display: "inline-flex", justifyContent: "center", flexShrink: 0 }}><FrostfallNavIcon id={item.id} /></span>
               <span className="fr-nav-label" style={{ flex: 1, color: navTone(theme, item.id), fontWeight: isAct(item) ? 750 : 600 }}>{item.label}</span>
-              {item.count != null && <span style={{ fontSize: 11, color: item.alert ? "#e07050" : theme.textDim, background: item.alert ? "rgba(224,112,80,0.15)" : "transparent", padding: item.alert ? "1px 8px" : 0, borderRadius: 10, fontWeight: item.alert ? 700 : 400 }}>{item.count}</span>}
+              {item.count != null && <span className="fr-nav-count" style={{ color: item.alert ? "#e07050" : theme.textMuted }}>{item.count}</span>}
+              {item.id === "expand_categories" && <span aria-hidden="true" style={{ color: theme.textMuted }}>{categoriesExpanded ? "⌃" : "⌄"}</span>}
               {item.isCategory && (
                 <span className="nav-create-btn" title={"New " + CATEGORIES[item.id]?.label} onClick={(e) => { e.stopPropagation(); goCreate(item.id); }}
                   style={{ fontSize: 15, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 4, color: CATEGORIES[item.id]?.color || theme.accent, opacity: 0.4, transition: "all 0.15s", cursor: "pointer", flexShrink: 0, marginLeft: 4, background: "transparent", fontWeight: 700 }}
@@ -5541,41 +5380,58 @@ const renderArchives = () => (<>
             <span aria-live="polite" role="status" style={{ fontSize: 11, color: theme.textMuted, letterSpacing: 0.3, fontWeight: 600 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE FAILED · EXPORT RECOVERY" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
           </div>
         </div>
+        {isMobile && <div className="fr-mobile-theme"><span>Appearance</span><ThemeSelect value={settings.theme} compact onChange={(next) => setSettings((previous) => ({ ...previous, theme: next }))}/></div>}
+        {/* Signed-in author and logout remain available, but no longer displace the world selector. */}
+        {/* User info bar */}
+        {user && (
+          <div className="fr-studio-profile" style={{ padding: "10px 16px", borderTop: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: theme.deepBg }}>
+              {(user.user_metadata?.display_name || user.email || "U")[0].toUpperCase()}
+            </div>
+            <span style={{ flex: 1, fontSize: 11, color: theme.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user.user_metadata?.display_name || user.email?.split("@")[0]}
+            </span>
+            <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>⏻</button>
+          </div>
+        )}
       </nav>
 
       {/* MAIN */}
-      <main id="main-content" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <main id="main-content" className="fr-studio-main" style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div className="fr-topbar" style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg, ...(isMobile ? { padding: "10px 14px", gap: 8 } : {}) }}>
           {/* Hamburger — mobile only */}
           {isMobile && (
             <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle navigation menu" aria-expanded={sidebarOpen}
               style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 20, cursor: "pointer", padding: "4px 8px", lineHeight: 1, flexShrink: 0 }}>☰</button>
           )}
-          <div style={{ position: "relative", ...(isMobile ? { flex: 1 } : {}) }}>
+          {!isCompact && <div className="fr-studio-breadcrumb"><span>Workspace</span> <span aria-hidden="true">/</span> <strong>{breadcrumbLabel}</strong></div>}
+          <div className="fr-studio-global-search" style={{ position: "relative", ...(isMobile ? { flex: 1 } : {}) }}>
             <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }} aria-hidden="true">⌕</span>
             <div style={{ position: "relative" }}>
               <input data-search-input className="fr-search-box" style={{ ...S.searchBox, ...(isMobile ? { width: "100%" } : isTablet ? { width: 200 } : {}) }} aria-label="Search the codex" placeholder={isMobile ? "Search…" : "Search titles, body, fields, tags…"} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
               {searchQuery && <span role="button" tabIndex={0} aria-label="Clear search" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSearchQuery(""); } }} onClick={() => setSearchQuery("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 12, color: theme.textDim, lineHeight: 1 }}>✕</span>}
             </div>
           </div>
-          {!isCompact && <div className="fr-topbar-cats" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {mainCats.map(([k, c]) => (
-              <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} onClick={() => goCreate(k)} style={{ fontSize: 11, color: c.color, cursor: "pointer", padding: "5px 10px", border: "1px solid " + c.color + "30", borderRadius: 6, transition: "all 0.2s", letterSpacing: 0.5 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "15"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ {c.label}</div>
-            ))}
-            <div role="button" tabIndex={0} aria-expanded={showMoreCats} aria-haspopup="true" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowMoreCats(!showMoreCats); } }} onClick={(e) => { e.stopPropagation(); setShowMoreCats(!showMoreCats); }} style={{ fontSize: 11, color: theme.textMuted, cursor: "pointer", padding: "5px 10px", border: "1px solid " + theme.border, borderRadius: 6, transition: "all 0.2s" }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = theme.accentBg; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ More ▾</div>
-          </div>}
-          {/* More+ dropdown — fixed position so it floats above all content */}
+          <div className="fr-studio-toolbar-actions">
+            {!isMobile && <span className="fr-toolbar-theme-label">Theme</span>}
+            {!isMobile && <ThemeSelect value={settings.theme} compact onChange={(next) => setSettings((previous) => ({ ...previous, theme: next }))} />}
+            {activeWorld && activeWorld.member_role !== "viewer" && (
+              <button type="button" className="fr-new-entry-btn" aria-haspopup="menu" aria-expanded={showMoreCats}
+                onClick={() => setShowMoreCats((v) => !v)}>
+                <span aria-hidden="true">＋</span> <span>New Entry</span>
+              </button>
+            )}
+          </div>
           {showMoreCats && (<>
-            <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoreCats(false)} onKeyDown={(e) => { if (e.key === "Escape") setShowMoreCats(false); }} />
-            <div style={{ position: "fixed", top: 54, right: 30, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 6, minWidth: 200, zIndex: 901, boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)" }}>
-              <div style={{ padding: "6px 12px 8px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>Create New Entry</div>
-              {extraCats.map(([k, c]) => (
-                <div key={k} role="menuitem" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowMoreCats(false); goCreate(k); } }} onClick={() => { setShowMoreCats(false); goCreate(k); }} style={{ fontSize: 12, color: c.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                  <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{c.icon}</span> <span>{c.label}</span>
-                </div>
+            <div className="fr-create-dismiss" onClick={() => setShowMoreCats(false)} aria-hidden="true" />
+            <div className="fr-create-menu" role="menu" aria-label="Choose entry category">
+              <div className="fr-create-menu-label">Create a codex entry</div>
+              {Object.entries(CATEGORIES).filter(([key]) => !settings.disabledCategories.includes(key)).map(([k, c]) => (
+                <button type="button" role="menuitem" key={k} onClick={() => { setShowMoreCats(false); goCreate(k); }}>
+                  <span style={{ color: c.color }} aria-hidden="true"><FrostfallNavIcon id={k} size={17}/></span>
+                  <span>{c.label}</span>
+                </button>
               ))}
             </div>
           </>)}
@@ -5583,14 +5439,10 @@ const renderArchives = () => (<>
           {realtimeLive && activeWorld && (
             <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 10, background: "rgba(142,200,160,0.12)", border: "1px solid rgba(142,200,160,0.25)", flexShrink: 0 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#8ec8a0", boxShadow: "0 0 6px #8ec8a0", display: "inline-block", animation: "rtPulse 2s ease-in-out infinite" }} />
-              <span style={{ fontSize: 9, color: "#8ec8a0", fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Live</span>
+              <span style={{ fontSize: 9, color: "#8ec8a0", fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Connected</span>
               <style>{`@keyframes rtPulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }`}</style>
             </div>
           )}
-          {/* Multi-theme control always available without opening Settings. */}
-          {!isMobile && <div className="fr-topbar-theme" style={{ flexShrink: 0 }}>
-            <ThemeSelect value={settings.theme} compact onChange={(next) => setSettings((previous) => ({ ...previous, theme: next }))} />
-          </div>}
           {/* Activity bell */}
           {activeWorld && (
             <button
