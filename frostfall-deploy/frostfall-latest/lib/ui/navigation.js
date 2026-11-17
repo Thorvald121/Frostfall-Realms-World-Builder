@@ -7,6 +7,7 @@ import { ensureContrast, themeSurfaces } from "./contrast.js";
  */
 export const NAV_COLOR_IDS = Object.freeze({
   dashboard: "#f2bc58", world_home: "#74cdfa", codex: "#c2acff",
+  atlas: "#73b8f1", expand_categories: "#b7b0e8",
   deity: "#eac568", race: "#83dfba", character: "#ff94be",
   event: "#ffa576", location: "#86baff", organization: "#b8a2e9",
   item: "#f5d882", magic: "#cc97fa", language: "#68dfd5",
