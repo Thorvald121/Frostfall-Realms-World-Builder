@@ -1,11 +1,21 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import _ from "lodash";
+import SafeRichText from "@/components/ui/SafeRichText";
+import { sanitizeRichHtml } from "@/lib/domain/richTextSafety";
 import * as mammoth from "mammoth";
 import { supabase, fetchArticles, fetchWorldsAndArticles, bulkUpsertArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds, logActivity, fetchWorldActivity, fetchAdminRole } from "../lib/supabase";
 import { FamilyTreeView } from "@/features/family/FamilyTreeView";
 import { AdminPanel } from "@/features/admin/AdminPanel";
-import { THEMES } from "@/lib/themes";
+import { THEMES, applyThemeToRoot, saveThemeKey } from "@/lib/themes";
+import { navTone } from "@/lib/ui/navigation";
+import { readableOn } from "@/lib/ui/contrast";
+import { codexRecoveryKey, makeCodexRecovery, requireSaveReceipt } from "@/lib/domain/saveReceipts";
+import { aiRequestHeaders } from "@/lib/domain/aiClientAuth";
+import { FrostfallNavIcon } from "@/components/ui/FrostfallNavIcon";
+import ThemeSelect from "@/components/ThemeSelect";
+import { WorldOverview } from "@/features/studio/WorldOverview";
+import { SaveRecoveryButton } from "@/components/ui/SaveRecoveryButton";
 import { findFuzzyMatches, checkArticleIntegrity, detectConflicts } from "@/lib/domain/integrity";
 import { buildTemporalGraph } from "@/lib/domain/truth/temporalGraph";
 import { checkSceneIntegrity } from "@/lib/domain/novelIntegrity";
@@ -13,7 +23,6 @@ import { useIntegrity } from "@/features/integrity/useIntegrity";
 import { IntegrityPanel } from "@/features/integrity/IntegrityPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
 import { TimelineView } from "@/features/timeline/TimelineView";
-import { useTimeline } from "@/features/timeline/useTimeline";
 import { NovelWorkspace } from "@/features/novel/NovelWorkspace";
 import { CATEGORIES, categoryPluralLabel, ERAS, SWIM_LANE_ORDER, FIELD_LABELS, formatKey, TEMPLATE_FIELDS, FONT_SIZES, EDITOR_FONTS, DEFAULT_SETTINGS } from "@/lib/domain/categories";
 import { ImportPage } from "@/features/import/ImportPage";
@@ -21,6 +30,10 @@ import { SupportPage } from "@/features/support/SupportPage";
 import { CollaborationPanel } from "@/features/collab/CollaborationPanel";
 import { RelationshipGraph } from "@/features/graph/RelationshipGraph";
 import { WorldHomePage } from "@/features/world/WorldHomePage";
+import { CanonStudio } from "@/features/canon/CanonStudio";
+import { CodexCanonPanel } from "@/features/codex/CodexCanonPanel";
+import { loadManuscriptWorld, saveManuscriptWorld } from "@/lib/domain/manuscripts/manuscriptRepository";
+import { chooseManuscriptHydration, readBrowserDraft, writeBrowserDraft, sameSnapshot, journalKey } from "@/lib/domain/manuscripts/manuscriptSync";
 
 // === SAFE STRING HELPERS ===
 const safeText = (v) => (v == null ? "" : String(v));
@@ -287,26 +300,26 @@ const ImportConflictModal = ({ conflicts, onResolve, onCancel }) => {
 // === MODAL STYLES ===
 const MS = {
   overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" },
-  box: { background: "linear-gradient(135deg, #111827 0%, #0d1117 100%)", borderRadius: 12, padding: "28px 32px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" },
+  box: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "28px 32px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" },
 };
 
 // === STYLES ===
 const S = {
-  root: { fontFamily: "'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", color: "#d4c9a8", minHeight: "100vh", display: "flex", overflow: "hidden", height: "100vh" },
-  sidebar: { width: 260, minWidth: 260, background: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", borderRight: "1px solid #1e2a3a", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
+  root: { fontFamily: "var(--uiFont, system-ui)", background: "linear-gradient(170deg, #0a0e1a 0%, #111827 40%, #0f1420 100%)", color: "#d4c9a8", minHeight: "100vh", display: "flex", overflow: "hidden", height: "100vh" },
+  sidebar: { width: 286, minWidth: 286, background: "linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%)", borderRight: "1px solid #1e2a3a", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
   navItem: (a, t) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px", cursor: "pointer", background: a ? "linear-gradient(90deg, " + (t ? t.accentBg : "rgba(240,192,64,0.12)") + " 0%, transparent 100%)" : "transparent", borderLeft: a ? "2px solid " + (t ? t.accent : "#f0c040") : "2px solid transparent", color: a ? (t ? t.accent : "#f0c040") : (t ? t.textMuted : "#8899aa"), fontSize: 13, fontWeight: a ? 600 : 400, transition: "all 0.2s", letterSpacing: 0.5 }),
   topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 28px", borderBottom: "1px solid #1a2435", background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)", position: "relative", zIndex: 50, flexShrink: 0 },
-  searchBox: { background: "#111827", border: "1px solid #1e2a3a", borderRadius: 6, padding: "7px 14px 7px 34px", color: "#d4c9a8", fontSize: 13, width: 320, outline: "none", fontFamily: "inherit" },
+  searchBox: { background: "var(--inputBg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 14px 7px 34px", color: "var(--text)", fontSize: 13, width: 320, outline: "none", fontFamily: "inherit" },
   content: { flex: 1, overflowY: "auto", padding: "0 28px 40px" },
-  statCard: { flex: "1 1 100px", background: "linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(15,20,32,0.9) 100%)", border: "1px solid #1e2a3a", borderRadius: 8, padding: "16px 18px", position: "relative", overflow: "hidden" },
-  sTitle: { fontFamily: "'Cinzel', 'Palatino Linotype', serif", fontSize: 16, fontWeight: 600, color: "#d4c9a8", marginTop: 32, marginBottom: 16, letterSpacing: 1 },
+  statCard: { flex: "1 1 100px", background: "var(--cardBg)", border: "1px solid var(--border)", borderRadius: 8, padding: "16px 18px", position: "relative", overflow: "hidden" },
+  sTitle: { fontFamily: "'Cinzel', 'Palatino Linotype', serif", fontSize: 16, fontWeight: 600, color: "var(--text)", marginTop: 32, marginBottom: 16, letterSpacing: 1 },
   catBadge: (c) => ({ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, color: c, background: c + "18", padding: "3px 10px", borderRadius: 12, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap" }),
-  tag: { fontSize: 10, color: "#556677", background: "rgba(85,102,119,0.15)", padding: "2px 8px", borderRadius: 10, display: "inline-block", marginRight: 4, marginTop: 4 },
-  relItem: { display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "rgba(17,24,39,0.5)", borderRadius: 6, marginBottom: 4, cursor: "pointer", fontSize: 12, color: "#8899aa", transition: "all 0.2s" },
-  input: { width: "100%", background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, padding: "9px 14px", color: "#d4c9a8", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" },
-  textarea: { width: "100%", background: "#0d1117", border: "1px solid #1e2a3a", borderRadius: 6, padding: "9px 14px", color: "#d4c9a8", fontSize: 13, fontFamily: "inherit", outline: "none", minHeight: 120, resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" },
+  tag: { fontSize: 10, color: "var(--textDim)", background: "var(--accentBg)", padding: "2px 8px", borderRadius: 10, display: "inline-block", marginRight: 4, marginTop: 4 },
+  relItem: { display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "var(--cardBg)", borderRadius: 6, marginBottom: 4, cursor: "pointer", fontSize: 12, color: "var(--textMuted)", transition: "all 0.2s" },
+  input: { width: "100%", background: "var(--inputBg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 14px", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" },
+  textarea: { width: "100%", background: "var(--inputBg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 14px", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none", minHeight: 120, resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" },
   btnP: { background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", color: "#0a0e1a", border: "none", borderRadius: 6, padding: "10px 24px", fontSize: 13, fontWeight: 700, fontFamily: "'Cinzel', serif", cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" },
-  btnS: { background: "transparent", color: "#8899aa", border: "1px solid #1e2a3a", borderRadius: 6, padding: "9px 20px", fontSize: 13, cursor: "pointer", fontFamily: "inherit" },
+  btnS: { background: "transparent", color: "var(--textMuted)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 20px", fontSize: 13, cursor: "pointer", fontFamily: "inherit" },
 };
 
 // ╔══════════════════════════════════════════════════════════════╗
@@ -339,11 +352,17 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [importConflicts, setImportConflicts] = useState(null);
   const [importPending, setImportPending] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [worldLoadError, setWorldLoadError] = useState(null);
   const [activeWorld, setActiveWorld] = useState(null);
   const [allWorlds, setAllWorlds] = useState([]);
   const [showWorldCreate, setShowWorldCreate] = useState(false);
   const [worldForm, setWorldForm] = useState({ name: "", description: "" });
   const [worldSwitcherOpen, setWorldSwitcherOpen] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [canonArticleIntent, setCanonArticleIntent] = useState(null);
+  const openArticleCanon = (article, mode='inspect') => {
+    setCanonArticleIntent({id:article.id,mode,nonce:Date.now()});setView('canon_studio');closeSidebar();
+  };
 
   // === ACTIVITY FEED ===
   const [activityFeed, setActivityFeed] = useState([]); // { id, type, articleId, articleTitle, category, actor, timestamp }
@@ -381,8 +400,13 @@ export default function FrostfallRealms({ user, onLogout }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [settingsTab, setSettingsTab] = useState("appearance"); // appearance | world | account
   const theme = THEMES[settings.theme] || THEMES.dark_arcane;
+  useEffect(() => {
+    if (!dataLoaded) return;
+    applyThemeToRoot(settings.theme);
+    saveThemeKey(settings.theme);
+  }, [settings.theme, dataLoaded]);
   // Theme-computed style overrides (shadow static S.* defaults)
-  const tBtnP = { ...S.btnP, background: "linear-gradient(135deg, " + theme.accent + " 0%, " + ta(theme.accent, 0.7) + " 100%)", color: theme.deepBg || theme.deepBg };
+  const tBtnP = { ...S.btnP, background: theme.accent, color: readableOn(theme.accent) };
   const tBtnS = { ...S.btnS, color: theme.textMuted, border: "1px solid " + theme.border };
   const tTag = { ...S.tag, color: theme.textDim, background: ta(theme.textDim, 0.15) };
   const tRelItem = { ...S.relItem, color: theme.textMuted, background: ta(theme.surface, 0.5) };
@@ -398,7 +422,6 @@ export default function FrostfallRealms({ user, onLogout }) {
   }, [settings.eraLabel, activeEras]);
 
   // === CUSTOM HOOKS ===
-  const { tlZoom, setTlZoom, tlSelected, setTlSelected, tlPanelOpen, setTlPanelOpen, tlData, tlRange, tlPxPerYear, yearToX, tlTotalWidth, tlTicks, tlSelectArticle, tlClosePanel, tlLaneHeights } = useTimeline(articles);
   const { allConflicts, visibleConflicts, conflictsFor, filterBySensitivity, globalIntegrity, totalIntegrityIssues, dismissedConflicts, setDismissedConflicts, dismissedTemporals, setDismissedTemporals, integrityGate, setIntegrityGate, integrityVisible, setIntegrityVisible, temporalGraph, INTEGRITY_PAGE } = useIntegrity(articles, settings, { detectConflicts, checkArticleIntegrity, buildTemporalGraph });
 
   // Fire activity event when integrity issue count rises
@@ -509,6 +532,8 @@ export default function FrostfallRealms({ user, onLogout }) {
   // === PERSISTENT STORAGE (Supabase → window.storage → localStorage fallback) ===
   useEffect(() => {
     const loadData = async () => {
+      let loadedSuccessfully = true;
+      setWorldLoadError(null);
       if (supabase && user) {
         try {
           // Fetch worlds + first world's articles in a single parallel operation
@@ -523,7 +548,12 @@ export default function FrostfallRealms({ user, onLogout }) {
             }
           }
           setSaveStatus("saved");
-        } catch (e) { console.error("Supabase load:", e); setSaveStatus("idle"); }
+        } catch (e) {
+          console.error("Supabase world load:", e);
+          setSaveStatus("error");
+          setWorldLoadError(e.message || "World data could not be loaded.");
+          loadedSuccessfully = false;
+        }
       } else {
         try {
           if (typeof window !== "undefined" && window.storage) {
@@ -536,7 +566,7 @@ export default function FrostfallRealms({ user, onLogout }) {
           setSaveStatus("saved");
         } catch (e) { setSaveStatus("idle"); }
       }
-      setDataLoaded(true);
+      setDataLoaded(loadedSuccessfully);
       // Load settings
       try {
         if (typeof window !== "undefined" && window.storage) {
@@ -590,50 +620,88 @@ export default function FrostfallRealms({ user, onLogout }) {
 const handleCreateWorld = async () => {
     if (!worldForm.name.trim()) return;
     try {
+      if (activeWorld && loadedManuscriptWorldId === (activeWorld.id || activeWorld.name)) await saveNovelsNow(manuscripts);
       if (supabase && user) {
         const newWorld = await createWorld(user.id, worldForm.name.trim(), worldForm.description.trim());
+        if (!newWorld?.id) throw new Error("World creation was not confirmed by the database. No world switch occurred.");
         setAllWorlds((prev) => [...prev, newWorld]);
         setActiveWorld(newWorld);
         setArticles([]);
         setArchived([]);
       } else {
-        setActiveWorld({ name: worldForm.name.trim(), description: worldForm.description.trim() });
+        setActiveWorld({ id: globalThis.crypto?.randomUUID?.() || `local-world-${Date.now()}`, name: worldForm.name.trim(), description: worldForm.description.trim() });
       }
       setWorldForm({ name: "", description: "" });
       setShowWorldCreate(false);
       setView("dashboard");
-    } catch (e) { console.error("Create world:", e); }
+    } catch (e) { console.error("Create world:", e); setNovelSaveError(e.message || "Could not save the previous world before switching."); }
   };
 
   const switchWorld = async (world) => {
     if (world.id === activeWorld?.id) { setWorldSwitcherOpen(false); return; }
-    setActiveWorld(world);
-    setArticles([]);
-    setArchived([]);
-    setView("dashboard");
-    setWorldSwitcherOpen(false);
+    // Persist the outgoing world's manuscripts before changing the storage key.
     try {
-      const dbArticles = await fetchArticles(world.id);
+      if (activeWorld && loadedManuscriptWorldId === (activeWorld.id || activeWorld.name)) await saveNovelsNow(manuscripts);
+    } catch (error) {
+      setNovelSaveError(error.message);
+      setWorldSwitcherOpen(false);
+      return; // Never switch and silently lose unsaved writing.
+    }
+    // Load the destination before switching active IDs. If the DB read fails,
+    // leave the original world and articles intact: an empty placeholder could
+    // otherwise be mistaken for the real world and written back over it.
+    try {
+      const dbArticles = await fetchArticles(world.id, { strict: true });
+      setActiveWorld(world);
       setArticles(dedup(dbArticles.filter((a) => !a.isArchived)));
       setArchived(dedup(dbArticles.filter((a) => a.isArchived)));
-    } catch (e) { console.error("Switch world:", e); }
+      setView("dashboard");
+      setWorldSwitcherOpen(false);
+      setNovelSaveError(null);
+    } catch (e) {
+      console.error("Switch world:", e);
+      setNovelSaveError("Could not open the selected world. The current world was kept: " + (e.message || "database read failed"));
+      setWorldSwitcherOpen(false);
+    }
   };
 
+  // Serialize writes. A stale write must never claim a newer draft is saved.
+  const codexRevisionRef = useRef(0);
+  const codexSaveChainRef = useRef(Promise.resolve());
+  const latestWorldRef = useRef(null);
+  latestWorldRef.current = activeWorld?.id || activeWorld?.name || null;
   useEffect(() => {
-    if (!dataLoaded) return;
+    if (!dataLoaded || !activeWorld) return;
+    const revision = ++codexRevisionRef.current;
+    const worldId = activeWorld.id || activeWorld.name;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaveStatus("saving");
-    saveTimer.current = setTimeout(async () => {
-      try {
-        if (supabase && user && activeWorld?.id) {
-          const all = [...articles, ...archived.map((a) => ({ ...a, isArchived: true }))];
-          // Single round-trip instead of N sequential awaits
-          await bulkUpsertArticles(activeWorld.id, all);
-        } else if (typeof window !== "undefined" && window.storage) {
-          await window.storage.set("frostfall-world-v2", JSON.stringify({ articles, archived, worldName: activeWorld?.name, worldDesc: activeWorld?.description, version: 2, savedAt: new Date().toISOString() }));
+    saveTimer.current = setTimeout(() => {
+      const snapshot = { articles, archived };
+      // Add to the save chain so an older request cannot finish after a newer one.
+      codexSaveChainRef.current = codexSaveChainRef.current.catch(() => {}).then(async () => {
+        try {
+          if (supabase && user && activeWorld.id) {
+            // Recovery snapshot survives a failed database call.
+            try { localStorage.setItem(codexRecoveryKey(worldId), makeCodexRecovery(worldId, snapshot.articles, snapshot.archived)); }
+            catch (e) { console.warn("Local codex recovery unavailable", e); }
+            const all = [...snapshot.articles, ...snapshot.archived.map((a) => ({ ...a, isArchived: true }))];
+            requireSaveReceipt(await bulkUpsertArticles(activeWorld.id, all));
+            if (revision === codexRevisionRef.current && latestWorldRef.current === worldId) {
+              try { localStorage.removeItem(codexRecoveryKey(worldId)); } catch {}
+            }
+          } else {
+            const encoded = JSON.stringify({ ...snapshot, worldName: activeWorld.name, worldDesc: activeWorld.description, version: 2, savedAt: new Date().toISOString() });
+            // localStorage is always supported in normal browsers; window.storage is optional.
+            if (typeof window !== "undefined" && window.storage) await window.storage.set("frostfall-world-v2", encoded);
+            else localStorage.setItem("frostfall-world-v2", encoded);
+          }
+          if (revision === codexRevisionRef.current && latestWorldRef.current === worldId) setSaveStatus("saved");
+        } catch (error) {
+          console.error("Codex autosave failed", error);
+          if (revision === codexRevisionRef.current && latestWorldRef.current === worldId) setSaveStatus("error");
         }
-        setSaveStatus("saved");
-      } catch (e) { setSaveStatus("error"); }
+      });
     }, 1200);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [articles, archived, dataLoaded, user, activeWorld]);
@@ -648,15 +716,7 @@ const handleCreateWorld = async () => {
     } catch (_) {}
   }, [settings, dataLoaded]);
 
-  // Save settings whenever they change
-  useEffect(() => {
-    if (!dataLoaded) return;
-    const json = JSON.stringify(settings);
-    try {
-      if (typeof window !== "undefined" && window.storage) { window.storage.set("frostfall-settings-v1", json); }
-      else { localStorage.setItem("frostfall-settings-v1", json); }
-    } catch (_) {}
-  }, [settings, dataLoaded]);
+
 
   // === EXPORT ===
   const exportWorld = () => {
@@ -932,7 +992,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       try {
         const response = await fetch("/api/ai-import", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: await aiRequestHeaders(),
           body: JSON.stringify({
             text: chunks[i],
             filename,
@@ -1066,71 +1126,155 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const stagingRejectAll = () => setAiStaging((p) => p.map((e) => e._status === "pending" ? { ...e, _status: "rejected" } : e));
   const stagingClearAll = () => { setAiStaging([]); setAiSourceName(""); };
 
-  // === NOVEL WRITING FUNCTIONS ===
-  const msKey = () => "frostfall-novels-" + (activeWorld?.id || "default");
+  // === P3: MANUSCRIPT REVISION SYNC + NON-DESTRUCTIVE RECOVERY ===
+  const msKey = (worldId = activeWorld?.id || activeWorld?.name || "default") => "frostfall-novels-" + worldId;
+  const [loadedManuscriptWorldId, setLoadedManuscriptWorldId] = useState(null);
+  const [novelSaveError, setNovelSaveError] = useState(null);
+  const [novelSaveStatus, setNovelSaveStatus] = useState('idle');
+  const [novelRecoveryCandidate, setNovelRecoveryCandidate] = useState(null);
+  const novelRecoveryRef = useRef(null);
+  const novelRevisionsRef = useRef(new Map());
+  const novelLastSavedRef = useRef(new Map());
+  const novelSaveChainRef = useRef(Promise.resolve());
 
-  // Helper: save manuscripts to best available storage
-  const saveNovelsNow = async (data) => {
-    const key = msKey();
-    const json = JSON.stringify(data);
-    // Try window.storage (Claude artifacts)
-    try { if (typeof window !== "undefined" && window.storage) { await window.storage.set(key, json); return; } } catch (_) {}
-    // Fallback to localStorage
-    try { if (typeof window !== "undefined" && window.localStorage) { localStorage.setItem(key, json); return; } } catch (_) {}
+  const saveNovelsNow = async (data, worldId = activeWorld?.id || activeWorld?.name) => {
+    if (!worldId || !Array.isArray(data)) throw new Error('No valid manuscript world to save.');
+    if (novelRecoveryRef.current?.worldId === worldId) {
+      // Never let an ordinary autosave erase an unresolved browser recovery.
+      return {skipped:'recovery_pending'};
+    }
+    const previous = novelLastSavedRef.current.get(worldId);
+    if (previous && sameSnapshot(previous, data)) return {skipped:'unchanged'};
+    const currentData = JSON.parse(JSON.stringify(data));
+    const revision = novelRevisionsRef.current.get(worldId) || 0;
+    writeBrowserDraft(localStorage,worldId,currentData,{syncedRevision:revision,dirty:!!supabase});
+    if (!supabase) {
+      novelLastSavedRef.current.set(worldId,currentData);
+      if (worldId === (activeWorld?.id || activeWorld?.name)) setNovelSaveStatus('browser');
+      return {mode:'local',revision:0};
+    }
+    if (!user) throw new Error('Sign in before saving manuscripts to the cloud.');
+    if (worldId === (activeWorld?.id || activeWorld?.name)) setNovelSaveStatus('saving');
+    const save = novelSaveChainRef.current.catch(()=>{}).then(async()=>{
+      // Revision is read INSIDE the chain so consecutive saves cannot reuse an old base.
+      const base = novelRevisionsRef.current.get(worldId) ?? 0;
+      const receipt = await saveManuscriptWorld(worldId,base,currentData);
+      novelRevisionsRef.current.set(worldId,receipt.revision);
+      novelLastSavedRef.current.set(worldId,currentData);
+      if (worldId === latestWorldRef.current) {
+        if (sameSnapshot(manuscriptsRef.current,currentData)) {
+          writeBrowserDraft(localStorage,worldId,currentData,{syncedRevision:receipt.revision,dirty:false});
+          setNovelSaveStatus('saved');setNovelSaveError(null);
+        } else {
+          setNovelSaveStatus('saving');
+        }
+      }
+      return receipt;
+    });
+    novelSaveChainRef.current = save.catch(()=>{});
+    try {return await save;}catch(error){
+      if (worldId === latestWorldRef.current) {
+        setNovelSaveError(error.message);setNovelSaveStatus(error.code==='REVISION_CONFLICT'?'conflict':'error');
+        if (error.code==='REVISION_CONFLICT') {
+          const backup=readBrowserDraft(localStorage,worldId);
+          novelRecoveryRef.current={...backup,worldId};setNovelRecoveryCandidate(novelRecoveryRef.current);
+        }
+      }
+      throw error;
+    }
   };
 
-  // Helper: load manuscripts from best available storage
-  const loadNovels = async () => {
-    const key = msKey();
-    // Try window.storage first
-    try {
-      if (typeof window !== "undefined" && window.storage) {
-        const r = await window.storage.get(key);
-        if (r?.value) return JSON.parse(r.value);
-      }
-    } catch (_) {}
-    // Fallback to localStorage
-    try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        const stored = localStorage.getItem(key);
-        if (stored) return JSON.parse(stored);
-      }
-    } catch (_) {}
-    return null;
-  };
-
-  // Load manuscripts when world changes
+  // An old browser manuscript collection is NEVER silently overwritten by an
+  // empty cloud database. The author chooses whether to restore it.
   useEffect(() => {
     if (!activeWorld) return;
-    (async () => {
+    const worldId = activeWorld.id || activeWorld.name;
+    let cancelled = false;
+    setLoadedManuscriptWorldId(null);setManuscripts([]);
+    setActiveMs(null);setNovelView('select');
+    setNovelSaveError(null);setNovelSaveStatus('loading');
+    novelRecoveryRef.current=null;setNovelRecoveryCandidate(null);
+    (async()=>{
       try {
-        const ms = await loadNovels();
-        if (ms && ms.length > 0) setManuscripts(ms);
-        else setManuscripts([]);
-      } catch (_) { setManuscripts([]); }
-    })();
-    setActiveMs(null); setNovelView("select");
-  }, [activeWorld]);
-
-  // Save manuscripts with debounce
-  const novelSaveTimer = useRef(null);
-  useEffect(() => {
-    if (!dataLoaded || !activeWorld || manuscripts.length === 0) return;
-    if (novelSaveTimer.current) clearTimeout(novelSaveTimer.current);
-    novelSaveTimer.current = setTimeout(() => saveNovelsNow(manuscripts), 800);
-    return () => { if (novelSaveTimer.current) clearTimeout(novelSaveTimer.current); };
-  }, [manuscripts, dataLoaded, activeWorld]);
-
-  // Force save on page unload
-  useEffect(() => {
-    const handler = () => {
-      if (activeWorld) {
-        if (manuscripts.length > 0) { const key = msKey(); try { localStorage.setItem(key, JSON.stringify(manuscripts)); } catch (_) {} }
+        let browser=readBrowserDraft(localStorage,worldId);
+        // Older Artifact editions could store the only copy in window.storage.
+        // Import it as an untrusted recovery candidate, never as established cloud data.
+        if (!browser && typeof window !== 'undefined' && window.storage) {
+          const stored=await window.storage.get(msKey(worldId)).catch(()=>null);
+          if(stored?.value){
+            const recovered=JSON.parse(stored.value);
+            if(!Array.isArray(recovered))throw new Error('Legacy manuscript recovery is malformed.');
+            browser={format:'frostfall-manuscript-draft-v3',worldId:String(worldId),
+              manuscripts:recovered,dirty:true,syncedRevision:null,legacy:true};
+          }
+        }
+        const cloud=await loadManuscriptWorld(worldId);
+        if(cancelled)return;
+        const choice=chooseManuscriptHydration({cloud,browser,hosted:!!supabase});
+        novelRevisionsRef.current.set(worldId,choice.revision);
+        novelLastSavedRef.current.set(worldId,JSON.parse(JSON.stringify(choice.manuscripts)));
+        novelRecoveryRef.current=choice.recovery?{...choice.recovery,worldId}:null;
+        setNovelRecoveryCandidate(novelRecoveryRef.current);
+        setManuscripts(choice.manuscripts);setLoadedManuscriptWorldId(worldId);
+        setNovelSaveStatus(choice.recovery?'recovery':supabase?'saved':'browser');
+      }catch(error){
+        if(!cancelled){setNovelSaveError(`Manuscripts could not be loaded: ${error.message}. Cloud data was not overwritten.`);setNovelSaveStatus('error');}
       }
+    })();
+    return()=>{cancelled=true;};
+  },[activeWorld?.id,activeWorld?.name]);
+
+  // Immediately journal edits in the browser. Cloud sync is debounced, serialized,
+  // and acknowledged by the RPC. Empty collections are valid intentional changes.
+  const novelSaveTimer=useRef(null);
+  useEffect(()=>{
+    const worldId=activeWorld?.id || activeWorld?.name;
+    if (!dataLoaded || !worldId || loadedManuscriptWorldId!==worldId || novelRecoveryRef.current) return;
+    const committed=novelLastSavedRef.current.get(worldId);
+    if (committed && sameSnapshot(committed,manuscripts))return;
+    if(novelSaveTimer.current)clearTimeout(novelSaveTimer.current);
+    try {
+      writeBrowserDraft(localStorage,worldId,manuscripts,{syncedRevision:novelRevisionsRef.current.get(worldId)||0,dirty:!!supabase});
+      setNovelSaveStatus(supabase?'saving':'browser');
+    }catch(error){setNovelSaveError(`Browser recovery failed: ${error.message}. Export your manuscript now.`);setNovelSaveStatus('error');return;}
+    novelSaveTimer.current=setTimeout(()=>{
+      saveNovelsNow(manuscripts,worldId).catch(error=>console.error('Manuscript sync failed',error));
+    },900);
+    return()=>{if(novelSaveTimer.current)clearTimeout(novelSaveTimer.current);};
+  },[manuscripts,dataLoaded,activeWorld?.id,activeWorld?.name,loadedManuscriptWorldId]);
+
+  // The unload handler cannot reliably perform async cloud writes. It protects
+  // locally only, and never replaces an unresolved recovery candidate.
+  useEffect(()=>{
+    const worldId=activeWorld?.id || activeWorld?.name;
+    if(!worldId)return;
+    const handler=()=>{
+      if(novelRecoveryRef.current?.worldId===worldId)return;
+      const last=novelLastSavedRef.current.get(worldId);
+      if (last && sameSnapshot(last,manuscripts))return;
+      try {writeBrowserDraft(localStorage,worldId,manuscripts,{syncedRevision:novelRevisionsRef.current.get(worldId)||0,dirty:!!supabase});}catch(e){console.error('Manuscript unload recovery unavailable',e);}
     };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [manuscripts, activeWorld]);
+    window.addEventListener('beforeunload',handler);
+    return()=>window.removeEventListener('beforeunload',handler);
+  },[manuscripts,activeWorld?.id,activeWorld?.name]);
+
+  const restoreNovelDraft = () => {
+    if(!novelRecoveryCandidate || novelRecoveryCandidate.worldId!==(activeWorld?.id || activeWorld?.name))return;
+    const copy=novelRecoveryCandidate.manuscripts;
+    novelRecoveryRef.current=null;setNovelRecoveryCandidate(null);
+    setManuscripts(copy);setNovelSaveError(null);setNovelSaveStatus('saving');
+  };
+  const retainCloudManuscripts = () => {
+    if(!novelRecoveryCandidate || !activeWorld)return;
+    const worldId=activeWorld.id||activeWorld.name;
+    // Preserve the incoming local draft in a separate archive instead of deleting it.
+    try {
+      const key=`frostfall-manuscript-recovery-archive:${worldId}:${Date.now()}`;
+      localStorage.setItem(key,JSON.stringify(novelRecoveryCandidate));
+      writeBrowserDraft(localStorage,worldId,manuscripts,{syncedRevision:novelRevisionsRef.current.get(worldId)||0,dirty:false});
+      novelRecoveryRef.current=null;setNovelRecoveryCandidate(null);setNovelSaveStatus(supabase?'saved':'browser');setNovelSaveError(null);
+    }catch(e){setNovelSaveError(`Could not archive local draft: ${e.message}. Export your local recovery before choosing cloud.`);}
+  };
 
   // Keep activeMs in sync with manuscripts array
   useEffect(() => {
@@ -1362,7 +1506,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       const ch = act?.chapters.find((c) => c.id === chId);
       const sc = ch?.scenes.find((s) => s.id === scId);
       const snapBody = sc?.snapshots?.[snapIdx]?.body || "";
-      novelEditorRef.current.innerHTML = textToMentionHTML(snapBody);
+      novelEditorRef.current.innerHTML = sanitizeRichHtml(textToMentionHTML(snapBody));
     }
   };
 
@@ -1617,7 +1761,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
         const scene = ch?.scenes.find((s) => s.id === novelActiveScene.scId);
         body = scene?.body || "";
       }
-      novelEditorRef.current.innerHTML = textToMentionHTML(body);
+      novelEditorRef.current.innerHTML = sanitizeRichHtml(textToMentionHTML(body));
     }
   }, [novelActiveScene?.scId, novelView, novelFocusMode, textToMentionHTML]);
 
@@ -2156,7 +2300,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     clearTimeout(articleBodyTimerRef.current);
     articleBodyTimerRef.current = setTimeout(() => {
       if (!articleBodyRef.current) return;
-      const html = articleBodyRef.current.innerHTML || "";
+      const html = sanitizeRichHtml(articleBodyRef.current.innerHTML || "");
       articleLastTypedRef.current = html;
       setFormData((p) => ({ ...p, body: html }));
     }, 300);
@@ -2166,7 +2310,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   const flushArticleBody = useCallback(() => {
     clearTimeout(articleBodyTimerRef.current);
     if (articleBodyRef.current) {
-      const html = articleBodyRef.current.innerHTML || "";
+      const html = sanitizeRichHtml(articleBodyRef.current.innerHTML || "");
       articleLastTypedRef.current = html;
       setFormData((p) => ({ ...p, body: html }));
     }
@@ -2180,7 +2324,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     articleInitSessionRef.current = sessionKey;
     requestAnimationFrame(() => {
       if (articleBodyRef.current) {
-        articleBodyRef.current.innerHTML = plainToHtml(formData.body);
+        articleBodyRef.current.innerHTML = sanitizeRichHtml(plainToHtml(formData.body));
         articleLastTypedRef.current = articleBodyRef.current.innerHTML;
       }
     });
@@ -2191,7 +2335,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     if (view !== "create" || articlePreviewMode) return;
     requestAnimationFrame(() => {
       if (articleBodyRef.current && !articleBodyRef.current.innerHTML) {
-        articleBodyRef.current.innerHTML = plainToHtml(formData.body);
+        articleBodyRef.current.innerHTML = sanitizeRichHtml(plainToHtml(formData.body));
         articleLastTypedRef.current = articleBodyRef.current.innerHTML;
       }
     });
@@ -2277,7 +2421,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     setFormData((p) => ({ ...p, body: newBody }));
     // Also update the DOM if editor is mounted
     if (articleBodyRef.current) {
-      articleBodyRef.current.innerHTML = newBody;
+      articleBodyRef.current.innerHTML = sanitizeRichHtml(newBody);
     }
   }, []);
 
@@ -2514,43 +2658,53 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     conflicts: allConflicts.length, archived: archived.length, ...catCounts,
   }), [articles, allConflicts, archived, catCounts]);
 
+  // P7: Grouped information architecture, preserving every existing module.
+  // Category links are collapsible so large worlds do not bury the main tools.
   const navItems = [
-    { id: "dashboard", icon: "◈", label: "Dashboard", action: goDash },
-    { id: "world_home", icon: "🏰", label: "World Home", action: () => setView("world_home") },
-    { id: "codex", icon: "📖", label: "Full Codex", action: () => goCodex("all") },
-    { divider: true },
-    ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
-      id: k, icon: c.icon, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : categoryPluralLabel(k),
-      action: () => goCodex(k), count: catCounts[k] || undefined, isCategory: true,
-    })),
-    { divider: true },
-    { id: "timeline", icon: "⏳", label: "Timeline", action: () => { setTlSelected(null); setTlPanelOpen(false); setView("timeline"); } },
-    { id: "graph", icon: "◉", label: "Relationship Web", action: () => setView("graph") },
-    { id: "cross_refs", icon: "🔗", label: "Cross-References", action: () => setView("cross_refs") },
-    { id: "family_tree", icon: "🌳", label: "Family Tree", action: () => setView("family_tree") },
-    { id: "novel", icon: "✒", label: "Novel Writing", action: () => setView("novel") },
-    { id: "generator", icon: "🎲", label: "Generators", action: () => setView("generator") },
-    { id: "sessions", icon: "📓", label: "Session Notes", action: () => setView("sessions"), count: sessions.length > 0 ? sessions.length : undefined },
-    { id: "integrity", icon: "🛡", label: "Lore Integrity", action: () => setView("integrity"), count: totalIntegrityIssues > 0 ? totalIntegrityIssues : undefined, alert: totalIntegrityIssues > 0 },
-    { id: "archives", icon: "📦", label: "Archives", action: () => setView("archives"), count: archived.length > 0 ? archived.length : undefined },
-    { divider: true },
-    { id: "ai_import", icon: "📄", label: "Document Import", action: () => setView("ai_import") },
-    { id: "staging", icon: "📋", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length > 0 ? aiStaging.filter((e) => e._status === "pending").length : undefined },
-    { divider: true },
-    { id: "settings", icon: "⚙", label: "Settings", action: () => setView("settings") },
-    { id: "scratchpad", icon: "📝", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
-    { id: "collaboration", icon: "👥", label: "Collaboration", action: () => setView("collaboration") },
-    { divider: true },
-    { id: "support_page", icon: "📬", label: "Support", action: () => setView("support_page") },
-    { id: "donate", icon: "♥", label: "Donate", action: () => setShowDonate(true) },
-    ...(adminRole ? [{ divider: true }, { id: "admin", icon: "🔐", label: "Admin Panel", action: () => setView("admin") }] : []),
+    { section: "THE WORLD" },
+    { id: "dashboard", label: "Overview", action: goDash },
+    { id: "world_home", label: "World Home", action: () => setView("world_home") },
+    { id: "codex", label: "Codex Studio", action: () => goCodex("all") },
+    { id: "timeline", label: "Chronicles", action: () => setView("timeline") },
+    { id: "atlas", label: "Locations", action: () => goCodex("location") },
+    { id: "expand_categories", label: "Browse Categories", count: Object.keys(CATEGORIES).filter(k => !settings.disabledCategories.includes(k)).length,
+      expanded: categoriesExpanded, action: () => setCategoriesExpanded((v) => !v) },
+    ...(categoriesExpanded ? [
+      { section: "CODEX CATEGORIES", subSection: true },
+      ...Object.entries(CATEGORIES).filter(([k]) => !settings.disabledCategories.includes(k)).map(([k, c]) => ({
+        id: k, label: k === "race" ? "Races & Species" : k === "magic" ? "Magic & Lore" : k === "item" ? "Items & Artifacts" : k === "flora_fauna" ? "Flora & Fauna" : k === "laws_customs" ? "Laws & Customs" : categoryPluralLabel(k),
+        action: () => goCodex(k), count: catCounts[k] || undefined, isCategory: true,
+      })),
+    ] : []),
+    { section: "CONNECTIONS" },
+    { id: "graph", label: "Relationships", action: () => setView("graph") },
+    { id: "cross_refs", label: "Cross-References", action: () => setView("cross_refs") },
+    { id: "family_tree", label: "Family Trees", action: () => setView("family_tree") },
+    { section: "WRITING & CANON" },
+    { id: "novel", label: "Manuscripts", action: () => setView("novel") },
+    { id: "canon_studio", label: "Canon Studio", action: () => setView("canon_studio") },
+    { id: "integrity", label: "Canon Review", action: () => setView("integrity"), count: totalIntegrityIssues > 0 ? totalIntegrityIssues : undefined, alert: totalIntegrityIssues > 0 },
+    { section: "CREATION & TOOLS" },
+    { id: "generator", label: "Generators", action: () => setView("generator") },
+    { id: "sessions", label: "Session Notes", action: () => setView("sessions"), count: sessions.length || undefined },
+    { id: "archives", label: "Archives", action: () => setView("archives"), count: archived.length || undefined },
+    { id: "ai_import", label: "Document Import", action: () => setView("ai_import") },
+    { id: "staging", label: "Staging Area", action: () => setView("staging"), count: aiStaging.filter((e) => e._status === "pending").length || undefined },
+    { id: "scratchpad", label: "Quick Notes", action: () => setScratchpadOpen((v) => !v) },
+    { section: "ACCOUNT & HELP" },
+    { id: "settings", label: "Preferences", action: () => setView("settings") },
+    { id: "collaboration", label: "Collaboration", action: () => setView("collaboration") },
+    { id: "support_page", label: "Support", action: () => setView("support_page") },
+    { id: "donate", label: "Support the Project", action: () => setShowDonate(true) },
+    ...(adminRole ? [{ id: "admin", label: "Admin Panel", action: () => setView("admin") }] : []),
   ];
-
   const isAct = (item) => {
     if (item.id === "dashboard" && view === "dashboard") return true;
     if (item.id === "world_home" && view === "world_home") return true;
     if (item.id === "codex" && view === "codex" && codexFilter === "all") return true;
+    if (item.id === "atlas" && view === "codex" && codexFilter === "location") return true;
     if (item.id === "integrity" && view === "integrity") return true;
+    if (item.id === "canon_studio" && view === "canon_studio") return true;
     if (item.id === "timeline" && view === "timeline") return true;
     if (item.id === "graph" && view === "graph") return true;
     if (item.id === "cross_refs" && view === "cross_refs") return true;
@@ -2570,12 +2724,14 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     return false;
   };
 
-  // Top bar quick-create: only show first 4 + a "more" dropdown state
+  const breadcrumbLabel = view === "article" ? (activeArticle?.title || "Article")
+    : view === "create" ? (editingId ? "Edit Entry" : "New Entry")
+    : (navItems.find((item) => item.id && isAct(item))?.label || "Workspace");
+
+  // Accessible global create menu and existing Codex-specific create actions.
   const [showMoreCats, setShowMoreCats] = useState(false);
   const [showCodexCreate, setShowCodexCreate] = useState(false);
   const [showMobileFab, setShowMobileFab] = useState(false);
-  const mainCats = Object.entries(CATEGORIES).slice(0, 4);
-  const extraCats = Object.entries(CATEGORIES).slice(4);
 
   // Accessibility: Escape key closes open modals/dropdowns
   useEffect(() => {
@@ -2676,186 +2832,25 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
           )}
   </>);
 
-  const renderDashboard = () => (<>
-          {/* === DASHBOARD === */}
-          {view === "dashboard" && activeWorld && (<div>
-            <div style={{ marginTop: 28, marginBottom: 8, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-              <div>
-                <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: 26, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 2 }}>The Archives of {activeWorld?.name || "Your World"}</h1>
-                <p style={{ fontSize: 13, color: theme.textDim, marginTop: 4, fontStyle: "italic" }}>"Creation requires sacrifice. To give form costs essence."</p>
-              </div>
-              <button onClick={() => setDashCustomizing((v) => !v)} style={{ ...tBtnS, fontSize: 10, padding: "4px 12px", color: dashCustomizing ? theme.accent : theme.textDim, background: dashCustomizing ? ta(theme.accent, 0.08) : "transparent" }}>
-                {dashCustomizing ? "✓ Done" : "⚙ Customize"}
-              </button>
-            </div>
-            <Ornament width={300} />
-
-            {/* Widget customization strip */}
-            {dashCustomizing && (
-              <div style={{ margin: "16px 0", padding: "12px 16px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 10 }}>
-                <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Dashboard Widgets</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {[
-                    { id: "stats", label: "📊 World Stats" },
-                    { id: "integrity", label: "🛡 Integrity" },
-                    { id: "quick_create", label: "⚒ Quick Create" },
-                    { id: "recent", label: "📜 Recent Edits" },
-                    { id: "writing_progress", label: "✒ Writing Progress" },
-                    { id: "world_links", label: "🔗 Quick Links" },
-                    { id: "sessions_preview", label: "📓 Sessions" },
-                    { id: "generators_preview", label: "🎲 Generators" },
-                  ].map((w) => {
-                    const on = dashWidgets.includes(w.id);
-                    const idx = dashWidgets.indexOf(w.id);
-                    return (
-                      <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <button onClick={() => toggleWidget(w.id)}
-                          style={{ fontSize: 11, padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", border: "1px solid " + (on ? ta(theme.accent, 0.3) : theme.border), background: on ? ta(theme.accent, 0.08) : "transparent", color: on ? theme.accent : theme.textDim, fontWeight: on ? 600 : 400 }}>
-                          {w.label}
-                        </button>
-                        {on && idx > 0 && <span onClick={() => moveWidget(w.id, -1)} style={{ fontSize: 9, cursor: "pointer", color: theme.textDim, padding: "0 2px" }}>◀</span>}
-                        {on && idx < dashWidgets.length - 1 && <span onClick={() => moveWidget(w.id, 1)} style={{ fontSize: 9, cursor: "pointer", color: theme.textDim, padding: "0 2px" }}>▶</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Render active widgets in order */}
-            {dashWidgets.map((wid) => {
-              switch (wid) {
-                case "stats": return (
-                  <div key={wid}>
-                    <div style={{ display: "flex", gap: 12, marginTop: 24, flexWrap: "wrap" }}>
-                      {[{ n: stats.total, l: "Total Articles", c: theme.accent }, ...Object.entries(CATEGORIES).map(([k, v]) => ({ n: catCounts[k] || 0, l: categoryPluralLabel(k), c: v.color })), { n: stats.words.toLocaleString(), l: "Total Words", c: "#8ec8a0" }].map((s, i) => (
-                        <div key={i} style={S.statCard}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.c }} /><p style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", margin: 0 }}>{s.n}</p><p style={{ fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 4 }}>{s.l}</p></div>
-                      ))}
-                    </div>
-                  </div>
-                );
-                case "integrity": return totalIntegrityIssues > 0 ? (
-                  <div key={wid}>
-                    <p style={S.sTitle}><span style={{ color: "#e07050" }} aria-hidden="true">🛡</span> Lore Integrity — <span style={{ color: "#e07050", fontSize: 14 }}>{totalIntegrityIssues} issue{totalIntegrityIssues !== 1 ? "s" : ""}</span></p>
-                    <div style={{ background: "rgba(224,112,80,0.04)", border: "1px solid rgba(224,112,80,0.15)", borderRadius: 8, padding: 4 }}>
-                      {allConflicts.slice(0, 3).map((c) => (
-                        <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(c.sourceId)}>
-                          <span style={{ fontSize: 16, color: c.severity === "error" ? "#e07050" : theme.accent, marginTop: 1 }}>{c.severity === "error" ? "✕" : "⚠"}</span>
-                          <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{c.message}</div><div style={{ fontSize: 11, color: theme.textDim, fontStyle: "italic" }}>💡 {c.suggestion}</div></div>
-                          <span style={S.catBadge(c.severity === "error" ? "#e07050" : theme.accent)}>{c.severity}</span>
-                        </div>
-                      ))}
-                      {globalIntegrity.slice(0, Math.max(0, 4 - allConflicts.length)).map(({ article: a, issues }) => (
-                        <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", borderBottom: "1px solid rgba(224,112,80,0.08)", cursor: "pointer" }} onClick={() => navigate(a.id)}>
-                          <span style={{ fontSize: 14, color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                          <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: theme.text, fontWeight: 600, marginBottom: 3 }}>{a.title} — {issues.length} issue{issues.length !== 1 ? "s" : ""}</div><div style={{ fontSize: 11, color: theme.textDim }}>{issues[0].message}</div></div>
-                          <span style={S.catBadge(issues.some((w) => w.severity === "error") ? "#e07050" : theme.accent)}>{issues.some((w) => w.severity === "error") ? "error" : "warning"}</span>
-                        </div>
-                      ))}
-                      <div style={{ padding: "10px 14px", textAlign: "center", fontSize: 12, color: "#e07050", cursor: "pointer" }} onClick={() => setView("integrity")}>View full integrity report →</div>
-                    </div>
-                  </div>
-                ) : null;
-                case "quick_create": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>⚒ Quick Create</p>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : isTablet ? "repeat(3, 1fr)" : "repeat(4, 1fr)", gap: 10 }}>
-                      {Object.entries(CATEGORIES).map(([k, c]) => (
-                        <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} style={{ background: ta(theme.surface, 0.7), border: "1px solid " + c.color + "33", borderRadius: 8, padding: "16px 12px", cursor: "pointer", textAlign: "center", transition: "all 0.25s" }} onClick={() => goCreate(k)}
-                          onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + c.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + c.color + "33"; e.currentTarget.style.transform = "none"; }}>
-                          <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div><div style={{ fontSize: 11, color: c.color, fontWeight: 600 }}>New {c.label}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-                case "recent": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>📜 Recent Edits</p>
-                    {recent.map((a) => { const ac = conflictsFor(a.id); return (
-                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + (ac.length > 0 ? "rgba(224,112,80,0.3)" : theme.divider), borderRadius: 6, marginBottom: 6, cursor: "pointer", transition: "all 0.2s" }} onClick={() => navigate(a.id)}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
-                        <span style={{ fontSize: 16, width: 24, textAlign: "center", color: CATEGORIES[a.category]?.color }}>{CATEGORIES[a.category]?.icon}</span>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#c8bda0" }}>{a.title}</span>
-                        {ac.length > 0 && <span style={{ fontSize: 12, color: "#e07050" }}>⚠ {ac.length}</span>}
-                        <span style={S.catBadge(CATEGORIES[a.category]?.color)}>{CATEGORIES[a.category]?.label}</span>
-                        <span style={{ fontSize: 11, color: theme.textDim, minWidth: 60, textAlign: "right" }}>{timeAgo(a.updatedAt)}</span>
-                      </div>
-                    ); })}
-                  </div>
-                );
-                case "writing_progress": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>✒ Writing Progress</p>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12 }}>
-                      {manuscripts.slice(0, 3).map((ms) => {
-                        const wc = ms.acts?.reduce((s, a) => s + a.chapters?.reduce((s2, c) => s2 + c.scenes?.reduce((s3, sc) => { const div = document.createElement("div"); div.innerHTML = sc.body || ""; return s3 + (div.textContent || "").split(/\s+/).filter(Boolean).length; }, 0), 0), 0) || 0;
-                        const sceneCount = ms.acts?.reduce((s, a) => s + a.chapters?.reduce((s2, c) => s2 + (c.scenes?.length || 0), 0), 0) || 0;
-                        return (
-                          <div key={ms.id} onClick={() => { setActiveMs(ms); setView("novel"); }} style={{ background: ta(theme.surface, 0.6), border: "1px solid " + theme.divider, borderRadius: 10, padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid " + theme.accent + "40"; }} onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid " + theme.divider; }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Cinzel', serif", marginBottom: 6 }}>{ms.title}</div>
-                            <div style={{ fontSize: 11, color: theme.textDim }}>{wc.toLocaleString()} words · {sceneCount} scenes</div>
-                            <div style={{ marginTop: 8, height: 4, background: theme.divider, borderRadius: 2 }}>
-                              <div style={{ height: "100%", width: Math.min(100, (wc / 50000) * 100) + "%", background: theme.accent, borderRadius: 2, transition: "width 0.3s" }} />
-                            </div>
-                            <div style={{ fontSize: 9, color: theme.textDim, marginTop: 4, textAlign: "right" }}>{Math.round((wc / 50000) * 100)}% of 50k goal</div>
-                          </div>
-                        );
-                      })}
-                      {manuscripts.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: 12 }}>No manuscripts yet. Start one in Novel Writing!</div>}
-                    </div>
-                  </div>
-                );
-                case "world_links": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>🔗 Quick Links</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {[
-                        { label: "Timeline", icon: "⏳", action: () => setView("timeline") },
-                        { label: "Relationship Web", icon: "◉", action: () => setView("graph") },
-                        { label: "Family Tree", icon: "🌳", action: () => setView("family_tree") },
-                        { label: "Generators", icon: "🎲", action: () => setView("generator") },
-                        { label: "Session Notes", icon: "📓", action: () => setView("sessions") },
-                        { label: "Import Docs", icon: "📄", action: () => setView("ai_import") },
-                      ].map((lnk, i) => (
-                        <button key={i} onClick={lnk.action} style={{ ...tBtnS, fontSize: 11, padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 14 }}>{lnk.icon}</span> {lnk.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-                case "sessions_preview": return sessions.length > 0 ? (
-                  <div key={wid}>
-                    <p style={S.sTitle}>📓 Recent Sessions</p>
-                    {sessions.slice(0, 3).map((s) => (
-                      <div key={s.id} onClick={() => setView("sessions")} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: ta(theme.surface, 0.5), border: "1px solid " + theme.divider, borderRadius: 6, marginBottom: 6, cursor: "pointer" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.8); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.surface, 0.5); }}>
-                        <span style={{ fontSize: 14 }}>📓</span>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: theme.text }}>{s.title}</span>
-                        {s.date && <span style={{ fontSize: 10, color: theme.textDim }}>{s.date}</span>}
-                      </div>
-                    ))}
-                    <div style={{ textAlign: "center", fontSize: 11, color: theme.accent, cursor: "pointer", padding: 8 }} onClick={() => setView("sessions")}>View all sessions →</div>
-                  </div>
-                ) : null;
-                case "generators_preview": return (
-                  <div key={wid}>
-                    <p style={S.sTitle}>🎲 Quick Generate</p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {Object.entries(GENERATORS).map(([k, g]) => (
-                        <button key={k} onClick={() => { setGeneratorType(k); setView("generator"); }} style={{ ...tBtnS, fontSize: 11, padding: "6px 14px" }}>{g.icon} {g.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                );
-                default: return null;
-              }
-            })}
-          </div>)}
-  </>);
+  // P7: The real, authenticated world overview replaces the legacy stats-wall.
+  // All counts come from the active world already loaded through Supabase.
+  const renderDashboard = () => view === "dashboard" && activeWorld ? (
+    <WorldOverview
+      world={activeWorld}
+      worldCount={allWorlds.length}
+      articles={articles}
+      manuscripts={manuscripts}
+      integrityCount={totalIntegrityIssues}
+      saveStatus={saveStatus}
+      canEdit={activeWorld.member_role !== "viewer"}
+      theme={theme}
+      onOpen={setView}
+      onCodex={() => goCodex("all")}
+      onArticle={navigate}
+      onCreate={() => goCreate("character")}
+      onSwitchWorld={() => { setWorldSwitcherOpen(true); if (isMobile) setSidebarOpen(true); }}
+    />
+  ) : null;
 
   const renderIntegrity = () => {
   if (view !== "integrity") return null;
@@ -2918,21 +2913,11 @@ const renderArchives = () => (<>
   </>);
 
   const renderTimeline = () => (<>
-          {view === "timeline" && (
-            <TimelineView
-              theme={theme} articles={articles} activeWorld={activeWorld}
-              activeEras={activeEras} isMobile={isMobile} navigate={navigate}
-              goEdit={goEdit} conflictsFor={conflictsFor}
-              tlZoom={tlZoom} setTlZoom={setTlZoom} tlSelected={tlSelected}
-              tlData={tlData} tlRange={tlRange} yearToX={yearToX}
-              tlTotalWidth={tlTotalWidth} tlTicks={tlTicks}
-              tlSelectArticle={tlSelectArticle} tlClosePanel={tlClosePanel}
-              tlLaneHeights={tlLaneHeights} tlPanelOpen={tlPanelOpen}
-              ta={ta} tBtnS={tBtnS} tBtnP={tBtnP} tTag={tTag}
-              Ornament={Ornament} WarningBanner={WarningBanner}
-              RenderBody={RenderBody} S={S}
-            />
-          )}
+    {view === "timeline" && (
+      <TimelineView theme={theme} articles={articles} activeWorld={activeWorld}
+        activeEras={activeEras} formatWorldYear={formatYear} navigate={navigate} goEdit={goEdit}
+        conflictsFor={conflictsFor} />
+    )}
   </>);
 
   // ╔══════════════════════════════════════════════════════════════╗
@@ -3600,8 +3585,30 @@ const renderArchives = () => (<>
   </>);
 
   const renderNovel = () => (<>
-          {view === "novel" && (
+    {view === "novel" && novelRecoveryCandidate && <div className="fr-manuscript-recovery" role="alert" style={{margin:'22px auto',maxWidth:780,padding:24,background:theme.surface,border:`2px solid ${theme.accent}`,borderRadius:14,color:theme.text}}>
+      <h2 style={{margin:'0 0 10px',fontSize:19}}>Manuscript recovery needs your decision</h2>
+      <p style={{fontSize:13,color:theme.textMuted,lineHeight:1.7}}>A different local manuscript draft was found for this world. Your cloud and browser copies have both been preserved. Manuscript editing is paused until you choose which version to continue from.</p>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:16}}>
+        <button style={tBtnP} onClick={restoreNovelDraft}>Restore browser draft &amp; sync it</button>
+        <button style={tBtnS} onClick={retainCloudManuscripts}>Keep cloud version (archive browser draft)</button>
+        <SaveRecoveryButton fileName={`frostfall-${activeWorld?.id||'local'}-recovered-draft.json`} getContent={()=>JSON.stringify(novelRecoveryCandidate)} style={tBtnS}>Export browser draft first</SaveRecoveryButton>
+      </div>
+    </div>}
+    {view==='novel' && !novelRecoveryCandidate && loadedManuscriptWorldId !== (activeWorld?.id||activeWorld?.name) &&
+      <div role="alert" style={{margin:'24px auto',maxWidth:700,padding:24,border:`2px solid ${theme.border}`,borderRadius:12,background:theme.surface,color:theme.text}}>
+        <h2 style={{margin:'0 0 10px',fontSize:18}}>Manuscript workspace is protected</h2>
+        <p style={{fontSize:13,color:theme.textMuted,lineHeight:1.7}}>{novelSaveError || 'Loading your manuscripts and recovery records…'} Editing will resume only after the world snapshot loads successfully.</p>
+      </div>}
+    {(!novelRecoveryCandidate || view !== 'novel') && <>
+          {view === "novel" && loadedManuscriptWorldId === (activeWorld?.id||activeWorld?.name) && (
             <NovelWorkspace
+              manuscriptSync={{worldId:loadedManuscriptWorldId,worldName:activeWorld?.name,status:novelSaveStatus,
+                canEdit:activeWorld?.member_role!=="viewer",onRestore:(snapshot)=>{
+                  // Clear the editor DOM before replacing scene bodies; otherwise
+                  // stale contentEditable HTML could overwrite a restored revision.
+                  setNovelView('select');setActiveMs(null);setNovelActiveScene(null);
+                  setManuscripts(snapshot);
+                }}}
               theme={theme} articles={articles} settings={settings} setSettings={setSettings}
               isMobile={isMobile} isTablet={isTablet} activeWorld={activeWorld}
               navigate={navigate} goEdit={goEdit} setView={setView} setActiveArticle={setActiveArticle}
@@ -3654,6 +3661,7 @@ const renderArchives = () => (<>
               lower={lower} formatYear={formatYear} timeAgo={timeAgo}
             />
           )}
+    </>}
   </>);
 
   // ═══════════════════════════════════════════════════════
@@ -4016,10 +4024,11 @@ const renderArchives = () => (<>
   const renderCodex = () => (<>
           {/* === CODEX === */}
           {view === "codex" && (<div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 24, marginBottom: 16 }}>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "The Full Codex" : categoryPluralLabel(codexFilter)}</h2>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 16, marginTop: 24, marginBottom: 16 }}>
+              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0, letterSpacing: 1 }}>{codexFilter === "all" ? "Codex Studio" : categoryPluralLabel(codexFilter)}</h2>
               <Ornament width={120} /><span style={{ fontSize: 12, color: theme.textMuted }}>{filtered.list.length} entries{searchQuery.trim() ? " matching \"" + searchQuery + "\"" : ""}{filtered.list.length > codexVisible ? " · showing " + Math.min(codexVisible, filtered.list.length) : ""}</span>
-              <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                <button title="Open the structured canon facts and review queue" onClick={() => setView("canon_studio")} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: theme.text, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: navTone(theme, "canon_studio") }}><FrostfallNavIcon id="canon_studio" size={15} /></span> Canon Studio</button>
                 <button onClick={() => { setCodexBulkMode((v) => !v); setCodexSelected(new Set()); }} style={{ ...tBtnS, fontSize: 11, padding: "7px 14px", color: codexBulkMode ? theme.accent : theme.textDim, border: "1px solid " + (codexBulkMode ? ta(theme.accent, 0.4) : theme.border), background: codexBulkMode ? ta(theme.accent, 0.08) : "transparent" }}>
                   {codexBulkMode ? "✓ Selecting" : "☐ Select"}
                 </button>
@@ -4486,10 +4495,10 @@ const renderArchives = () => (<>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}
                               onClick={() => setArticleCollapsed((prev) => { const n = new Set(prev); n.has(sectionId) ? n.delete(sectionId) : n.add(sectionId); return n; })}>
                               <span style={{ fontSize: 10, color: theme.textDim, transition: "transform 0.2s", transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▾</span>
-                              <span dangerouslySetInnerHTML={{ __html: part }} style={{ flex: 1 }} />
+                              <SafeRichText html={part} style={{ flex: 1 }} />
                             </div>
                             {nextPart && !isCollapsed && (
-                              <div dangerouslySetInnerHTML={{ __html: nextPart }}
+                              <SafeRichText html={nextPart}
                                 onClick={(e) => { const chip = e.target.closest(".mention-chip"); if (chip) navigate(chip.dataset.id); }}
                                 style={{ cursor: "default" }} />
                             )}
@@ -4502,7 +4511,7 @@ const renderArchives = () => (<>
                       // Skip parts that are consumed as "nextPart" by a heading
                       if (i > 0 && parts[i - 1]?.match(/^<h[23]/i)) return null;
                       return (
-                        <div key={i} dangerouslySetInnerHTML={{ __html: part }}
+                        <SafeRichText key={i} html={part}
                           onClick={(e) => { const chip = e.target.closest(".mention-chip"); if (chip) navigate(chip.dataset.id); }}
                           style={{ cursor: "default" }} />
                       );
@@ -4570,6 +4579,10 @@ const renderArchives = () => (<>
                     ))}
                   </div>
                 )}
+
+                <CodexCanonPanel key={`${activeWorld?.id||activeWorld?.name}:${activeArticle.id}`}
+                  worldId={activeWorld?.id || activeWorld?.name} article={activeArticle} theme={theme}
+                  onOpenCanon={openArticleCanon} canEdit={activeWorld?.member_role!=="viewer"}/>
 
                 {/* Temporal info */}
                 {activeArticle.temporal && (
@@ -4987,7 +5000,7 @@ const renderArchives = () => (<>
                 {articlePreviewMode ? (
                   <div className="article-body" style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, padding: "16px 20px", borderRadius: "8px" }}>
                     {isHtmlBody(formData.body) ? (
-                      <div dangerouslySetInnerHTML={{ __html: renderBodyWithMentions(formData.body) }}
+                      <SafeRichText html={renderBodyWithMentions(formData.body)}
                         onClick={(e) => { const chip = e.target.closest(".mention-chip"); if (chip) navigate(chip.dataset.id); }}
                         style={{ cursor: "default" }} />
                     ) : formData.body ? (
@@ -5091,8 +5104,22 @@ const renderArchives = () => (<>
 
     
 
+  if (worldLoadError) return (
+    <main role="alert" style={{ background: theme.rootBg, color: theme.text, minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, fontFamily: "var(--uiFont, system-ui)" }}>
+      <section style={{ maxWidth: 560, width: "100%", padding: 28, border: `1px solid ${theme.border}`, background: theme.surface, borderRadius: 14 }}>
+        <h1 style={{ fontFamily: "var(--displayFont, Georgia, serif)", fontSize: 24, marginTop: 0 }}>Your worlds could not be loaded</h1>
+        <p style={{ lineHeight: 1.6 }}>Frostfall stopped loading the workspace rather than showing an empty world that might overwrite existing lore or manuscripts.</p>
+        <p style={{ color: theme.textMuted, overflowWrap: "anywhere" }}>{worldLoadError}</p>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => window.location.reload()} style={{ padding: "10px 16px", borderRadius: 8, background: theme.accent, color: theme.deepBg, border: 0, cursor: "pointer" }}>Retry loading</button>
+          <button type="button" onClick={onLogout} style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer" }}>Sign out</button>
+        </div>
+      </section>
+    </main>
+  );
+
   return (
-    <div style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
+    <div className="fr-studio" style={{ ...S.root, background: theme.rootBg, color: theme.text, fontSize: 13, zoom: fontScale }}>
       {/* Editor formatting + Accessibility styles */}
       <style suppressHydrationWarning dangerouslySetInnerHTML={{ __html: `
         [contenteditable] h2 { font-family: 'Cinzel', serif; font-size: 1.4em; font-weight: 700; margin: 0.8em 0 0.4em; color: ${theme.text}; letter-spacing: 0.5px; border-bottom: 1px solid ${theme.border}; padding-bottom: 4px; }
@@ -5272,41 +5299,27 @@ const renderArchives = () => (<>
 
       {/* SIDEBAR — drawer on mobile */}
       {isMobile && sidebarOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 998 }} onClick={() => setSidebarOpen(false)} />}
-      <nav aria-label="Main navigation" style={{
+      <nav className="fr-studio-sidebar" aria-label="Main navigation" style={{
         ...S.sidebar,
         background: theme.sidebarBg,
         borderRight: "1px solid " + theme.border,
         ...(isMobile ? { position: "fixed", left: 0, top: 0, zIndex: 999, transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.25s ease", boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.5)" : "none" } : {}),
-        ...(isTablet ? { width: 220, minWidth: 220 } : {}),
+        ...(isTablet ? { width: 252, minWidth: 252 } : {}),
       }}>
-        <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid " + theme.divider }}>
-          <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, color: theme.accent, letterSpacing: 2, textTransform: "uppercase", margin: 0, textAlign: "center" }}>Frostfall Realms</p>
-          <p style={{ fontSize: 10, color: theme.textDim, letterSpacing: 3, textAlign: "center", marginTop: 2, textTransform: "uppercase" }}>Worldbuilding Engine</p>
-          <Ornament width={228} />
+        <div className="fr-studio-brand">
+          <span className="fr-studio-mark" aria-hidden="true">◇</span>
+          <span><strong>Frostfall</strong><small>REALMS STUDIO</small></span>
         </div>
-        {/* User info bar */}
-        {user && (
-          <div style={{ padding: "8px 16px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: theme.deepBg }}>
-              {(user.user_metadata?.display_name || user.email || "U")[0].toUpperCase()}
-            </div>
-            <span style={{ flex: 1, fontSize: 11, color: theme.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {user.user_metadata?.display_name || user.email?.split("@")[0]}
-            </span>
-            <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>⏻</button>
-          </div>
-        )}
         {/* World switcher */}
         {activeWorld && (
-          <div style={{ padding: "8px 16px", borderBottom: "1px solid " + theme.divider }}>
-            <div role="button" tabIndex={0} aria-expanded={worldSwitcherOpen} aria-label="Switch world" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setWorldSwitcherOpen(!worldSwitcherOpen); } }} onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+          <div className="fr-world-switcher">
+            <div className="fr-world-card" role="button" tabIndex={0} aria-expanded={worldSwitcherOpen} aria-label="Switch world" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setWorldSwitcherOpen(!worldSwitcherOpen); } }} onClick={() => setWorldSwitcherOpen(!worldSwitcherOpen)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
               <span style={{ fontSize: 14, color: theme.accent }} aria-hidden="true">🌍</span>
-              <span style={{ flex: 1, fontSize: 12, color: theme.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorld.name}</span>
+              <span className="fr-world-card-name"><strong>{activeWorld.name}</strong><small>Active world · {activeWorld.member_role === "viewer" ? "Viewer" : activeWorld.member_role === "editor" ? "Editor" : "Private"}</small></span>
               <span style={{ fontSize: 10, color: theme.textDim, transition: "transform 0.2s", transform: worldSwitcherOpen ? "rotate(180deg)" : "none" }}>▾</span>
             </div>
             {worldSwitcherOpen && (
-              <div style={{ marginTop: 4, background: ta(theme.surface, 0.5), borderRadius: 6, border: "1px solid " + theme.border, overflow: "hidden" }}>
+              <div className="fr-world-menu" role="listbox" aria-label="Available worlds" style={{ marginTop: 4, background: theme.surface, borderRadius: 9, border: "1px solid " + theme.border, overflow: "auto" }}>
                 {allWorlds.map((w) => (
                   <div key={w.id} role="option" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchWorld(w); } }} onClick={() => switchWorld(w)} style={{ padding: "8px 12px", fontSize: 11, color: w.id === activeWorld?.id ? theme.accent : theme.textMuted, cursor: "pointer", borderBottom: "1px solid " + theme.surface, display: "flex", alignItems: "center", gap: 8, background: w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }} onMouseLeave={(e) => { e.currentTarget.style.background = w.id === activeWorld?.id ? ta(theme.accent, 0.06) : "transparent"; }}>
@@ -5322,14 +5335,17 @@ const renderArchives = () => (<>
             )}
           </div>
         )}
-        <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
-          {navItems.map((item, i) => item.divider ? <div key={i} style={{ height: 1, background: theme.divider, margin: "8px 16px" }} /> : (
-            <div key={item.id} className="nav-row" style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), ...(item.alert && !isAct(item) ? { color: "#e07050" } : {}), position: "relative" }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.action(); } }} onClick={item.action}
-              onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = ta(theme.accent, 0.05); }}
+        <div className="fr-studio-nav-list">
+          {navItems.map((item, i) => item.section ? (
+            <div key={`section-${i}`} className={`fr-nav-section ${item.subSection ? "fr-nav-subsection" : ""}`}>{item.section}</div>
+          ) : (
+            <div key={item.id} className={`nav-row fr-nav-row ${item.isCategory ? "fr-nav-category" : ""}`} data-active={isAct(item) ? "true" : "false"} aria-current={isAct(item) ? "page" : undefined} aria-expanded={item.id === "expand_categories" ? categoriesExpanded : undefined} style={{ ...S.navItem(isAct(item), theme), fontSize: sz(13), color: navTone(theme, item.id), borderLeftColor: isAct(item) ? navTone(theme, item.id) : "transparent", background: isAct(item) ? `linear-gradient(90deg, ${ta(navTone(theme, item.id), 0.15)}, transparent)` : "transparent", position: "relative" }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.action(); } }} onClick={item.action}
+              onMouseEnter={(e) => { if (!isAct(item)) e.currentTarget.style.background = ta(navTone(theme, item.id), 0.095); }}
               onMouseLeave={(e) => { if (!isAct(item)) e.currentTarget.style.background = "transparent"; }}>
-              <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{item.icon}</span>
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {item.count != null && <span style={{ fontSize: 11, color: item.alert ? "#e07050" : theme.textDim, background: item.alert ? "rgba(224,112,80,0.15)" : "transparent", padding: item.alert ? "1px 8px" : 0, borderRadius: 10, fontWeight: item.alert ? 700 : 400 }}>{item.count}</span>}
+              <span className="fr-nav-icon" style={{ width: 24, color: navTone(theme, item.id), display: "inline-flex", justifyContent: "center", flexShrink: 0 }}><FrostfallNavIcon id={item.id} /></span>
+              <span className="fr-nav-label" style={{ flex: 1, color: navTone(theme, item.id), fontWeight: isAct(item) ? 750 : 600 }}>{item.label}</span>
+              {item.count != null && <span className="fr-nav-count" style={{ color: item.alert ? "#e07050" : theme.textMuted }}>{item.count}</span>}
+              {item.id === "expand_categories" && <span aria-hidden="true" style={{ color: theme.textMuted }}>{categoriesExpanded ? "⌃" : "⌄"}</span>}
               {item.isCategory && (
                 <span className="nav-create-btn" title={"New " + CATEGORIES[item.id]?.label} onClick={(e) => { e.stopPropagation(); goCreate(item.id); }}
                   style={{ fontSize: 15, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 4, color: CATEGORIES[item.id]?.color || theme.accent, opacity: 0.4, transition: "all 0.15s", cursor: "pointer", flexShrink: 0, marginLeft: 4, background: "transparent", fontWeight: 700 }}
@@ -5347,46 +5363,75 @@ const renderArchives = () => (<>
             <button onClick={() => importFileRef.current?.click()} style={{ flex: 1, fontSize: 10, color: "#7ec8e3", background: "rgba(126,200,227,0.08)", border: "1px solid rgba(126,200,227,0.2)", borderRadius: 5, padding: "6px 0", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, letterSpacing: 0.5 }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.18)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }}>⬆ Import</button>
           </div>
+          {novelSaveStatus && loadedManuscriptWorldId && <div style={{fontSize:10,color:theme.textMuted,marginBottom:7,textAlign:'center'}} aria-live="polite">Writing: {({saved:'Cloud saved',saving:'Saving to cloud…',browser:'Browser only · export regularly',conflict:'Conflict · recovery available',recovery:'Choose browser or cloud',error:'Save needs attention',loading:'Loading…'})[novelSaveStatus] || novelSaveStatus}</div>}
+          {novelSaveError && <div role="alert" style={{ fontSize: 11, marginBottom: 8, color: navTone(theme, "integrity"), lineHeight: 1.4 }}>Manuscript backup failed: {novelSaveError}</div>}
+          {(saveStatus === "error" || novelSaveError) && (
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+              <SaveRecoveryButton fileName={`frostfall-codex-${activeWorld?.id || "local"}-recovery.json`}
+                getContent={() => makeCodexRecovery(activeWorld?.id || activeWorld?.name || "local", articles, archived)}
+                style={{ ...tBtnS, fontSize: 11, padding: "5px 7px", color: navTone(theme, "integrity") }}>Export Codex Recovery</SaveRecoveryButton>
+              <SaveRecoveryButton fileName={`frostfall-manuscripts-${activeWorld?.id || "local"}-recovery.json`}
+                getContent={() => JSON.stringify({ format: "frostfall-manuscript-recovery", worldId: activeWorld?.id || activeWorld?.name, manuscripts, savedAt: new Date().toISOString() })}
+                style={{ ...tBtnS, fontSize: 11, padding: "5px 7px", color: navTone(theme, "novel") }}>Export Writing</SaveRecoveryButton>
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? theme.accent : saveStatus === "error" ? "#e07050" : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px " + ta(theme.accent, 0.4) : "none" }} />
-            <span aria-live="polite" role="status" style={{ fontSize: 9, color: theme.textDim, letterSpacing: 1 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE ERROR" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
+            <span aria-live="polite" role="status" style={{ fontSize: 11, color: theme.textMuted, letterSpacing: 0.3, fontWeight: 600 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE FAILED · EXPORT RECOVERY" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
           </div>
         </div>
+        {isMobile && <div className="fr-mobile-theme"><span>Appearance</span><ThemeSelect value={settings.theme} compact onChange={(next) => setSettings((previous) => ({ ...previous, theme: next }))}/></div>}
+        {/* Signed-in author and logout remain available, but no longer displace the world selector. */}
+        {/* User info bar */}
+        {user && (
+          <div className="fr-studio-profile" style={{ padding: "10px 16px", borderTop: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #f0c040 0%, #d4a020 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: theme.deepBg }}>
+              {(user.user_metadata?.display_name || user.email || "U")[0].toUpperCase()}
+            </div>
+            <span style={{ flex: 1, fontSize: 11, color: theme.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user.user_metadata?.display_name || user.email?.split("@")[0]}
+            </span>
+            <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: theme.textDim, cursor: "pointer", fontSize: 12, padding: "2px 6px" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#e07050"; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>⏻</button>
+          </div>
+        )}
       </nav>
 
       {/* MAIN */}
-      <main id="main-content" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <main id="main-content" className="fr-studio-main" style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div className="fr-topbar" style={{ ...S.topBar, borderBottom: "1px solid " + theme.border, background: theme.topBarBg, ...(isMobile ? { padding: "10px 14px", gap: 8 } : {}) }}>
           {/* Hamburger — mobile only */}
           {isMobile && (
             <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle navigation menu" aria-expanded={sidebarOpen}
               style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 20, cursor: "pointer", padding: "4px 8px", lineHeight: 1, flexShrink: 0 }}>☰</button>
           )}
-          <div style={{ position: "relative", ...(isMobile ? { flex: 1 } : {}) }}>
+          {!isCompact && <div className="fr-studio-breadcrumb"><span>Workspace</span> <span aria-hidden="true">/</span> <strong>{breadcrumbLabel}</strong></div>}
+          <div className="fr-studio-global-search" style={{ position: "relative", ...(isMobile ? { flex: 1 } : {}) }}>
             <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: theme.textDim, fontSize: 14 }} aria-hidden="true">⌕</span>
             <div style={{ position: "relative" }}>
               <input data-search-input className="fr-search-box" style={{ ...S.searchBox, ...(isMobile ? { width: "100%" } : isTablet ? { width: 200 } : {}) }} aria-label="Search the codex" placeholder={isMobile ? "Search…" : "Search titles, body, fields, tags…"} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if (view !== "codex") { setView("codex"); setCodexFilter("all"); } }} />
               {searchQuery && <span role="button" tabIndex={0} aria-label="Clear search" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSearchQuery(""); } }} onClick={() => setSearchQuery("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 12, color: theme.textDim, lineHeight: 1 }}>✕</span>}
             </div>
           </div>
-          {!isCompact && <div className="fr-topbar-cats" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {mainCats.map(([k, c]) => (
-              <div key={k} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCreate(k); } }} onClick={() => goCreate(k)} style={{ fontSize: 11, color: c.color, cursor: "pointer", padding: "5px 10px", border: "1px solid " + c.color + "30", borderRadius: 6, transition: "all 0.2s", letterSpacing: 0.5 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "15"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ {c.label}</div>
-            ))}
-            <div role="button" tabIndex={0} aria-expanded={showMoreCats} aria-haspopup="true" onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowMoreCats(!showMoreCats); } }} onClick={(e) => { e.stopPropagation(); setShowMoreCats(!showMoreCats); }} style={{ fontSize: 11, color: theme.textMuted, cursor: "pointer", padding: "5px 10px", border: "1px solid " + theme.border, borderRadius: 6, transition: "all 0.2s" }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = theme.accentBg; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>+ More ▾</div>
-          </div>}
-          {/* More+ dropdown — fixed position so it floats above all content */}
+          <div className="fr-studio-toolbar-actions">
+            {!isMobile && <span className="fr-toolbar-theme-label">Theme</span>}
+            {!isMobile && <ThemeSelect value={settings.theme} compact onChange={(next) => setSettings((previous) => ({ ...previous, theme: next }))} />}
+            {activeWorld && activeWorld.member_role !== "viewer" && (
+              <button type="button" className="fr-new-entry-btn" aria-haspopup="menu" aria-expanded={showMoreCats}
+                onClick={() => setShowMoreCats((v) => !v)}>
+                <span aria-hidden="true">＋</span> <span>New Entry</span>
+              </button>
+            )}
+          </div>
           {showMoreCats && (<>
-            <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setShowMoreCats(false)} onKeyDown={(e) => { if (e.key === "Escape") setShowMoreCats(false); }} />
-            <div style={{ position: "fixed", top: 54, right: 30, background: theme.surface, border: "1px solid " + theme.border, borderRadius: 10, padding: 6, minWidth: 200, zIndex: 901, boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)" }}>
-              <div style={{ padding: "6px 12px 8px", fontSize: 9, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>Create New Entry</div>
-              {extraCats.map(([k, c]) => (
-                <div key={k} role="menuitem" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowMoreCats(false); goCreate(k); } }} onClick={() => { setShowMoreCats(false); goCreate(k); }} style={{ fontSize: 12, color: c.color, padding: "9px 14px", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "18"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                  <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{c.icon}</span> <span>{c.label}</span>
-                </div>
+            <div className="fr-create-dismiss" onClick={() => setShowMoreCats(false)} aria-hidden="true" />
+            <div className="fr-create-menu" role="menu" aria-label="Choose entry category">
+              <div className="fr-create-menu-label">Create a codex entry</div>
+              {Object.entries(CATEGORIES).filter(([key]) => !settings.disabledCategories.includes(key)).map(([k, c]) => (
+                <button type="button" role="menuitem" key={k} onClick={() => { setShowMoreCats(false); goCreate(k); }}>
+                  <span style={{ color: c.color }} aria-hidden="true"><FrostfallNavIcon id={k} size={17}/></span>
+                  <span>{c.label}</span>
+                </button>
               ))}
             </div>
           </>)}
@@ -5394,7 +5439,7 @@ const renderArchives = () => (<>
           {realtimeLive && activeWorld && (
             <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 10, background: "rgba(142,200,160,0.12)", border: "1px solid rgba(142,200,160,0.25)", flexShrink: 0 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#8ec8a0", boxShadow: "0 0 6px #8ec8a0", display: "inline-block", animation: "rtPulse 2s ease-in-out infinite" }} />
-              <span style={{ fontSize: 9, color: "#8ec8a0", fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Live</span>
+              <span style={{ fontSize: 9, color: "#8ec8a0", fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Connected</span>
               <style>{`@keyframes rtPulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }`}</style>
             </div>
           )}
@@ -5431,6 +5476,10 @@ const renderArchives = () => (<>
           {renderDashboard()}
           {renderWorldHome()}
           {renderIntegrity()}
+          {view === "canon_studio" && activeWorld && (
+            <CanonStudio key={activeWorld.id || activeWorld.name} activeWorld={activeWorld} articles={articles} theme={theme} navigate={navigate} entryFocus={canonArticleIntent}
+              canEdit={activeWorld.member_role !== "viewer"} />
+          )}
           {renderArchives()}
           {renderTimeline()}
           {renderGraph()}

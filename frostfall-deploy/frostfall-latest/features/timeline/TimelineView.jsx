@@ -1,253 +1,252 @@
 "use client";
 
-import React, { useRef } from "react";
-import { CATEGORIES, categoryPluralLabel, formatKey, SWIM_LANE_ORDER } from "@/lib/domain/categories";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  CalendarRange, List, Search, FilterX, ZoomIn, ZoomOut,
+  Download, ChevronRight, X, BookOpen, Pencil,
+  Link2, AlertTriangle, Clock3, Compass, Rows3, ArrowUpDown,
+} from "lucide-react";
+import { CATEGORIES, SWIM_LANE_ORDER, formatKey } from "@/lib/domain/categories";
+import { ensureContrast, readableOn } from "@/lib/ui/contrast";
+import {
+  buildChronicleEvents, filterChronicleEvents, eraForEvent, chronicleRange,
+  layoutChronicleLanes, chronicleTicks, chronicleConnections, exportChroniclesCSV,
+} from "@/lib/domain/chronicles";
+import styles from "./Chronicles.module.css";
 
-/**
- * TimelineView — horizontal swim-lane timeline with zoom, era bands, and detail panel.
- * Extracted from FrostfallRealms.jsx renderTimeline.
- * Owns scroll-sync refs internally.
- */
-export function TimelineView({
-  theme,
-  articles,
-  activeWorld,
-  activeEras,
-  isMobile,
-  navigate,
-  goEdit,
-  conflictsFor,
-  // useTimeline returns
-  tlZoom, setTlZoom, tlSelected, tlData, tlRange,
-  yearToX, tlTotalWidth, tlTicks, tlSelectArticle,
-  tlClosePanel, tlLaneHeights, tlPanelOpen,
-  // Shared UI
-  ta, tBtnS, tBtnP, tTag, Ornament, WarningBanner, RenderBody, S,
-}) {
-  // Scroll-sync refs (owned by this component)
-  const tlRef = useRef(null);
-  const tlLabelRef = useRef(null);
-  const tlSyncing = useRef(false);
+const EMPTY_FILTERS = Object.freeze({
+  search: "", category: "all", era: "all", kind: "all",
+  from: null, to: null, sort: "date_asc", includeUndated: false,
+});
+const ZOOM_FACTORS = [0.7, 1, 1.5, 2.5, 4, 6];
+const formatYear = (year) => year == null ? "Date not recorded" :
+  year < 0 ? `Year −${Math.abs(year).toLocaleString()}` : `Year ${year.toLocaleString()}`;
+const rangeLabel = (e, yearFormatter = formatYear) => !e.dated ? "Date not recorded" : e.kind === "point" ? yearFormatter(e.start) :
+  `${yearFormatter(e.start)} – ${yearFormatter(e.end)}`;
+const clamp = (n, low, high) => Math.min(high, Math.max(low, n));
+const yearValue = (s) => s === "" ? null : (Number.isFinite(Number(s)) ? Number(s) : null);
 
-  return (
-    <div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {/* Timeline Header */}
-      <div style={{ padding: "20px 28px 12px", borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <div>
-          <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 22, color: theme.text, margin: 0, letterSpacing: 1, display: "flex", alignItems: "center", gap: 10 }}>⏳ Timeline of {activeWorld?.name || "Your World"}</h2>
-          <p style={{ fontSize: 12, color: theme.textDim, marginTop: 4 }}>{tlData.items.length} temporal entries across {Object.keys(tlData.lanes).length} categories</p>
+function EventInspector({ event, allArticles, conflictsFor, eras, theme, yearFormatter, navigate, goEdit, onClose, onPick }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    closeRef.current?.focus();
+    const escape = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); }
+      if (e.key === "Tab") {
+        const dialog = closeRef.current?.closest('[role=dialog]');
+        const focusable = [...(dialog?.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled])') || [])];
+        if (!focusable.length) return;
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      } };
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("keydown", escape); previous?.focus?.(); };
+  }, [onClose]);
+  if (!event) return null;
+  const related = chronicleConnections(event.article, allArticles);
+  const conflicts = typeof conflictsFor === "function" ? (conflictsFor(event.id) || []) : [];
+  const eraNames = eraForEvent(event, eras).map(e => e.label || e.name).join(" · ");
+  const fields = Object.entries(event.article.fields || {}).filter(([, value]) => value != null && value !== "");
+  const category = CATEGORIES[event.category];
+  return createPortal(
+    <div className={styles.overlay} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className={styles.inspector} role="dialog" aria-modal="true" aria-labelledby="chronicle-inspector-title"
+        style={{ "--cr-bg": theme.surface, "--cr-panel": theme.inputBg, "--cr-text": theme.text,
+          "--cr-muted": theme.textMuted, "--cr-border": theme.border,
+          "--cr-accent": ensureContrast(theme.accent, [theme.surface], 4.5),
+          "--cr-accent-bg": theme.accent, "--cr-accent-on": readableOn(theme.accent) }}>
+        <div className={styles.inspectorHeader}>
+          <span className={styles.eyebrow}><Clock3 size={15}/> Chronicle entry · {category?.label || event.category}</span>
+          <button ref={closeRef} className={styles.iconButton} aria-label="Close event details" onClick={onClose}><X size={18}/></button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: theme.textDim, letterSpacing: 0.5 }}>ZOOM</span>
-          <button onClick={() => setTlZoom((z) => Math.max(0, z - 1))} style={{ ...tBtnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom <= 0}>−</button>
-          <div style={{ width: 80, height: 4, background: theme.border, borderRadius: 2, position: "relative" }}>
-            <div style={{ position: "absolute", left: `${(tlZoom / 6) * 100}%`, top: -4, width: 12, height: 12, background: theme.accent, borderRadius: "50%", transform: "translateX(-50%)", boxShadow: "0 0 8px " + ta(theme.accent, 0.4) }} />
-          </div>
-          <button onClick={() => setTlZoom((z) => Math.min(6, z + 1))} style={{ ...tBtnS, padding: "4px 10px", fontSize: 14, lineHeight: 1 }} disabled={tlZoom >= 6}>+</button>
+        <h2 id="chronicle-inspector-title">{event.title}</h2>
+        <p className={styles.timeHeading}>{rangeLabel(event, yearFormatter)}</p>
+        {eraNames && <div className={styles.eraBadge}>{eraNames}</div>}
+        {event.summary && <p className={styles.inspectorSummary}>{event.summary}</p>}
+        {event.article.body && <section className={styles.inspectorSection}>
+          <h3>Recorded lore</h3>
+          <p className={styles.bodyExcerpt}>{String(event.article.body).replace(/<[^>]*>/g, " ").slice(0, 1400)}{String(event.article.body).length > 1400 ? "…" : ""}</p>
+        </section>}
+        {fields.length > 0 && <section className={styles.inspectorSection}>
+          <h3>Associated information</h3>
+          <dl className={styles.fieldGrid}>{fields.map(([name, value]) => <div key={name}><dt>{formatKey(name)}</dt><dd>{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
+        </section>}
+        {related.length > 0 && <section className={styles.inspectorSection}>
+          <h3><Link2 size={15}/> Referenced lore <small>(references do not imply participation)</small></h3>
+          <div className={styles.linkGrid}>{related.map(a => <button key={a.id} className={styles.link} onClick={() => onPick(a)}>{a.title}</button>)}</div>
+        </section>}
+        {conflicts.length > 0 && <section className={styles.inspectorSection}>
+          <h3><AlertTriangle size={15}/> Canon findings ({conflicts.length})</h3>
+          {conflicts.map((c, index) => <p className={styles.finding} key={c.id || index}>{c.message}</p>)}
+        </section>}
+        {!event.valid && <p className={styles.finding}>The recorded end year precedes the start year. Review the Codex dates.</p>}
+        <div className={styles.inspectorActions}>
+          <button className={styles.primary} onClick={() => { onClose(); navigate(event.id); }}><BookOpen size={15}/> Open Codex entry</button>
+          <button className={styles.secondary} onClick={() => { onClose(); goEdit(event.article); }}><Pencil size={15}/> Edit entry</button>
         </div>
+      </section>
+    </div>, document.body);
+}
+
+/** Accessible chronological atlas with one page-level vertical scroll. */
+export function TimelineView({ theme, articles, activeWorld, activeEras = [], formatWorldYear, navigate, goEdit, conflictsFor }) {
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const displayYear = formatWorldYear || formatYear;
+  const [mode, setMode] = useState("lanes");
+  const [zoom, setZoom] = useState(2);
+  const [selectedId, setSelectedId] = useState(null);
+  const [indexLimit, setIndexLimit] = useState(50);
+  const [jumpYear, setJumpYear] = useState("");
+  const scrollRef = useRef(null);
+  const events = useMemo(() => buildChronicleEvents(articles), [articles]);
+  const filtered = useMemo(() => filterChronicleEvents(events, filters, activeEras), [events, filters, activeEras]);
+  const dated = useMemo(() => filtered.filter(e => e.dated), [filtered]);
+  const selected = useMemo(() => events.find(e => e.id === selectedId) || null, [events, selectedId]);
+  const allDated = events.filter(e => e.dated).length;
+  const update = (name, value) => { setFilters(f => ({ ...f, [name]: value })); setIndexLimit(50); };
+  const range = useMemo(() => chronicleRange(dated), [dated]);
+  const stageWidth = clamp(Math.round(1050 * ZOOM_FACTORS[zoom]), 720, 19000);
+  const scale = (stageWidth - 220) / range.span;
+  const yearToX = useCallback(y => 175 + (y - range.min) * scale, [scale, range.min]);
+  const categories = SWIM_LANE_ORDER.filter(category => dated.some(e => e.category === category));
+  const lanes = useMemo(() => layoutChronicleLanes(dated, categories, yearToX, 148), [dated, categories.join("|"), yearToX]);
+  const ticks = useMemo(() => chronicleTicks(range.min, range.max, scale), [range.min, range.max, scale]);
+  const colorFor = useCallback(cat => ensureContrast(CATEGORIES[cat]?.color || theme.accent,
+    [theme.surface, theme.inputBg], 4.5), [theme]);
+  const openId = useCallback(id => setSelectedId(String(id)), []);
+  const closeDetail = useCallback(() => setSelectedId(null), []);
+  const pickRelated = useCallback(a => setSelectedId(a.id), []);
+  useEffect(() => { setFilters(EMPTY_FILTERS); setSelectedId(null); setZoom(2); }, [activeWorld?.id]);
+  const jumpTo = () => {
+    const year = yearValue(jumpYear);
+    if (year == null || !scrollRef.current) return;
+    scrollRef.current.scrollLeft = clamp(yearToX(year) - scrollRef.current.clientWidth / 2, 0, stageWidth);
+  };
+  const selectedIndex = filtered.findIndex(e => e.id === selectedId);
+  const adjacent = step => { if (!filtered.length) return; const idx = selectedIndex < 0 ? 0 : (selectedIndex + step + filtered.length) % filtered.length; openId(filtered[idx].id); };
+  const saveCSV = () => {
+    const csv = exportChroniclesCSV(filtered);
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url; anchor.download = `frostfall-chronicles-${activeWorld?.name || 'world'}`.toLowerCase().replace(/[^a-z0-9._-]+/g,'-') + '.csv';
+    document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 3000);
+  };
+
+  return <section className={styles.root} aria-label="Chronicles workspace"
+    style={{ "--cr-bg": theme.surface, "--cr-panel": theme.inputBg, "--cr-text": theme.text,
+      "--cr-muted": theme.textMuted, "--cr-soft": theme.textDim,
+      "--cr-border": theme.border, "--cr-divider": theme.divider,
+      "--cr-accent": ensureContrast(theme.accent, [theme.surface,theme.inputBg], 4.5),
+      "--cr-accent-bg": theme.accent, "--cr-accent-on": readableOn(theme.accent) }}>
+    <header className={styles.heading}>
+      <div>
+        <p className={styles.eyebrow}><Compass size={16}/> World history / {activeWorld?.name || 'Current world'}</p>
+        <h1>The Chronicles <span className={styles.version}>Interactive timeline</span></h1>
+        <p>Discover events, investigate their context, and trace the history of your world.</p>
       </div>
-
-      {/* Timeline Body */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Swim Lane Labels */}
-        <div ref={tlLabelRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlRef.current) tlRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ width: 160, minWidth: 160, borderRight: "1px solid " + theme.divider, background: ta(theme.deepBg, 0.6), flexShrink: 0, overflowY: "auto" }}>
-          {/* Era header spacer */}
-          <div style={{ height: 52, borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 10, color: theme.textDim, letterSpacing: 2, textTransform: "uppercase" }}>Categories</span>
-          </div>
-          {/* Tick row spacer */}
-          <div style={{ height: 28, borderBottom: "1px solid " + theme.divider }} />
-          {SWIM_LANE_ORDER.map((cat) => {
-            if (!tlData.lanes[cat]) return null;
-            const c = CATEGORIES[cat];
-            const h = tlLaneHeights[cat] || 50;
-            return (
-              <div key={cat} style={{ height: h, minHeight: 50, borderBottom: "1px solid " + theme.divider, display: "flex", alignItems: "center", gap: 8, padding: "0 16px" }}>
-                <span style={{ fontSize: 16, color: c.color }}>{c.icon}</span>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: c.color, letterSpacing: 0.5 }}>{categoryPluralLabel(cat)}</div>
-                  <div style={{ fontSize: 10, color: theme.textDim }}>{tlData.lanes[cat].length} entries</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Scrollable Timeline Canvas */}
-        <div ref={tlRef} onScroll={(e) => { if (tlSyncing.current) return; tlSyncing.current = true; if (tlLabelRef.current) tlLabelRef.current.scrollTop = e.target.scrollTop; tlSyncing.current = false; }} style={{ flex: 1, overflowX: "auto", overflowY: "auto", position: "relative" }}>
-          <div style={{ width: Math.max(tlTotalWidth + 100, 800), minHeight: "100%", position: "relative" }}>
-            {/* Era Bands */}
-            <div style={{ height: 52, position: "sticky", top: 0, zIndex: 10, display: "flex", background: ta(theme.deepBg, 0.95), borderBottom: "1px solid " + theme.divider, backdropFilter: "blur(8px)" }}>
-              {activeEras.map((era, ei) => {
-                const x = yearToX(Math.max(era.start, tlRange.min));
-                const xEnd = yearToX(Math.min(era.end, tlRange.max));
-                const w = xEnd - x;
-                if (w <= 0) return null;
-                return (
-                  <div key={era.id || "era_" + ei} style={{ position: "absolute", left: x, width: w, height: "100%", background: era.bg || era.color + "0f", borderRight: "1px solid " + era.color + "30", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                    <span style={{ fontFamily: "'Cinzel', serif", fontSize: w > 200 ? 12 : 9, color: era.color, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600, whiteSpace: "nowrap", opacity: w > 60 ? 1 : 0.5 }}>{w > 140 ? (era.label || era.name) : (era.label || era.name || "").split("—")[0]?.trim()}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Year Ticks */}
-            <div style={{ height: 28, position: "relative", borderBottom: "1px solid " + theme.divider }}>
-              {tlTicks.ticks.map((y) => (
-                <div key={y} style={{ position: "absolute", left: yearToX(y), top: 0, height: "100%" }}>
-                  <div style={{ width: 1, height: "100%", background: theme.divider }} />
-                  <span style={{ position: "absolute", top: 6, left: 4, fontSize: 9, color: theme.textDim, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{y < 0 ? `${Math.abs(y)} BA` : `Year ${y.toLocaleString()}`}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Swim Lanes */}
-            {SWIM_LANE_ORDER.map((cat) => {
-              if (!tlData.lanes[cat]) return null;
-              const c = CATEGORIES[cat];
-              const entries = tlData.lanes[cat];
-              const placed = [];
-              const entryRows = {};
-              entries.forEach((a) => {
-                const x = yearToX(a.temporal.active_start);
-                const hasEnd = a.temporal.active_end != null && a.temporal.active_end !== a.temporal.active_start;
-                const xEnd = hasEnd ? yearToX(a.temporal.active_end) : x + 28;
-                let row = 0;
-                while (placed.some((p) => p.row === row && p.xEnd > x - 4 && p.x < xEnd + 4)) row++;
-                placed.push({ id: a.id, x, xEnd, row });
-                entryRows[a.id] = row;
-              });
-              const maxRow = Math.max(0, ...Object.values(entryRows));
-              const laneH = 40 + maxRow * 30;
-              return (
-                <div key={cat} style={{ height: laneH, minHeight: 50, borderBottom: "1px solid " + theme.divider, position: "relative" }}>
-                  {tlTicks.ticks.map((y) => (
-                    <div key={y} style={{ position: "absolute", left: yearToX(y), top: 0, width: 1, height: "100%", background: "rgba(30,42,58,0.4)" }} />
-                  ))}
-                  {entries.map((a) => {
-                    const x = yearToX(a.temporal.active_start);
-                    const hasEnd = a.temporal.active_end != null && a.temporal.active_end !== a.temporal.active_start;
-                    const w = hasEnd ? Math.max(yearToX(a.temporal.active_end) - x, 8) : null;
-                    const isSelected = tlSelected?.id === a.id;
-                    const isDead = a.temporal.death_year != null;
-                    const row = entryRows[a.id] || 0;
-                    const topOff = 6 + row * 30;
-
-                    if (w && w > 3) {
-                      return (
-                        <div key={a.id} onClick={() => tlSelectArticle(a)} title={a.title} style={{
-                          position: "absolute", left: x, top: topOff, height: 26, width: w,
-                          background: isSelected ? c.color + "40" : c.color + "18",
-                          border: "1px solid " + (isSelected ? c.color : c.color + "50"),
-                          borderRadius: 4, cursor: "pointer", transition: "all 0.2s",
-                          display: "flex", alignItems: "center", overflow: "hidden", padding: "0 6px",
-                          boxShadow: isSelected ? "0 0 12px " + c.color + "30" : "none",
-                          zIndex: isSelected ? 5 : 1,
-                        }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = c.color + "35"; e.currentTarget.style.border = "1px solid " + c.color; e.currentTarget.style.zIndex = "10"; }}
-                          onMouseLeave={(e) => { if (!isSelected) { e.currentTarget.style.background = c.color + "18"; e.currentTarget.style.border = "1px solid " + c.color + "50"; e.currentTarget.style.zIndex = "1"; } }}>
-                          <span style={{ fontSize: 10, color: isSelected ? "#e8dcc8" : c.color, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.3 }}>
-                            {a.title}{isDead ? " †" : ""}
-                          </span>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div key={a.id} onClick={() => tlSelectArticle(a)} className="tl-node" style={{
-                        position: "absolute", left: x - 7, top: topOff, width: 28, height: 26,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer", zIndex: isSelected ? 5 : 1, transition: "all 0.2s",
-                      }}>
-                        <style>{`.tl-node .tl-tip { opacity: 0; transition: opacity 0.15s; pointer-events: none; } .tl-node:hover .tl-tip { opacity: 1; }`}</style>
-                        <div style={{
-                          width: isSelected ? 14 : 10, height: isSelected ? 14 : 10,
-                          background: isSelected ? c.color : c.color + "80",
-                          borderRadius: "50%", border: "2px solid " + c.color,
-                          boxShadow: isSelected ? "0 0 12px " + c.color + "60" : "0 0 6px " + c.color + "20",
-                          transition: "all 0.2s",
-                        }}
-                          onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.3)"; e.currentTarget.style.boxShadow = "0 0 12px " + c.color + "60"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; if (!isSelected) e.currentTarget.style.boxShadow = "0 0 6px " + c.color + "20"; }}
-                        />
-                        <div className="tl-tip" style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: theme.text, whiteSpace: "nowrap", background: ta(theme.deepBg, 0.95), padding: "2px 8px", borderRadius: 4, border: "1px solid " + c.color + "40", zIndex: 20 }}>{a.title}{isDead ? " †" : ""}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Side Panel */}
-        <div style={{
-          width: tlPanelOpen ? 320 : 0, minWidth: tlPanelOpen ? 320 : 0,
-          borderLeft: tlPanelOpen ? "1px solid " + theme.divider : "none",
-          background: ta(theme.deepBg, 0.95), backdropFilter: "blur(10px)",
-          transition: "all 0.3s ease", overflow: "hidden", flexShrink: 0,
-        }}>
-          {tlSelected && (
-            <div style={{ width: isMobile ? "100%" : 320, padding: "20px 18px 60px", overflowY: "auto", height: "100%", boxSizing: "border-box" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <span style={S.catBadge(CATEGORIES[tlSelected.category]?.color)}>
-                  {CATEGORIES[tlSelected.category]?.icon} {CATEGORIES[tlSelected.category]?.label}
-                </span>
-                <span onClick={tlClosePanel} style={{ fontSize: 16, color: theme.textDim, cursor: "pointer", padding: "4px 8px", borderRadius: 4 }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; }} onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; }}>✕</span>
-              </div>
-              <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: theme.text, margin: "0 0 6px", letterSpacing: 0.5 }}>{tlSelected.title}</h3>
-              <p style={{ fontSize: 12, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.5, margin: "0 0 16px" }}>{tlSelected.summary}</p>
-              <Ornament width={280} />
-
-              {/* Temporal badge */}
-              <div style={{ fontSize: 11, color: theme.textDim, margin: "14px 0", padding: "6px 10px", background: "rgba(85,102,119,0.08)", borderRadius: 6, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <span>⏳ {tlSelected.temporal?.type}</span>
-                {tlSelected.temporal?.active_start != null && <span>From: Year {tlSelected.temporal.active_start}</span>}
-                {tlSelected.temporal?.active_end != null && <span>To: Year {tlSelected.temporal.active_end}</span>}
-                {tlSelected.temporal?.death_year && <span style={{ color: "#e07050" }}>† Year {tlSelected.temporal.death_year}</span>}
-              </div>
-
-              {/* Key fields */}
-              {tlSelected.fields && Object.keys(tlSelected.fields).length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  {Object.entries(tlSelected.fields).slice(0, 4).map(([k, v]) => (
-                    <div key={k} style={{ display: "flex", padding: "5px 0", borderBottom: "1px solid " + theme.surface }}>
-                      <div style={{ width: 100, fontSize: 10, color: theme.textDim, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{formatKey(k)}</div>
-                      <div style={{ flex: 1, fontSize: 12, color: "#c8bda0", lineHeight: 1.4 }}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Conflict warnings */}
-              {conflictsFor(tlSelected.id).map((c) => (
-                <WarningBanner key={c.id} severity={c.severity} icon={c.severity === "error" ? "✕" : "⚠"} title="Canon Conflict" style={{ marginBottom: 8 }}>
-                  <p style={{ margin: 0, fontSize: 11 }}>{c.message}</p>
-                </WarningBanner>
-              ))}
-
-              {/* Body preview */}
-              {tlSelected.body && (
-                <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.7, marginTop: 12, maxHeight: 200, overflow: "hidden", position: "relative" }}>
-                  <RenderBody text={tlSelected.body.split("\n")[0]} articles={articles} onNavigate={(id) => { tlClosePanel(); navigate(id); }} />
-                  {tlSelected.body.split("\n").length > 1 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 40, background: "linear-gradient(transparent, " + ta(theme.deepBg, 0.95) + ")" }} />}
-                </div>
-              )}
-
-              {/* Tags */}
-              {tlSelected.tags?.length > 0 && (
-                <div style={{ marginTop: 14 }}>{tlSelected.tags.map((t) => <span key={t} style={{ ...tTag, fontSize: 10, padding: "2px 8px" }}>#{t}</span>)}</div>
-              )}
-
-              {/* Action buttons */}
-              <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-                <button onClick={() => { tlClosePanel(); navigate(tlSelected.id); }} style={{ ...tBtnP, padding: "8px 16px", fontSize: 11 }}>View Full Entry →</button>
-                <button onClick={() => { tlClosePanel(); goEdit(tlSelected); }} style={{ ...tBtnS, padding: "7px 14px", fontSize: 11 }}>✎ Edit</button>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className={styles.topActions}>
+        <button className={styles.secondary} onClick={saveCSV} disabled={!filtered.length}><Download size={16}/> Export filtered CSV</button>
+      </div>
+    </header>
+    <div className={styles.stats} aria-live="polite">
+      <div><strong>{dated.length.toLocaleString()}</strong><span>Dated in view</span></div>
+      <div><strong>{filtered.length.toLocaleString()}</strong><span>Matching entries</span></div>
+      <div><strong>{allDated.toLocaleString()}</strong><span>Dated in world</span></div>
+      <div><strong>{events.length - allDated}</strong><span>Without dates</span></div>
+    </div>
+    <div className={styles.filters}>
+      <label className={`${styles.searchField} ${styles.field}`}>
+        <span><Search size={14}/> Find lore or events</span>
+        <input type="search" value={filters.search} onChange={e => update('search', e.target.value)} placeholder="Search title, tags, lore…"/>
+      </label>
+      <label className={styles.field}><span>Category</span>
+        <select value={filters.category} onChange={e => update('category', e.target.value)}><option value="all">All categories</option>
+          {Object.entries(CATEGORIES).map(([id,cat]) => <option key={id} value={id}>{cat.label}</option>)}
+        </select>
+      </label>
+      <label className={styles.field}><span>Era</span>
+        <select value={filters.era} onChange={e => update('era', e.target.value)}><option value="all">All eras</option>
+          {activeEras.map((era,index) => <option key={era.id || index} value={era.id || String(index)}>{era.label || era.name}</option>)}
+        </select>
+      </label>
+      <label className={styles.field}><span>Entry type</span>
+        <select value={filters.kind} onChange={e => update('kind', e.target.value)}>
+          <option value="all">All types</option><option value="point">Point in time</option>
+          <option value="span">Time span</option><option value="undated">Without dates</option>
+        </select>
+      </label>
+      <label className={styles.field}><span>From year</span>
+        <input type="number" value={filters.from ?? ""} onChange={e=>update('from', yearValue(e.target.value))} placeholder="Any"/>
+      </label>
+      <label className={styles.field}><span>Through year</span>
+        <input type="number" value={filters.to ?? ""} onChange={e=>update('to', yearValue(e.target.value))} placeholder="Any"/>
+      </label>
+      <label className={styles.field}><span><ArrowUpDown size={13}/> Sort by</span>
+        <select value={filters.sort} onChange={e=>update('sort',e.target.value)}>
+          <option value="date_asc">Earliest first</option><option value="date_desc">Latest first</option>
+          <option value="title_asc">Title A → Z</option><option value="title_desc">Title Z → A</option>
+          <option value="updated_desc">Recently updated</option><option value="duration_desc">Longest duration</option>
+        </select>
+      </label>
+      <div className={styles.filterActions}>
+        <label className={styles.checkline}><input type="checkbox" checked={filters.includeUndated} onChange={e=>update('includeUndated',e.target.checked)}/> Include undated</label>
+        <button className={styles.secondary} onClick={() => { setFilters(EMPTY_FILTERS); setIndexLimit(50); }}><FilterX size={14}/> Clear filters</button>
       </div>
     </div>
-  );
+    <div className={styles.workspaceBar}>
+      <div className={styles.modeTabs} role="group" aria-label="Chronicles display mode">
+        <button aria-pressed={mode === 'lanes'} className={mode === 'lanes' ? styles.activeMode : ''} onClick={()=>setMode('lanes')}><CalendarRange size={16}/> Timeline</button>
+        <button aria-pressed={mode === 'index'} className={mode === 'index' ? styles.activeMode : ''} onClick={()=>setMode('index')}><List size={16}/> Event index</button>
+      </div>
+      {mode === 'lanes' && <div className={styles.zoomTools}>
+        <label className={styles.jump}><span className={styles.srOnly}>Jump to world year</span><input type="number" value={jumpYear} onChange={e=>setJumpYear(e.target.value)} placeholder="Jump to year" onKeyDown={e=>e.key==='Enter'&&jumpTo()}/></label>
+        <button className={styles.secondary} onClick={jumpTo} disabled={jumpYear.trim()==='' || !dated.length}>Go</button>
+        <button className={styles.iconButton} onClick={()=>setZoom(v=>Math.max(0,v-1))} disabled={zoom===0} aria-label="Zoom timeline out"><ZoomOut size={16}/></button>
+        <span className={styles.zoomLabel}>Zoom {zoom+1}/{ZOOM_FACTORS.length}</span>
+        <button className={styles.iconButton} onClick={()=>setZoom(v=>Math.min(ZOOM_FACTORS.length-1,v+1))} disabled={zoom===ZOOM_FACTORS.length-1} aria-label="Zoom timeline in"><ZoomIn size={16}/></button>
+      </div>}
+    </div>
+    {mode === 'lanes' ? <div className={styles.laneWrapper}>
+      {!dated.length ? <div className={styles.empty}><CalendarRange size={25}/><h3>No dated events match</h3><p>Adjust the filters or add dates to Codex entries. Undated lore can still be found in the Event index.</p><button className={styles.secondary} onClick={()=>setMode('index')}>Open event index</button></div> : <>
+        <p className={styles.hint}>Horizontally scroll to explore history. Select any event for details. Sorting applies to Event index; visual lanes remain chronological.</p>
+        <div className={styles.horizontal} ref={scrollRef} tabIndex={0} role="region" aria-label="Scrollable world history timeline">
+          <div className={styles.stage} style={{width:stageWidth+160}}>
+            <div className={styles.axis}>
+              {activeEras.map((era, index) => {
+                const left = Math.max(range.min, era.start), right = Math.min(range.max, era.end);
+                if (right <= left) return null;
+                const color = ensureContrast(era.color || theme.accent, [theme.inputBg], 4.5);
+                return <div key={era.id||index} className={styles.eraBand} style={{left:yearToX(left),width:yearToX(right)-yearToX(left),"--era-color":color}}><span>{era.label || era.name}</span></div>;
+              })}
+              {ticks.map(y => <div className={styles.tick} key={y} style={{left:yearToX(y)}}><span>{formatYear(y)}</span></div>)}
+            </div>
+            {lanes.map(lane => <div key={lane.category} className={styles.lane} style={{height:lane.height}}>
+              <div className={styles.laneLabel}><span style={{color:colorFor(lane.category)}}>{CATEGORIES[lane.category]?.label || lane.category}</span><small>{lane.entries.length}</small></div>
+              {lane.entries.map(e => <button type="button" key={e.id} className={styles.eventPill} style={{left:e.x,top:lane.rows>1 ? 7+e.row*45 : 13,width:e.width,"--event-color":colorFor(e.category)}}
+                title={`${e.title} · ${rangeLabel(e, displayYear)}`} onClick={()=>openId(e.id)} aria-label={`Inspect ${e.title}, ${rangeLabel(e, displayYear)}`}>
+                <strong>{e.title}</strong><small>{rangeLabel(e, displayYear)}</small>
+              </button>)}
+            </div>)}
+          </div>
+        </div>
+        <p className={styles.hint}>Showing all {dated.length} dated entries across {lanes.length} categories. Scroll horizontally inside the timeline; vertical scrolling stays in the workspace.</p>
+      </>}
+    </div> : <div className={styles.indexWrapper}>
+      <div className={styles.indexHeader}><h2><Rows3 size={17}/> Event index</h2><span>{filtered.length} results · {Math.min(indexLimit, filtered.length)} visible</span></div>
+      {!filtered.length ? <div className={styles.empty}><Search size={24}/><p>No matching lore entries.</p><button className={styles.secondary} onClick={()=>setFilters(EMPTY_FILTERS)}>Clear filters</button></div> : <div className={styles.indexRows}>
+        {filtered.slice(0,indexLimit).map(e => <button type="button" className={styles.indexRow} key={e.id} onClick={()=>openId(e.id)}>
+          <span className={styles.indexYear}>{rangeLabel(e, displayYear)}</span>
+          <span className={styles.indexBody}><strong>{e.title}</strong><small>{e.summary || 'No summary supplied'}</small></span>
+          <span className={styles.indexCategory} style={{"--event-color":colorFor(e.category)}}>{CATEGORIES[e.category]?.label || e.category}</span>
+          <ChevronRight size={17}/>
+        </button>)}
+      </div>}
+      {indexLimit<filtered.length && <button className={styles.secondary} onClick={()=>setIndexLimit(v=>v+50)}>Show 50 more ({filtered.length-indexLimit} remaining)</button>}
+    </div>}
+    <p className={styles.footerNote}>Chronicles displays recorded dates and explicit references only. It does not infer a person's attendance from a textual mention, and it does not change canon.</p>
+    {selected && <EventInspector event={selected} allArticles={articles} conflictsFor={conflictsFor} eras={activeEras}
+      theme={theme} yearFormatter={displayYear} navigate={navigate} goEdit={goEdit} onClose={closeDetail} onPick={pickRelated}/>}
+  </section>;
 }

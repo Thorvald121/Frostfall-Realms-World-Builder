@@ -1,3 +1,5 @@
+import { aiRequestHeaders } from "./aiClientAuth";
+
 /**
  * writingTools.js — Writing assistance utilities for the novel editor.
  *
@@ -149,12 +151,12 @@ export async function aiProofread(text, settings) {
   try {
     const response = await fetch("/api/ai-import", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await aiRequestHeaders(),
       body: JSON.stringify({
         provider,
         model,
         userApiKey: apiKey,
-        proofreadText: text.slice(0, 8000),
+        text: text.slice(0, 8000),
         proofreadMode: true,
       }),
     });
@@ -205,7 +207,7 @@ export async function aiNovelAssist(action, context, selection, settings) {
   try {
     const res = await fetch("/api/ai-import", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await aiRequestHeaders(),
       body: JSON.stringify({
         provider,
         userApiKey: apiKey,

@@ -1,3 +1,5 @@
+import { ensureContrast, luminance, themeSurfaces } from "./ui/contrast.js";
+
 // lib/themes.js
 //
 // Frostfall Realms — Theme Definitions (Single Source of Truth)
@@ -179,7 +181,40 @@ export const THEMES = {
     topBarBg: "rgba(10,16,10,0.95)",
     cardBg: "rgba(18,26,18,0.62)",
   },
+
+  // Modern light-style alternatives; existing seven themes remain unchanged.
+  glacier_light: {
+    name: "Glacier Light",
+    desc: "Bright arctic blue, navy ink and crisp surfaces",
+    rootBg: "linear-gradient(170deg, #eef6fc 0%, #e3eff7 45%, #f4f9fe 100%)",
+    sidebarBg: "linear-gradient(180deg, #e6f2f9 0%, #cbdfea 100%)",
+    border: "#9bb7c9", divider: "#acc5d5", surface: "#ffffff",
+    surfaceHover: "rgba(214,232,243,0.78)", deepBg: "#d9eaf4",
+    text: "#162735", textMuted: "#365064", textDim: "#486174",
+    accent: "#075487", accentBg: "rgba(7,84,135,0.11)",
+    inputBg: "#ffffff", topBarBg: "rgba(244,249,254,0.96)", cardBg: "#ffffff",
+  },
+  dawnlight: {
+    name: "Dawnlight",
+    desc: "Soft ivory, copper and readable ink — a brighter writing desk",
+    rootBg: "linear-gradient(165deg, #fff9ee 0%, #f5ecdc 55%, #fffaf4 100%)",
+    sidebarBg: "linear-gradient(180deg, #f8efd9 0%, #e9dab9 100%)",
+    border: "#baaa8f", divider: "#cabb9e", surface: "#fffdf8",
+    surfaceHover: "rgba(232,218,190,0.60)", deepBg: "#efe1c7",
+    text: "#2e261f", textMuted: "#5b483a", textDim: "#645448",
+    accent: "#85400f", accentBg: "rgba(133,64,15,0.12)",
+    inputBg: "#fffefa", topBarBg: "rgba(255,251,243,0.97)", cardBg: "#fffefa",
+  },
 };
+
+// Preserve each theme's visual style while raising important foreground tokens
+// to WCAG AA contrast across the principal text surfaces and sidebar gradient.
+for (const theme of Object.values(THEMES)) {
+  const bg = [theme.surface, theme.inputBg, theme.deepBg, ...themeSurfaces(theme)];
+  theme.text = ensureContrast(theme.text, bg, 4.5);
+  theme.textMuted = ensureContrast(theme.textMuted, bg, 4.5);
+  theme.textDim = ensureContrast(theme.textDim, bg, 4.5);
+}
 
 export const DEFAULT_THEME_KEY = "dark_arcane";
 
@@ -216,6 +251,7 @@ export function applyThemeToRoot(themeKey) {
 
   const root = document.documentElement;
   root.dataset.theme = key;
+  root.dataset.bsTheme = luminance(t.surface) > 0.4 ? "light" : "dark";
 
   const vars = {
     "--rootBg": t.rootBg,

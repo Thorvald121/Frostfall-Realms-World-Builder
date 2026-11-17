@@ -8,7 +8,8 @@ export default function ThemeSelect({ value, onChange, compact = false }) {
     <select
       value={value}
       onChange={(e) => onChange?.(e.target.value)}
-      title="Theme"
+      title="Choose appearance theme"
+      aria-label="Choose appearance theme"
       style={{
         background: "var(--inputBg)",
         color: "var(--text)",

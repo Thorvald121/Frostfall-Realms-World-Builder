@@ -1,3 +1,4 @@
+import { authorizeAiRequest } from "@/lib/server/aiAuthorization";
 import { NextResponse } from "next/server";
 
 /**
@@ -64,9 +65,9 @@ const NOVEL_SYSTEM = `You are a skilled fiction writer and editor assisting with
 
 const NOVEL_ACTION_PROMPTS = {
   continue: (ctx, sel) =>
-    `Continue writing the next 150-300 words of this scene. Match the existing tone, pacing, and voice exactly.\n\nWorld: ${ctx.world || "Fantasy world"}\nLocation: ${ctx.actTitle || ""} → ${ctx.chapterTitle || ""} → ${ctx.sceneTitle || ""}\n${ctx.codexContext ? "\nRelevant lore:\n" + ctx.codexContext : ""}\n\nScene so far (last portion):\n${ctx.sceneText || "(empty scene)"}`,
+    `Continue writing the next 150-300 words of this scene. Match the existing tone, pacing, and voice exactly.\n\nWorld: ${ctx.world || ctx.worldName || "Fantasy world"}\nLocation: ${ctx.actTitle || ""} → ${ctx.chapterTitle || ""} → ${ctx.sceneTitle || ""}\n${ctx.codexContext ? "\nRelevant lore:\n" + ctx.codexContext : ""}\n\nScene so far (last portion):\n${ctx.sceneText || "(empty scene)"}`,
   describe: (ctx, sel) =>
-    `Write a vivid 100-200 word scene description/setting passage that could be inserted into this scene. Use sensory details — sight, sound, smell, texture.\n\nWorld: ${ctx.world || "Fantasy world"}\nScene: ${ctx.sceneTitle || "Untitled"}\n${ctx.codexContext ? "\nRelevant lore:\n" + ctx.codexContext : ""}\n\nCurrent scene text:\n${ctx.sceneText || "(empty scene)"}`,
+    `Write a vivid 100-200 word scene description/setting passage that could be inserted into this scene. Use sensory details — sight, sound, smell, texture.\n\nWorld: ${ctx.world || ctx.worldName || "Fantasy world"}\nScene: ${ctx.sceneTitle || "Untitled"}\n${ctx.codexContext ? "\nRelevant lore:\n" + ctx.codexContext : ""}\n\nCurrent scene text:\n${ctx.sceneText || "(empty scene)"}`,
   rewrite: (ctx, sel) =>
     `Rewrite the following passage to improve clarity, flow, and impact while preserving the original meaning and voice:\n\nPassage to rewrite:\n${sel}`,
   expand: (ctx, sel) =>
@@ -417,7 +418,13 @@ async function callWithRetry({ caller, apiKey, model, systemPrompt, userMessage 
 
 export async function POST(request) {
   try {
-    const payload = await request.json().catch(() => ({}));
+    const identity = await authorizeAiRequest(request);
+    if (!identity.ok) return NextResponse.json({ error: identity.message }, { status: identity.status });
+    const rawBody = await request.text();
+    if (rawBody.length > 180000) return NextResponse.json({ error: "AI request too large." }, { status: 413 });
+    let payload;
+    try { payload = JSON.parse(rawBody); }
+    catch { return NextResponse.json({ error: "Invalid JSON request." }, { status: 400 }); }
 
     const {
       text,
@@ -438,11 +445,14 @@ export async function POST(request) {
     } = payload || {};
 
     const providerId = String(provider || "anthropic").toLowerCase();
-    const caller = PROVIDERS[providerId] || PROVIDERS.anthropic;
+    const caller = PROVIDERS[providerId];
+    if (!caller) return NextResponse.json({ error: "Unsupported AI provider." }, { status: 400 });
 
     // Resolve API key: user key overrides env key.
     let apiKey = typeof userApiKey === "string" ? userApiKey : "";
-    if (!apiKey) {
+    // Shared, metered credentials are OFF unless a deployment administrator
+    // explicitly opts in. Personal BYOK requests still require authentication.
+    if (!apiKey && process.env.FF_AI_ALLOW_SHARED_PROVIDER_KEYS === "true") {
       if (providerId === "anthropic") apiKey = process.env.ANTHROPIC_API_KEY || "";
       else if (providerId === "openai") apiKey = process.env.OPENAI_API_KEY || "";
       else if (providerId === "google") apiKey = process.env.GOOGLE_API_KEY || "";

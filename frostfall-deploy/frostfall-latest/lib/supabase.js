@@ -4,7 +4,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Supabase env vars missing — running in local-only mode");
+  console.warn("Supabase configuration is incomplete — authentication and remote data are unavailable.");
 }
 
 export const supabase = supabaseUrl && supabaseAnonKey
@@ -25,15 +25,15 @@ export async function uploadPortrait(userId, file) {
 }
 
 // === HELPER: Fetch all articles for a world ===
-export async function fetchArticles(worldId) {
-  if (!supabase) return [];
+export async function fetchArticles(worldId, { strict = false } = {}) {
+  if (!supabase) { if (strict) throw new Error("Database connection unavailable."); return []; }
   const { data, error } = await supabase
     .from("articles")
     .select("*")
     .eq("world_id", worldId)
     .order("created_at", { ascending: false });
-  if (error) { console.error("Fetch error:", error); return []; }
-  return data.map(dbToArticle);
+  if (error) { if (strict) throw new Error(`Could not load world articles: ${error.message || "database error"}`); console.error("Fetch error:", error); return []; }
+  return (data || []).map(dbToArticle);
 }
 
 // === HELPER: Upsert article ===
@@ -79,8 +79,8 @@ export async function createWorld(userId, name, description) {
 }
 
 // === HELPER: Fetch user's worlds (including shared) ===
-export async function fetchWorlds(userId) {
-  if (!supabase) return [];
+export async function fetchWorlds(userId, { strict = false } = {}) {
+  if (!supabase) { if (strict) throw new Error("Database connection unavailable."); return []; }
   // Try the user_worlds view first (includes shared worlds with role)
   const { data: viewData, error: viewError } = await supabase
     .from("user_worlds")
@@ -93,8 +93,8 @@ export async function fetchWorlds(userId) {
     .select("*")
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
-  if (error) { console.error("Fetch worlds error:", error); return []; }
-  return data.map((w) => ({ ...w, member_role: "owner" }));
+  if (error) { if (strict) throw new Error(`Could not load accessible worlds: ${error.message || "database error"}`); console.error("Fetch worlds error:", error); return []; }
+  return (data || []).map((w) => ({ ...w, member_role: "owner" }));
 }
 
 // ================================================================
@@ -559,17 +559,21 @@ export async function revokeAdminRole(adminId) {
 // ================================================================
 
 export async function fetchWorldsAndArticles(userId) {
-  if (!supabase) return { worlds: [], articles: [] };
-  const worlds = await fetchWorlds(userId);
+  if (!supabase || !userId) throw new Error("Authenticated world loading requires a configured database and user.");
+  // An empty world is only valid after successful reads. Do not turn a failed
+  // RLS/network/query into an empty editor capable of overwriting real content.
+  const worlds = await fetchWorlds(userId, { strict: true });
   if (worlds.length === 0) return { worlds, articles: [] };
-  const articles = await fetchArticles(worlds[0].id);
+  const articles = await fetchArticles(worlds[0].id, { strict: true });
   return { worlds, articles };
 }
 
 export async function bulkUpsertArticles(worldId, articles) {
-  if (!supabase || !articles.length) return true;
+  if (!supabase) throw new Error("Supabase is unavailable. Nothing was saved remotely.");
+  if (!worldId) throw new Error("Missing world identity. Remote save refused.");
+  if (!articles.length) return { ok: true, worldId, count: 0, savedAt: new Date().toISOString() };
   const rows = articles.map((a) => articleToDb(worldId, a));
   const { error } = await supabase.from("articles").upsert(rows, { onConflict: "world_id,slug" });
-  if (error) { console.error("Bulk upsert error:", error); return false; }
-  return true;
+  if (error) throw new Error(`Codex save failed: ${error.message || "unknown database error"}`);
+  return { ok: true, worldId, count: rows.length, savedAt: new Date().toISOString() };
 }

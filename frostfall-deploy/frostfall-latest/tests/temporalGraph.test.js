@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildTemporalGraph } from "../lib/domain/truth/temporalGraph.js";
 
 describe("Temporal Graph Engine", () => {
-  it("extracts mentions and can flag impossible references", () => {
+  it("does not misclassify a historical remembrance as physical participation", () => {
     const articles = [
       {
         id: "event_130",
@@ -23,8 +23,8 @@ describe("Temporal Graph Engine", () => {
     const g = buildTemporalGraph(articles);
     const ref = g.isImpossibleReference("event_130", "vaerith");
 
-    // Vaerith died 20 years before Year 130
-    expect(ref).not.toBeNull();
-    expect(ref.type).toBe("temporal_impossible");
+    // Vaerith died 20 years before Year 130, but survivors can remember them.
+    // A mention does not assert physical participation or survival.
+    expect(ref).toBeNull();
   });
 });

@@ -3,7 +3,10 @@
 import React, { useState, useCallback, useMemo, useRef } from "react";
 import { CATEGORIES, formatKey } from "@/lib/domain/categories";
 import { EDITOR_FONTS } from "@/lib/domain/categories";
+import SafeRichText from "@/components/ui/SafeRichText";
+import { sanitizeRichHtml, escapeHtml } from "@/lib/domain/richTextSafety";
 import { checkWord, aiProofread, aiNovelAssist, SUGGESTION_STYLES } from "@/lib/domain/writingTools";
+import { ManuscriptHistoryBar } from "@/features/novel/ManuscriptHistoryBar";
 
 /**
  * NovelWorkspace — Full novel writing tool with manuscript management,
@@ -14,6 +17,7 @@ import { checkWord, aiProofread, aiNovelAssist, SUGGESTION_STYLES } from "@/lib/
  * All state is owned by the parent; this component receives props.
  */
 export function NovelWorkspace({
+  manuscriptSync,
   // Core
   theme, articles, settings, setSettings, isMobile, isTablet, activeWorld,
   // Navigation
@@ -162,19 +166,19 @@ export function NovelWorkspace({
       const sel = window.getSelection();
       sel.selectAllChildren(editor);
       sel.collapseToEnd();
-      document.execCommand("insertHTML", false, "<br>" + text.replace(/\n/g, "<br>"));
+      document.execCommand("insertHTML", false, "<br>" + escapeHtml(text).replace(/\n/g, "<br>"));
     } else if (selection) {
       // Try to find and replace the selection in the editor
       editor.focus();
       const currentSel = window.getSelection();
       // Use find to locate the selection text
       if (window.find && window.find(selection.slice(0, 100))) {
-        document.execCommand("insertHTML", false, text.replace(/\n/g, "<br>"));
+        document.execCommand("insertHTML", false, escapeHtml(text).replace(/\n/g, "<br>"));
       } else {
         // Fallback: append at end
         currentSel.selectAllChildren(editor);
         currentSel.collapseToEnd();
-        document.execCommand("insertHTML", false, "<br>" + text.replace(/\n/g, "<br>"));
+        document.execCommand("insertHTML", false, "<br>" + escapeHtml(text).replace(/\n/g, "<br>"));
       }
     }
     handleNovelInput();
@@ -205,7 +209,7 @@ export function NovelWorkspace({
     const escaped = suggestion.original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const regex = new RegExp(escaped, "i");
     if (regex.test(html)) {
-      novelEditorRef.current.innerHTML = html.replace(regex, suggestion.suggestion);
+      novelEditorRef.current.innerHTML = sanitizeRichHtml(html.replace(regex, escapeHtml(suggestion.suggestion)));
       handleNovelInput(); // trigger save
     } else {
       // Try on text content
@@ -311,6 +315,10 @@ export function NovelWorkspace({
 
   return (
     <div style={{ margin: "0 -28px", height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {manuscriptSync?.worldId && <ManuscriptHistoryBar worldId={manuscriptSync.worldId}
+        worldName={manuscriptSync.worldName} manuscripts={manuscripts} theme={theme}
+        syncStatus={manuscriptSync.status} canEdit={manuscriptSync.canEdit}
+        onRestore={manuscriptSync.onRestore} />}
 
       {/* Manuscript Selector */}
       {novelView === "select" && (
@@ -1457,13 +1465,11 @@ export function NovelWorkspace({
                             </div>
                             {refScene.povCharacter && <div style={{ fontSize: 10, color: "#c084fc", marginBottom: 4 }}>POV: {refScene.povCharacter}</div>}
                             <div style={{ fontSize: 10, color: theme.textDim, marginBottom: 8 }}>{countWords(refScene.body).toLocaleString()} words</div>
-                            <div style={{
+                            <SafeRichText html={refScene.body || "<em>Empty scene</em>"} style={{
                               fontSize: 13, fontFamily: editorFontFamily, lineHeight: 1.8, color: theme.textMuted,
                               padding: "12px 16px", background: ta(theme.surface, 0.4), borderRadius: 8, border: "1px solid " + theme.border,
                               whiteSpace: "pre-wrap", wordWrap: "break-word", overflowWrap: "break-word",
-                            }}
-                              dangerouslySetInnerHTML={{ __html: (refScene.body || "<em style='color:" + theme.textDim + "'>Empty scene</em>").replace(/@\[([^\]]+)\]\(([^)]+)\)/g, '<span style="color:' + theme.accent + ';font-weight:600">$1</span>') }}
-                            />
+                            }} />
                             {refScene.notes && (
                               <div style={{ marginTop: 12, padding: "10px 12px", background: ta(theme.surface, 0.3), borderRadius: 6, border: "1px solid " + theme.border }}>
                                 <div style={{ fontSize: 10, color: theme.textDim, fontWeight: 600, marginBottom: 4 }}>📝 Notes</div>

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { uploadWorldCover, updateWorldHome, fetchWorldHome } from "@/lib/supabase";
+import SafeRichText from "@/components/ui/SafeRichText";
 
 // ─── tiny helpers ────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -288,9 +289,9 @@ export function WorldHomePage({
               style={{ ...S.textarea, minHeight: 160, fontSize: 13, lineHeight: 1.7 }}
             />
           ) : descHtml ? (
-            <div
+            <SafeRichText
+              html={descHtml}
               style={{ fontSize: 14, color: theme.textMuted, lineHeight: 1.8, ...cardBase, padding: "18px 20px" }}
-              dangerouslySetInnerHTML={{ __html: descHtml }}
             />
           ) : (
             <div style={{ ...cardBase, padding: "24px 20px", textAlign: "center", color: ta(theme.textDim, 0.6) }}>
