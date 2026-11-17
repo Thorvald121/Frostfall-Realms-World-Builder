@@ -151,15 +151,20 @@ input:focus, textarea:focus, select:focus, button:focus {
 .fr-toolbar-theme-label { font-size:11px; color:var(--textMuted); font-weight:700; }
 .fr-new-entry-btn { display:inline-flex; align-items:center; gap:7px; border-radius:10px; padding:10px 16px; min-height:40px; font:700 12px var(--uiFont); background:var(--accent); border:1px solid var(--accent); color:var(--deepBg,#0a0e1a); cursor:pointer; white-space:nowrap; }
 .fr-new-entry-btn:hover { filter:brightness(1.06); }
-.fr-create-dismiss { position:fixed; inset:0; z-index:900; }
-.fr-create-menu { position:absolute; top:calc(100% + 5px); right:60px; max-height:min(76vh,530px); overflow-y:auto; min-width:230px; display:grid; padding:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.38); z-index:901; }
+/* P8 dropdown is anchored to its trigger; document-level pointer/focus listeners
+   dismiss it without installing a click-blocking page-wide overlay. */
+.fr-studio .fr-topbar { position:relative; z-index:50; }
+.fr-create-anchor { position:relative; display:inline-flex; flex-shrink:0; }
+.fr-create-menu { position:absolute; top:calc(100% + 7px); right:0; max-height:min(74vh,520px); overflow-y:auto; min-width:240px; display:grid; padding:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.38); z-index:101; }
+.fr-create-anchor-compact .fr-create-menu { min-width:220px; }
+.fr-create-menu:focus-within { outline:1px solid var(--accent); }
 .fr-create-menu-label { padding:7px 10px 10px; font-size:10px; color:var(--textMuted); font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
 .fr-create-menu button { display:flex; align-items:center; gap:11px; padding:10px 12px; background:transparent; border:0; border-radius:8px; text-align:left; color:var(--text); font:600 12px var(--uiFont); cursor:pointer; }
 .fr-create-menu button:hover { background:var(--accentBg); }
 .fr-studio .fr-content { padding:20px 28px 45px!important; min-width:0; overflow-x:hidden; overflow-y:auto; }
 @media(max-width:1250px){.fr-studio-breadcrumb{display:none}.fr-studio .fr-topbar{gap:10px}.fr-studio-global-search{max-width:none}}
 @media(max-width:900px){.fr-studio .fr-topbar{padding:9px 12px!important}.fr-toolbar-theme-label{display:none}}
-@media(max-width:767px){.fr-studio .fr-content{padding:12px 14px 28px!important}.fr-studio .fr-topbar{min-height:59px}.fr-new-entry-btn{padding:9px 10px;font-size:11px}.fr-create-menu{right:10px}.fr-studio-global-search{min-width:70px}}
+@media(max-width:767px){.fr-studio .fr-content{padding:12px 14px 28px!important}.fr-studio .fr-topbar{min-height:59px}.fr-new-entry-btn{padding:9px 10px;font-size:11px}.fr-create-menu{right:0;max-width:calc(100vw - 28px)}.fr-studio-global-search{min-width:70px}}
 
 /* World overview – avoid fixed dark-only backgrounds to support light palettes. */
 .fr-overview { min-width:0; color:var(--text); width:100%; max-width:1480px; margin:0 auto; }
