@@ -9,6 +9,7 @@ import {
 
 const icons = {
   dashboard: LayoutDashboard, world_home: Castle, codex: BookOpen,
+  atlas: MapPinned, expand_categories: BookOpen,
   deity: Crown, race: UsersRound, character: UserRound,
   event: Hourglass, location: MapPinned, organization: Landmark,
   item: Gem, magic: WandSparkles, language: Languages,
