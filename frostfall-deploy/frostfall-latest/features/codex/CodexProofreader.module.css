@@ -35,3 +35,15 @@
 .warning,.error { background:color-mix(in srgb,#df875b 12%,var(--cardBg)); border:1px solid #c37d56; }
 .error { margin:0 12px 12px; }
 @media(max-width:650px) { .panel,.topBar { padding:11px; } .topBar .toggle { width:100%; justify-content:center; } .issue { padding:10px; } .issueList { max-height:320px; } }
+
+/* Contextual corrections stay outside the editable DOM and its HTML serializer. */
+.popover { position:fixed; z-index:1200; width:min(305px,calc(100vw - 24px)); box-sizing:border-box; padding:12px; border:1px solid var(--accent); border-radius:12px; background:var(--cardBg); color:var(--text); box-shadow:0 15px 55px rgba(0,0,0,.5); font:12px var(--uiFont); }
+.popoverHeading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-bottom:9px; border-bottom:1px solid var(--border); }
+.popoverHeading strong { text-decoration:underline wavy #e58b63; text-underline-offset:4px; font-size:13px; }
+.popoverHeading button { background:transparent; border:1px solid var(--border); border-radius:6px; color:var(--textMuted); font-size:17px; width:28px; height:27px; cursor:pointer; }
+.popoverChoices { display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:11px 0; }
+.popoverChoices button { border:1px solid var(--accent); background:var(--accentBg); color:var(--accent); font:700 12px var(--uiFont); padding:7px 10px; border-radius:8px; cursor:pointer; }
+.popoverChoices button:hover { filter:brightness(1.1); }
+.popoverActions { display:flex; flex-wrap:wrap; gap:6px; border-top:1px solid var(--border); padding-top:9px; }
+.popoverActions button { flex:1 1 auto; background:var(--surface); color:var(--textMuted); border:1px solid var(--border); border-radius:7px; font:600 10px var(--uiFont); padding:7px; cursor:pointer; }
+.popoverActions button:hover { color:var(--text); border-color:var(--accent); }
