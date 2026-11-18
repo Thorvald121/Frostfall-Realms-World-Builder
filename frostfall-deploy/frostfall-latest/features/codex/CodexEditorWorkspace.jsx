@@ -51,7 +51,7 @@ export function CodexEditorWorkspace({
           {recovery ? (
             <div className={styles.recoveryPanel} role="alert" aria-live="assertive">
               <h2>Unsaved Codex draft found</h2>
-              <p>A browser-local recovery copy exists for this entry in this world. It was <strong>not confirmed saved to Supabase</strong>. Choose whether to restore its text and fields or discard this copy before editing.</p>
+              <p>A browser-local recovery copy exists for this entry in this world. It was <strong>not confirmed saved to the cloud Codex</strong>. Choose whether to restore its text and fields or discard this copy before editing.</p>
               <div className={styles.recoveryActions}>
                 <button type="button" className={styles.primaryButton} onClick={onRestore}>Restore this draft</button>
                 <button type="button" className={styles.quietButton} onClick={onDiscard}>Discard recovery copy</button>
