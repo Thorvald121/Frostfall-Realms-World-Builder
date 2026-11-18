@@ -3,6 +3,11 @@
  * Keys are scoped to the signed-in user, world, entry type and entry identity.
  * Callers must still obtain a verified Supabase write receipt before cleanup.
  */
+export function getBrowserCodexStorage() {
+  try { return typeof window !== "undefined" ? window.localStorage : null; }
+  catch { return null; }
+}
+
 export const CODEX_DRAFT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 export const CODEX_DRAFT_MAX_SIZE = 850_000;
 const VERSION = 1;
