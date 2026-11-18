@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  codexDraftKey, draftHasContent, readCodexDraft, writeCodexDraft,
+  getBrowserCodexStorage, codexDraftKey, draftHasContent, readCodexDraft, writeCodexDraft,
   clearCodexDraftOnReceipt, discardCodexDraft, CODEX_DRAFT_MAX_AGE_MS,
 } from "../../lib/domain/codexDraftRecovery.js";
 
