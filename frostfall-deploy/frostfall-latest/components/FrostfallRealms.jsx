@@ -2080,8 +2080,8 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   }, [articles]);
 
   const navigate = useCallback((id) => { const a = articles.find((x) => x.id === id); if (a) { setActiveArticle(a); setView("article"); } if (isMobile) setSidebarOpen(false); }, [articles, isMobile]);
-  const goCodex = (f = "all") => { setCodexFilter(f); setView("codex"); closeSidebar(); };
-  const goDash = () => { setView("dashboard"); closeSidebar(); };
+  const goCodex = (f = "all") => { flushCodexDraftBackup(); setCodexFilter(f); setView("codex"); closeSidebar(); };
+  const goDash = () => { flushCodexDraftBackup(); setView("dashboard"); closeSidebar(); };
   // === ACTIVITY FEED HELPERS ===
   const addActivity = useCallback((type, article = null, extra = {}) => {
     const actorName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "You";
