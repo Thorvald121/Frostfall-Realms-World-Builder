@@ -4879,9 +4879,13 @@ const renderArchives = () => (<>
               category={CATEGORIES[createCat]}
               editing={!!editingId}
               draft={formData}
+              recovery={codexDraftRecovery}
+              onRestore={restoreCodexDraft}
+              onDiscard={discardRecoveredCodexDraft}
+              backupError={codexDraftBackupError}
               onSave={attemptSave}
-              onCancel={() => editingId ? navigate(editingId) : goCodex()}
-              onCodex={() => goCodex()}
+              onCancel={() => { flushCodexDraftBackup(); editingId ? navigate(editingId) : goCodex(); }}
+              onCodex={() => { flushCodexDraftBackup(); goCodex(); }}
             >
               <div className="fr-editor-form">
                 <CodexEditorSection id="fr-editor-identity" number={1} title="Identity & appearance"
