@@ -12,7 +12,7 @@
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:modernization": "node --experimental-default-type=module --test tests/modernization/*.test.mjs",
+    "test:modernization": "node --test tests/modernization/*.test.mjs",
     "test:syntax": "node scripts/source-syntax-check.cjs",
     "prebuild": "pnpm run test:modernization && pnpm run test:syntax"
   },
