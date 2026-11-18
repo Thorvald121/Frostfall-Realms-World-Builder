@@ -10,7 +10,7 @@ import styles from "./CodexEditorWorkspace.module.css";
  * Do not claim the user's changes were saved until that repository acknowledges it.
  */
 export function CodexEditorWorkspace({
-  worldName, category, editing, draft, onSave, onCancel, onCodex, children,
+  worldName, category, editing, draft, onSave, onCancel, onCodex, recovery, onRestore, onDiscard, backupError, children,
 }) {
   const info = draftOverview(draft);
   const save = () => {
@@ -42,13 +42,30 @@ export function CodexEditorWorkspace({
         </div>
         <div className={styles.topActions}>
           <button type="button" className={styles.quietButton} onClick={onCancel}><ChevronLeft size={16} aria-hidden="true" /> Back</button>
-          <button type="button" className={styles.primaryButton} onClick={save} disabled={!info.titleReady} title={!info.titleReady ? "Enter a title before saving" : undefined}><Save size={16} aria-hidden="true" /> {editing ? "Save changes" : "Create entry"}</button>
+          <button type="button" className={styles.primaryButton} onClick={save} disabled={!info.titleReady || !!recovery} title={recovery ? "Resolve the recovered draft first" : !info.titleReady ? "Enter a title before saving" : undefined}><Save size={16} aria-hidden="true" /> {editing ? "Save changes" : "Create entry"}</button>
         </div>
       </header>
       <div className={styles.layout}>
         <div className={styles.main}>
           <div className={styles.manualSave} role="status"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Manual save · Unsaved Codex draft.</strong> Select <strong>{editing ? "Save changes" : "Create entry"}</strong> to store it in your world. Manuscript cloud status is separate.</span></div>
-          {children}
+          {recovery ? (
+            <div className={styles.recoveryPanel} role="alert" aria-live="assertive">
+              <h2>Unsaved Codex draft found</h2>
+              <p>A browser-local recovery copy exists for this entry in this world. It was <strong>not confirmed saved to the cloud Codex</strong>. Choose whether to restore its text and fields or discard this copy before editing.</p>
+              <div className={styles.recoveryActions}>
+                <button type="button" className={styles.primaryButton} onClick={onRestore}>Restore this draft</button>
+                <button type="button" className={styles.quietButton} onClick={onDiscard}>Discard recovery copy</button>
+              </div>
+              <p className={styles.recoveryNote}>This temporary copy stays only in this browser. Clearing browser data can erase it.</p>
+            </div>
+          ) : (
+            <>
+              {backupError && <div className={styles.backupWarning} role="alert">
+                Local draft backup is unavailable. Copy or export your writing before leaving this editor, or save it to the Codex.
+              </div>}
+              {children}
+            </>
+          )}
         </div>
         <aside className={styles.rail} aria-label="Editor navigation and draft context">
           <nav className={styles.railPanel} aria-label="Sections of this entry">
@@ -74,7 +91,7 @@ export function CodexEditorWorkspace({
         <span>{editing ? "Changes to this Codex entry are not saved yet." : "This new Codex entry is not saved yet."}</span>
         <div>
           <button type="button" className={styles.quietButton} onClick={onCancel}>Cancel</button>
-          <button type="button" className={styles.primaryButton} onClick={save} disabled={!info.titleReady} title={!info.titleReady ? "Enter a title before saving" : undefined}><Save size={16} aria-hidden="true" /> {editing ? "Save changes" : "Create entry"}</button>
+          <button type="button" className={styles.primaryButton} onClick={save} disabled={!info.titleReady || !!recovery} title={recovery ? "Resolve the recovered draft first" : !info.titleReady ? "Enter a title before saving" : undefined}><Save size={16} aria-hidden="true" /> {editing ? "Save changes" : "Create entry"}</button>
         </div>
       </footer>
     </section>

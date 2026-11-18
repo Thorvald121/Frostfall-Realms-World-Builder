@@ -1,17 +1,15 @@
 # Frostfall Realms — Active Development Checkpoint
 
-**2026-11-18 · P10 Codex Authoring Workspace**
+**2026-11-18 · P11 Codex Draft Recovery**
 
-- Canonical GitHub repository: `Thorvald121/Frostfall-Realms-World-Builder`; deployable Next.js app in `frostfall-deploy/frostfall-latest/`.
-- P1–P9 merged and live on `main`. Last verified P9 production: `4a0244f4fae3e171e0a9e15fc2d2bc4675290b55`, Vercel `dpl_8gx4WvxMHSwgfrrgffLpHxqs272y`.
-- P10 feature branch: `feature/p10-codex-authoring-workspace-20261118`; directly connected GitHub `velessec` has write permission, Vercel builds every branch.
-- New `features/codex/CodexEditorWorkspace.jsx` and scoped CSS; 4 authoring sections, responsive rail, draft summary, accessible Save/Cancel buttons.
-- Existing category property model, rich-text editor, portrait uploads, duplicate/integrity gates and Supabase article save remain authoritative.
-- `lib/domain/editorDraft.js` snapshots sanitized rich-text body directly at save-time before React's debounce can leave stale state; use this same draft through duplicate and integrity dialogs.
-- P10 adds `prebuild` test/syntax gates to existing Vercel Next.js build (no external paid GitHub CI).
-- No DB migrations, data resets, auth changes or separate ZIP required for P10.
-- P10 preview build/test gate still pending; do not claim released until branch and production deploy both READY.
-- Database reference, last verified: 8 worlds, 168 articles, 16 profiles, 8 main Canon branches. Chairondis is currently empty; other users' worlds must not be exposed.
-- Next major work: modern rich-text editing engine/HTML migration and robust autosave + version receipts, Atlas, relationship graph, account deletion, and SECURITY DEFINER view review.
-- UI standards: Tabler-inspired design, Lucide, 9 theme palettes with one selector, distinct navigation icon and label colors, accessible dark/light contrast and mobile scaling.
-- See `docs/modernization/PHASE10_HANDOFF.md` for acceptance gates.
+- Canonical repo: `Thorvald121/Frostfall-Realms-World-Builder` deployable Next.js root: `frostfall-deploy/frostfall-latest/`.
+- P1–P10.1 have been merged to `main` and deployed to `frostfall-realms.com` on Vercel. Last verified baseline: `9c82d0107a2f448006989e0a5ea1ebfb754ac6d4`.
+- P11 source: `feature/p11-codex-draft-recovery-20261118` requires preview READY + green GitHub status before merging.
+- New `lib/domain/codexDraftRecovery.js` and Codex editor UI allow **explicit** recovery of browser-local unsaved drafts without overwriting real cloud entries.
+- Scoped local recovery keys: user UUID, world UUID, category, entry identity. Size and age bounded; storage failure warnings; strong token compare to prevent stale write receipt deleting new work.
+- A draft's backup is only cleared after an acknowledged Supabase bulk article save including the same article ID and updatedAt revision. Existing persistence, RLS and active data untouched.
+- The user-created Chairondis test entry **Daltos Varix** was independently found in the live Supabase table with strikethrough HTML retained; actual page reload testing remains pending.
+- Vercel prebuild runs all Node modernization + JS/CSS/import checks. No paid CI or external npm dependency added in P11.
+- Future major work: Lexical-style rich-text engine migration with round-trip tests; true save receipts; article detail screen redesign; world Atlas; relationship graph; canonical source/security review, account deletion.
+- Strict visual standards: Tabler-inspired UI, Lucide, nine themes, distinct sidebar label/icon colors, responsive layouts and genuine manual/cloud save differentiation.
+- See `docs/modernization/PHASE11_HANDOFF.md` for safe acceptance and rollback.
