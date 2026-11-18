@@ -37,7 +37,7 @@ import { CodexWorkspaceHeader, CodexEmptyState } from "@/features/codex/CodexWor
 import { CodexEditorWorkspace, CodexEditorSection } from "@/features/codex/CodexEditorWorkspace";
 import { captureEditorDraft } from "@/lib/domain/editorDraft";
 import { codexFooterLabel, showManuscriptFooter } from "@/lib/domain/editorSaveStatus";
-import { codexDraftKey, draftHasContent, readCodexDraft, writeCodexDraft, clearCodexDraftOnReceipt, discardCodexDraft } from "@/lib/domain/codexDraftRecovery";
+import { getBrowserCodexStorage, codexDraftKey, draftHasContent, readCodexDraft, writeCodexDraft, clearCodexDraftOnReceipt, discardCodexDraft } from "@/lib/domain/codexDraftRecovery";
 import { loadManuscriptWorld, saveManuscriptWorld } from "@/lib/domain/manuscripts/manuscriptRepository";
 import { chooseManuscriptHydration, readBrowserDraft, writeBrowserDraft, sameSnapshot, journalKey } from "@/lib/domain/manuscripts/manuscriptSync";
 
@@ -556,7 +556,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     setCodexDraftBackupError(false);
     if (!codexDraftStorageKey || typeof window === "undefined") return;
     codexDraftOriginalRef.current = JSON.stringify(formDataLiveRef.current);
-    const previous = readCodexDraft(window.localStorage, codexDraftStorageKey);
+    const previous = readCodexDraft(getBrowserCodexStorage(), codexDraftStorageKey);
     const lastPersisted = editingId
       ? articles.find((article) => article.id === editingId)?.updatedAt
       : null;
@@ -571,7 +571,7 @@ export default function FrostfallRealms({ user, onLogout }) {
     if (!codexDraftStorageKey || !codexDraftGateRef.current
       || JSON.stringify(formData) === codexDraftOriginalRef.current || !draftHasContent(formData)) return;
     const timer = setTimeout(() => {
-      const result = writeCodexDraft(window.localStorage, codexDraftStorageKey, formData);
+      const result = writeCodexDraft(getBrowserCodexStorage(), codexDraftStorageKey, formData);
       setCodexDraftBackupError(!result.ok);
     }, 450);
     return () => clearTimeout(timer);
@@ -586,7 +586,7 @@ export default function FrostfallRealms({ user, onLogout }) {
         : formDataLiveRef.current.body;
       const draft = { ...formDataLiveRef.current, body };
       if (draftHasContent(draft) && JSON.stringify(draft) !== codexDraftOriginalRef.current) {
-        writeCodexDraft(window.localStorage, codexDraftStorageKey, draft);
+        writeCodexDraft(getBrowserCodexStorage(), codexDraftStorageKey, draft);
       }
     };
     window.addEventListener("pagehide", flushOnPageHide);
@@ -758,7 +758,7 @@ const handleCreateWorld = async () => {
             if (pending && pending.worldId === worldId && snapshot.articles.some(
               (article) => article.id === pending.articleId && article.updatedAt === pending.updatedAt
             )) {
-              if (clearCodexDraftOnReceipt(window.localStorage, pending.key, pending.token)) {
+              if (clearCodexDraftOnReceipt(getBrowserCodexStorage(), pending.key, pending.token)) {
                 codexDraftReceiptRef.current = null;
               }
             }
@@ -2134,7 +2134,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       : formDataLiveRef.current.body;
     const draft = { ...formDataLiveRef.current, body };
     if (!draftHasContent(draft) || JSON.stringify(draft) === codexDraftOriginalRef.current) return;
-    const backup = writeCodexDraft(window.localStorage, codexDraftStorageKey, draft);
+    const backup = writeCodexDraft(getBrowserCodexStorage(), codexDraftStorageKey, draft);
     if (!backup.ok) setCodexDraftBackupError(true);
   };
 
@@ -2151,7 +2151,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   };
 
   const discardRecoveredCodexDraft = () => {
-    if (codexDraftStorageKey) discardCodexDraft(window.localStorage, codexDraftStorageKey);
+    if (codexDraftStorageKey) discardCodexDraft(getBrowserCodexStorage(), codexDraftStorageKey);
     codexDraftGateRef.current = true;
     setCodexDraftRecovery(null);
   };
@@ -2578,7 +2578,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     // Keep an immediate local recovery copy until the database confirms
     // this exact article revision. The displayed article update is optimistic.
     if (codexDraftStorageKey && activeWorld?.id) {
-      const backup = writeCodexDraft(window.localStorage, codexDraftStorageKey, draft);
+      const backup = writeCodexDraft(getBrowserCodexStorage(), codexDraftStorageKey, draft);
       if (backup.ok) {
         codexDraftReceiptRef.current = {
           key: codexDraftStorageKey, token: backup.token, worldId: activeWorld.id,
