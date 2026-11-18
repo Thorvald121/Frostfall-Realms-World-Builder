@@ -36,6 +36,8 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
   const [storageWarning, setStorageWarning] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [popover, setPopover] = useState(null);
+  const popoverRef = useRef(null);
   const scanRef = useRef(() => {});
   const issuesRef = useRef([]);
   issuesRef.current = issues;
@@ -55,6 +57,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
     setAccepted(readCodexWordList(browserStorage(), scope));
     setIgnored(new Set());
     setSelectedId(null);
+    setPopover(null);
     setNotice("");
     setStorageWarning("");
   }, [scope, entryIdentity]);
@@ -91,6 +94,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
     if (!engine || !editor) return;
     let timer;
     const schedule = () => {
+      setPopover(null);
       clearTimeout(timer);
       timer = setTimeout(() => scanRef.current(), 650);
     };
@@ -108,7 +112,12 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
       }
       if (node?.nodeType !== 3) return;
       const match = issuesRef.current.find(hit => hit.node === node && offset >= hit.start && offset <= hit.end);
-      if (match) { setSelectedId(match.id); setPanelOpen(true); }
+      if (match) {
+        setSelectedId(match.id);
+        const width = Math.min(305, window.innerWidth - 24);
+        setPopover({ issue: match, x: Math.max(12, Math.min(event.clientX + 12, window.innerWidth - width - 12)),
+          y: Math.max(12, Math.min(event.clientY + 14, window.innerHeight - 216)) });
+      }
     };
     editor.spellcheck = false;
     editor.addEventListener("input", schedule);
@@ -124,6 +133,22 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
     };
   }, [editorRef, engine, entryIdentity]);
   useEffect(() => { if (engine) scanRef.current(); }, [engine, approved, ignored, includeNames]);
+  useEffect(() => {
+    if (!popover) return;
+    const outside = event => {
+      if (!popoverRef.current?.contains(event.target)) setPopover(null);
+    };
+    const escape = event => { if (event.key === "Escape") setPopover(null); };
+    const onScroll = () => setPopover(null);
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", escape);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", escape);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [popover]);
 
   const reveal = useCallback((issue) => {
     const root = editorRef.current;
@@ -159,14 +184,17 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
       root.focus();
     } catch { /* insertion succeeded; caret restoration is best effort */ }
     setNotice("Changed “" + issue.word + "” to “" + replacement + "”. Save changes to keep it in your Codex.");
+    setPopover(null);
     onEditorChange?.();
     scanRef.current();
   };
   const ignore = (issue) => {
+    setPopover(null);
     setIgnored(previous => new Set([...previous, normalizeCodexWord(issue.word)]));
     setNotice("Ignoring “" + issue.word + "” while editing this entry.");
   };
   const addWord = (issue) => {
+    setPopover(null);
     const word = normalizeCodexWord(issue.word);
     const next = new Set([...accepted, word]);
     if (!scope || !saveCodexWordList(browserStorage(), scope, next)) {
@@ -180,6 +208,25 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
 
   return (
     <section className={styles.root} aria-label="Codex Writing Assistant">
+      {popover && (
+        <div ref={popoverRef} className={styles.popover} role="dialog" aria-label={"Spelling suggestions for " + popover.issue.word}
+          style={{ left: popover.x, top: popover.y }}>
+          <div className={styles.popoverHeading}>
+            <strong>{popover.issue.word}</strong>
+            <button type="button" onClick={() => setPopover(null)} aria-label="Close spelling suggestions">×</button>
+          </div>
+          <div className={styles.popoverChoices}>
+            {popover.issue.suggestions.length ? popover.issue.suggestions.slice(0, 4).map(suggestion =>
+              <button type="button" key={suggestion} onClick={() => apply(popover.issue, suggestion)}>{suggestion}</button>)
+              : <span className={styles.noGuess}>No close matches. This may be a world name.</span>}
+          </div>
+          <div className={styles.popoverActions}>
+            <button type="button" onClick={() => ignore(popover.issue)}>Ignore</button>
+            <button type="button" onClick={() => addWord(popover.issue)}>Add to world words</button>
+            <button type="button" onClick={() => { setPanelOpen(true); setPopover(null); }}>Review all</button>
+          </div>
+        </div>
+      )}
       <div className={styles.topBar}>
         <div className={styles.identity}>
           <BookOpenCheck size={17} aria-hidden="true" />
