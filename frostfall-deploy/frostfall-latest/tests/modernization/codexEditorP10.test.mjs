@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
-import { draftOverview } from '../../lib/domain/editorDraft.js';
+import { draftOverview, captureEditorDraft } from '../../lib/domain/editorDraft.js';
 
 const root = process.cwd();
 const component = readFileSync(join(root,'features/codex/CodexEditorWorkspace.jsx'),'utf8');
@@ -17,6 +17,14 @@ test('draft overview handles empty and malformed inputs', () => {
 test('draft overview strips HTML and counts structured fields and distinct tags', () => {
   const m=draftOverview({title:' Aelvarin ',summary:'Summary',body:'<p>The <b>golden</b> age</p><p>began &amp; ended</p>',fields:{year:0,home:'North',unused:' '},tags:'Empire, empire, history'});
   assert.deepEqual(m,{titleReady:true,summaryReady:true,wordCount:5,filledFields:2,tagCount:2});
+});
+test('captureEditorDraft prefers current editor DOM snapshot over delayed form state', () => {
+  const previous={title:'Lore',body:'<p>Old</p>',fields:{location:'South'}};
+  const captured=captureEditorDraft(previous,'<p>Most recent paragraph</p>');
+  assert.equal(captured.body,'<p>Most recent paragraph</p>');
+  assert.equal(previous.body,'<p>Old</p>');
+  assert.equal(captured.fields.location,'South');
+  assert.equal(captureEditorDraft(previous,undefined).body,'<p>Old</p>');
 });
 test('editor component parses as JSX without syntax diagnostics', () => {
   const ast=ts.createSourceFile('CodexEditorWorkspace.jsx',component,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
@@ -44,4 +52,8 @@ test('editor fields organize into four sections', () => {
 test('legacy entry save path is not duplicated', () => {
   assert.match(app,/const attemptSave/);
   assert.doesNotMatch(component,/fetch\(|\.rpc\(/);
+});
+test('save path snapshots latest rich text for modal confirmations', () => {
+  assert.match(app,/captureEditorDraft\(formData, latestSanitizedBody\)/);
+  assert.match(app,/pendingArticleSaveDraftRef\.current = draft/);
 });
