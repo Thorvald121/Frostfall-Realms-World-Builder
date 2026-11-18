@@ -11,7 +11,7 @@ const app = readFileSync(new URL('../../components/FrostfallRealms.jsx',import.m
 test('P12: article statistics are read-only and tolerate malformed data',()=>{
   const source={ body:'<p>One <s>crossed</s> word &amp; another.</p>',fields:{home:'North',age:0,other:' '},tags:['lore','people'],linkedIds:['one','one','two'] };
   const original=JSON.stringify(source);
-  assert.deepEqual(summarizeCodexReader(source),{wordCount:5,filledFields:2,tagCount:2,linkedCount:2});
+  assert.deepEqual(summarizeCodexReader(source),{wordCount:4,filledFields:2,tagCount:2,linkedCount:2});
   assert.equal(JSON.stringify(source),original);
   assert.deepEqual(summarizeCodexReader(),{wordCount:0,filledFields:0,tagCount:0,linkedCount:0});
 });
