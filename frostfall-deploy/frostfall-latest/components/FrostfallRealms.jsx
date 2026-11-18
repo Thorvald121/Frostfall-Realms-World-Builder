@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import _ from "lodash";
 import SafeRichText from "@/components/ui/SafeRichText";
+import { CodexReaderHero, CodexReaderStoryHeading } from "@/features/codex/CodexReaderWorkspace";
+import readerStyles from "@/features/codex/CodexReaderWorkspace.module.css";
 import { sanitizeRichHtml } from "@/lib/domain/richTextSafety";
 import * as mammoth from "mammoth";
 import { supabase, fetchArticles, fetchWorldsAndArticles, bulkUpsertArticles, upsertArticle, deleteArticle as dbDeleteArticle, archiveArticle as dbArchiveArticle, uploadPortrait, createWorld, fetchWorlds, logActivity, fetchWorldActivity, fetchAdminRole } from "../lib/supabase";
@@ -4357,38 +4359,17 @@ const renderArchives = () => (<>
   const renderArticle = () => (<>
           {/* === ARTICLE VIEW === */}
           {view === "article" && activeArticle && (
-            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 0, overflow: isMobile ? "auto" : "hidden", margin: isMobile ? 0 : "0 -28px", height: isMobile ? "auto" : "calc(100vh - 56px)" }}>
-              <div style={{ flex: 1, overflowY: isMobile ? "visible" : "auto", padding: isMobile ? "0 0 24px" : "0 28px 40px" }}>
-                {/* Breadcrumbs */}
-                <div style={{ fontSize: 11, color: theme.textDim, marginTop: 20, marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span role="link" tabIndex={0} style={{ cursor: "pointer", color: theme.textDim }} onKeyDown={(e) => { if (e.key === "Enter") goDash(); }} onClick={goDash}>Dashboard</span><span>›</span>
-                  <span style={{ cursor: "pointer", color: theme.textDim }} onClick={() => goCodex(activeArticle.category)}>{categoryPluralLabel(activeArticle.category)}</span><span>›</span>
-                  <span style={{ color: CATEGORIES[activeArticle.category]?.color }}>{activeArticle.title}</span>
-                </div>
-
-                {/* Hero header */}
-                <div style={{ position: "relative", marginBottom: 24 }}>
-                  <div style={{ display: "flex", alignItems: isMobile ? "center" : "flex-start", gap: isMobile ? 12 : 16, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-                    {activeArticle.portrait ? (
-                      <div style={{ width: 80, height: 80, borderRadius: 8, overflow: "hidden", border: "2px solid " + (CATEGORIES[activeArticle.category]?.color || theme.accent) + "40", boxShadow: "0 4px 20px rgba(0,0,0,0.4)", flexShrink: 0 }}>
-                        <img src={activeArticle.portrait} alt={activeArticle.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      </div>
-                    ) : (
-                      <div style={{ width: 64, height: 64, borderRadius: 8, background: ta(CATEGORIES[activeArticle.category]?.color || theme.accent, 0.1), border: "1px solid " + ta(CATEGORIES[activeArticle.category]?.color || theme.accent, 0.25), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <span style={{ fontSize: 30, color: CATEGORIES[activeArticle.category]?.color }}>{CATEGORIES[activeArticle.category]?.icon}</span>
-                      </div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: isMobile ? 20 : 24, fontWeight: 700, color: theme.text, margin: 0, letterSpacing: 1 }}>{activeArticle.title}</h1>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-                        <span style={S.catBadge(CATEGORIES[activeArticle.category]?.color)}>{CATEGORIES[activeArticle.category]?.label}</span>
-                        {activeArticle.temporal && <span style={{ fontSize: 10, color: theme.textDim, padding: "2px 8px", background: ta(theme.textDim, 0.08), borderRadius: 10 }}>⏳ {activeArticle.temporal.type}{activeArticle.temporal.active_start != null ? " · Year " + activeArticle.temporal.active_start : ""}{activeArticle.temporal.active_end != null ? "–" + activeArticle.temporal.active_end : ""}{activeArticle.temporal.death_year ? " · † " + activeArticle.temporal.death_year : ""}</span>}
-                      </div>
-                      <p style={{ fontSize: 14, color: theme.textMuted, fontStyle: "italic", lineHeight: 1.6, margin: "8px 0 0" }}>{activeArticle.summary}</p>
-                    </div>
-                  </div>
+            <div className={readerStyles.readerGrid}>
+              <div className={readerStyles.main}>
+                <CodexReaderHero
+                  article={activeArticle}
+                  category={CATEGORIES[activeArticle.category]}
+                  worldName={activeWorld?.name}
+                  onWorld={goDash}
+                  onCodex={() => goCodex(activeArticle.category)}
+                >
                   {/* Action buttons — own row to prevent squishing title/summary */}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 14, position: "relative" }}>
+                  <div className={readerStyles.articleActions}>
                     <button onClick={() => goEdit(activeArticle)} style={{ fontSize: 11, color: theme.accent, background: ta(theme.accent, 0.1), border: "1px solid " + ta(theme.accent, 0.25), borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.2); }} onMouseLeave={(e) => { e.currentTarget.style.background = ta(theme.accent, 0.1); }}>✎ Edit</button>
                     <button onClick={() => setShowMoveMenu(showMoveMenu === activeArticle.id ? null : activeArticle.id)} style={{ fontSize: 11, color: "#7ec8e3", background: "rgba(126,200,227,0.1)", border: "1px solid rgba(126,200,227,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
@@ -4415,8 +4396,9 @@ const renderArchives = () => (<>
                     <button onClick={() => setShowDeleteModal(activeArticle)} style={{ fontSize: 11, color: "#e07050", background: "rgba(224,112,80,0.1)", border: "1px solid rgba(224,112,80,0.25)", borderRadius: 6, padding: "7px 16px", cursor: "pointer", fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 0.5 }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(224,112,80,0.1)"; }}>🗑 Delete</button>
                   </div>
-                  <Ornament width={260} />
-                </div>
+                </CodexReaderHero>
+                <section className={readerStyles.storyCard} aria-label="Codex lore and canon">
+                  <CodexReaderStoryHeading />
 
                 {/* Conflicts & integrity warnings */}
                 {conflictsFor(activeArticle.id).map((c) => (
@@ -4569,7 +4551,7 @@ const renderArchives = () => (<>
                 })()}
 
                 {/* Body content */}
-                <div className="article-body" style={{ fontSize: 14, color: theme.textMuted, lineHeight: 1.8, marginTop: 16 }}>
+                <div className={"article-body " + readerStyles.loreBody}>
                   {isHtmlBody(activeArticle.body) ? (() => {
                     // HTML body — render with mention chips and collapsible sections
                     const mentionHtml = renderBodyWithMentions(activeArticle.body);
@@ -4624,10 +4606,11 @@ const renderArchives = () => (<>
                   </div>
                 )}
                 <div style={{ marginTop: 16, fontSize: 11, color: theme.textDim }}>Created {new Date(activeArticle.createdAt).toLocaleDateString()} · Updated {timeAgo(activeArticle.updatedAt)}</div>
+              </section>
               </div>
 
-              {/* WORLD ANVIL–STYLE SIDEBAR */}
-              <aside aria-label="Article details" style={{ width: isMobile ? "100%" : 300, minWidth: isMobile ? "auto" : 300, borderLeft: isMobile ? "none" : "1px solid " + theme.divider, borderTop: isMobile ? "1px solid " + theme.divider : "none", overflowY: "auto", padding: 0, background: ta(theme.deepBg, 0.4) }}>
+              {/* Article research rail — retains legacy Canon, cross-links and history */}
+              <aside aria-label="Article details" className={readerStyles.sidebar}>
 
                 {/* Portrait (large, in sidebar) */}
                 {activeArticle.portrait && (
