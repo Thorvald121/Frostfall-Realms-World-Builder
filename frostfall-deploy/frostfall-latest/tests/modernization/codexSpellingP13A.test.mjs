@@ -21,6 +21,9 @@ const globalCss = readFileSync(new URL("../../app/themes.css",import.meta.url),"
 test("P13A: local corrections prefer Sagnverk-style common typos and support transpositions", () => {
   assert.equal(engine.correct("weird"), true);
   assert.equal(engine.correct("WIERD"), false);
+  assert.equal(engine.correct("don't"),true);
+  assert.equal(engine.correct("I'm"),true);
+  assert.equal(engine.correct("long-lived",new Set(["long","lived"])),true);
   assert.equal(engine.suggest("wierd")[0], "weird");
   assert.equal(engine.suggest("teh")[0], "the");
   assert.equal(engine.suggest("adn")[0], "and");
