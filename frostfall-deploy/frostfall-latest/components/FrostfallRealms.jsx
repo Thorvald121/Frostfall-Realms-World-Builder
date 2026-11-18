@@ -35,6 +35,7 @@ import { CodexCanonPanel } from "@/features/codex/CodexCanonPanel";
 import EntryTypeMenu from "@/components/ui/EntryTypeMenu";
 import { CodexWorkspaceHeader, CodexEmptyState } from "@/features/codex/CodexWorkspaceHeader";
 import { CodexEditorWorkspace, CodexEditorSection } from "@/features/codex/CodexEditorWorkspace";
+import { captureEditorDraft } from "@/lib/domain/editorDraft";
 import { loadManuscriptWorld, saveManuscriptWorld } from "@/lib/domain/manuscripts/manuscriptRepository";
 import { chooseManuscriptHydration, readBrowserDraft, writeBrowserDraft, sameSnapshot, journalKey } from "@/lib/domain/manuscripts/manuscriptSync";
 
@@ -522,6 +523,7 @@ export default function FrostfallRealms({ user, onLogout }) {
 
 
   const articleBodyRef = useRef(null);
+  const pendingArticleSaveDraftRef = useRef(null);
   const articleImageRef = useRef(null);
   const articleLastTypedRef = useRef(null);
   const articleInitSessionRef = useRef(null);
@@ -2055,8 +2057,9 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     });
   }, [activeWorld?.id]);
 
-  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
+  const goCreate = (cat) => { pendingArticleSaveDraftRef.current = null; setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
+    pendingArticleSaveDraftRef.current = null;
     setCreateCat(article.category);
     setEditingId(article.id);
     setArticlePreviewMode(false);
@@ -2429,11 +2432,23 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   }, []);
 
   const attemptSave = () => {
-    flushArticleBody(); // ensure editor content is synced to formData
-    const dupes = findDuplicates(formData.title, articles, editingId);
+    // Snapshot the current rich text before React's debounced state update can lag.
+    const latestSanitizedBody = articleBodyRef.current && !articlePreviewMode
+      ? sanitizeRichHtml(articleBodyRef.current.innerHTML || "")
+      : (formData.body || "");
+    const draft = captureEditorDraft(formData, latestSanitizedBody);
+    if (!String(draft.title || "").trim()) {
+      document.getElementById("fr-codex-title")?.focus();
+      return;
+    }
+    clearTimeout(articleBodyTimerRef.current);
+    articleLastTypedRef.current = latestSanitizedBody;
+    pendingArticleSaveDraftRef.current = draft;
+    setFormData((p) => ({ ...p, body: latestSanitizedBody }));
+    const dupes = findDuplicates(draft.title, articles, editingId);
     if (dupes.length > 0) { setPendingDupes(dupes); setShowDupeModal(true); return; }
-    // Check integrity — gate on errors/warnings
-    const data = { ...formData, id: editingId || lower(formData.title).replace(/[^a-z0-9]+/g, "_"), category: createCat };
+    // Validate the same immutable draft that will actually be persisted.
+    const data = { ...draft, id: editingId || lower(draft.title).replace(/[^a-z0-9]+/g, "_"), category: createCat };
     const warnings = checkArticleIntegrity(data, articles, temporalGraph, editingId);
     const serious = warnings.filter((w) => w.severity === "error" || w.severity === "warning");
     if (serious.length > 0) {
@@ -2443,19 +2458,20 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     doSave();
   };
   const doSave = () => {
-    const id = editingId || lower(formData.title).replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
+    const draft = pendingArticleSaveDraftRef.current || formData;
+    const id = editingId || lower(draft.title).replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
     // Extract both @[Title](id) rich mentions and legacy @id mentions
-    const richMentions = (formData.body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean);
-    const legacyMentions = (formData.body.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
+    const richMentions = (draft.body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean);
+    const legacyMentions = (draft.body.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
     const allMentions = [...new Set([...richMentions, ...legacyMentions])];
-    const temporal = buildTemporal(createCat, formData.fields, formData.temporal);
+    const temporal = buildTemporal(createCat, draft.fields, draft.temporal);
     const now = new Date().toISOString();
     const a = {
-      id, title: formData.title, category: createCat, summary: formData.summary,
-      fields: formData.fields, body: formData.body,
-      tags: formData.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      id, title: draft.title, category: createCat, summary: draft.summary,
+      fields: draft.fields, body: draft.body,
+      tags: draft.tags.split(",").map((t) => t.trim()).filter(Boolean),
       linkedIds: allMentions, temporal,
-      portrait: formData.portrait || (editingId ? (articles.find((x) => x.id === editingId)?.portrait || null) : null),
+      portrait: draft.portrait || (editingId ? (articles.find((x) => x.id === editingId)?.portrait || null) : null),
       createdAt: editingId ? (articles.find((x) => x.id === editingId)?.createdAt || now) : now,
       updatedAt: now,
     };
@@ -2469,6 +2485,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       setArticles((prev) => dedup([a, ...prev]));
       addActivity("created", a);
     }
+    pendingArticleSaveDraftRef.current = null;
     setActiveArticle(a); setShowDupeModal(false); setPendingDupes([]); setEditingId(null); setIntegrityGate(null); setView("article");
   };
 
