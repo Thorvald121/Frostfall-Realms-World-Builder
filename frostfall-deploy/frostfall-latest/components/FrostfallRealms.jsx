@@ -750,6 +750,16 @@ const handleCreateWorld = async () => {
             catch (e) { console.warn("Local codex recovery unavailable", e); }
             const all = [...snapshot.articles, ...snapshot.archived.map((a) => ({ ...a, isArchived: true }))];
             requireSaveReceipt(await bulkUpsertArticles(activeWorld.id, all));
+            // Only a matching, successfully written article revision can clear
+            // its local unsaved draft. Never clear a newer browser backup.
+            const pending = codexDraftReceiptRef.current;
+            if (pending && pending.worldId === worldId && snapshot.articles.some(
+              (article) => article.id === pending.articleId && article.updatedAt === pending.updatedAt
+            )) {
+              if (clearCodexDraftOnReceipt(window.localStorage, pending.key, pending.token)) {
+                codexDraftReceiptRef.current = null;
+              }
+            }
             if (revision === codexRevisionRef.current && latestWorldRef.current === worldId) {
               try { localStorage.removeItem(codexRecoveryKey(worldId)); } catch {}
             }
@@ -2533,6 +2543,19 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       createdAt: editingId ? (articles.find((x) => x.id === editingId)?.createdAt || now) : now,
       updatedAt: now,
     };
+    // Keep an immediate local recovery copy until the database confirms
+    // this exact article revision. The displayed article update is optimistic.
+    if (codexDraftStorageKey && activeWorld?.id) {
+      const backup = writeCodexDraft(window.localStorage, codexDraftStorageKey, draft);
+      if (backup.ok) {
+        codexDraftReceiptRef.current = {
+          key: codexDraftStorageKey, token: backup.token, worldId: activeWorld.id,
+          articleId: a.id, updatedAt: a.updatedAt,
+        };
+      } else {
+        setCodexDraftBackupError(true);
+      }
+    }
     if (editingId) {
       // Save version history snapshot before overwriting
       const prev = articles.find((x) => x.id === editingId);
