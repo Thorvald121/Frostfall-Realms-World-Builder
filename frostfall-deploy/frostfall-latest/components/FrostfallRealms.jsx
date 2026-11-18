@@ -34,6 +34,8 @@ import { CanonStudio } from "@/features/canon/CanonStudio";
 import { CodexCanonPanel } from "@/features/codex/CodexCanonPanel";
 import EntryTypeMenu from "@/components/ui/EntryTypeMenu";
 import { CodexWorkspaceHeader, CodexEmptyState } from "@/features/codex/CodexWorkspaceHeader";
+import { CodexEditorWorkspace, CodexEditorSection } from "@/features/codex/CodexEditorWorkspace";
+import { captureEditorDraft } from "@/lib/domain/editorDraft";
 import { loadManuscriptWorld, saveManuscriptWorld } from "@/lib/domain/manuscripts/manuscriptRepository";
 import { chooseManuscriptHydration, readBrowserDraft, writeBrowserDraft, sameSnapshot, journalKey } from "@/lib/domain/manuscripts/manuscriptSync";
 
@@ -521,6 +523,7 @@ export default function FrostfallRealms({ user, onLogout }) {
 
 
   const articleBodyRef = useRef(null);
+  const pendingArticleSaveDraftRef = useRef(null);
   const articleImageRef = useRef(null);
   const articleLastTypedRef = useRef(null);
   const articleInitSessionRef = useRef(null);
@@ -2054,8 +2057,9 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     });
   }, [activeWorld?.id]);
 
-  const goCreate = (cat) => { setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
+  const goCreate = (cat) => { pendingArticleSaveDraftRef.current = null; setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
+    pendingArticleSaveDraftRef.current = null;
     setCreateCat(article.category);
     setEditingId(article.id);
     setArticlePreviewMode(false);
@@ -2428,11 +2432,23 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   }, []);
 
   const attemptSave = () => {
-    flushArticleBody(); // ensure editor content is synced to formData
-    const dupes = findDuplicates(formData.title, articles, editingId);
+    // Snapshot the current rich text before React's debounced state update can lag.
+    const latestSanitizedBody = articleBodyRef.current && !articlePreviewMode
+      ? sanitizeRichHtml(articleBodyRef.current.innerHTML || "")
+      : (formData.body || "");
+    const draft = captureEditorDraft(formData, latestSanitizedBody);
+    if (!String(draft.title || "").trim()) {
+      document.getElementById("fr-codex-title")?.focus();
+      return;
+    }
+    clearTimeout(articleBodyTimerRef.current);
+    articleLastTypedRef.current = latestSanitizedBody;
+    pendingArticleSaveDraftRef.current = draft;
+    setFormData((p) => ({ ...p, body: latestSanitizedBody }));
+    const dupes = findDuplicates(draft.title, articles, editingId);
     if (dupes.length > 0) { setPendingDupes(dupes); setShowDupeModal(true); return; }
-    // Check integrity — gate on errors/warnings
-    const data = { ...formData, id: editingId || lower(formData.title).replace(/[^a-z0-9]+/g, "_"), category: createCat };
+    // Validate the same immutable draft that will actually be persisted.
+    const data = { ...draft, id: editingId || lower(draft.title).replace(/[^a-z0-9]+/g, "_"), category: createCat };
     const warnings = checkArticleIntegrity(data, articles, temporalGraph, editingId);
     const serious = warnings.filter((w) => w.severity === "error" || w.severity === "warning");
     if (serious.length > 0) {
@@ -2442,19 +2458,20 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     doSave();
   };
   const doSave = () => {
-    const id = editingId || lower(formData.title).replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
+    const draft = pendingArticleSaveDraftRef.current || formData;
+    const id = editingId || lower(draft.title).replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
     // Extract both @[Title](id) rich mentions and legacy @id mentions
-    const richMentions = (formData.body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean);
-    const legacyMentions = (formData.body.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
+    const richMentions = (draft.body.match(/@\[([^\]]+)\]\(([^)]+)\)/g) || []).map((m) => { const match = m.match(/@\[([^\]]+)\]\(([^)]+)\)/); return match ? match[2] : null; }).filter(Boolean);
+    const legacyMentions = (draft.body.match(/@(?!\[)([\w]+)/g) || []).map((m) => m.slice(1));
     const allMentions = [...new Set([...richMentions, ...legacyMentions])];
-    const temporal = buildTemporal(createCat, formData.fields, formData.temporal);
+    const temporal = buildTemporal(createCat, draft.fields, draft.temporal);
     const now = new Date().toISOString();
     const a = {
-      id, title: formData.title, category: createCat, summary: formData.summary,
-      fields: formData.fields, body: formData.body,
-      tags: formData.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      id, title: draft.title, category: createCat, summary: draft.summary,
+      fields: draft.fields, body: draft.body,
+      tags: draft.tags.split(",").map((t) => t.trim()).filter(Boolean),
       linkedIds: allMentions, temporal,
-      portrait: formData.portrait || (editingId ? (articles.find((x) => x.id === editingId)?.portrait || null) : null),
+      portrait: draft.portrait || (editingId ? (articles.find((x) => x.id === editingId)?.portrait || null) : null),
       createdAt: editingId ? (articles.find((x) => x.id === editingId)?.createdAt || now) : now,
       updatedAt: now,
     };
@@ -2468,6 +2485,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
       setArticles((prev) => dedup([a, ...prev]));
       addActivity("created", a);
     }
+    pendingArticleSaveDraftRef.current = null;
     setActiveArticle(a); setShowDupeModal(false); setPendingDupes([]); setEditingId(null); setIntegrityGate(null); setView("article");
   };
 
@@ -4741,14 +4759,20 @@ const renderArchives = () => (<>
 
   const renderCreateEdit = () => (<>
           {/* === CREATE / EDIT === */}
-          {view === "create" && createCat && (<div style={{ maxWidth: 680, marginTop: 24 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-              <span style={{ fontSize: 24, color: CATEGORIES[createCat]?.color }}>{CATEGORIES[createCat]?.icon}</span>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: theme.text, margin: 0 }}>{editingId ? "Edit" : "New"} {CATEGORIES[createCat]?.label}</h2>
-              {editingId && <span style={{ fontSize: 11, color: theme.textDim, background: "rgba(85,102,119,0.15)", padding: "3px 10px", borderRadius: 10 }}>Editing: {editingId}</span>}
-            </div>
-            <Ornament width={260} />
-            <div style={{ marginTop: 20 }}>
+          {view === "create" && createCat && (
+            <CodexEditorWorkspace
+              key={`${activeWorld?.id || "world"}:${editingId || "new"}:${createCat}`}
+              worldName={activeWorld?.name}
+              category={CATEGORIES[createCat]}
+              editing={!!editingId}
+              draft={formData}
+              onSave={attemptSave}
+              onCancel={() => editingId ? navigate(editingId) : goCodex()}
+              onCodex={() => goCodex()}
+            >
+              <div className="fr-editor-form">
+                <CodexEditorSection id="fr-editor-identity" number={1} title="Identity & appearance"
+                  description="Name this piece of lore, give it a short summary, and add a visual reference if you wish.">
               {/* Template picker — only when creating new */}
               {!editingId && (() => {
                 const templates = loadTemplates().filter((t) => t.category === createCat);
@@ -4774,8 +4798,8 @@ const renderArchives = () => (<>
                 );
               })()}
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Title</label>
-                <input style={{ ...S.input, ...(liveDupes.length > 0 ? { border: "1px solid #e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={`Name this ${safeText(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} />
+                <label htmlFor="fr-codex-title" style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Title</label>
+                <input id="fr-codex-title" type="text" style={{ ...S.input, ...(liveDupes.length > 0 ? { border: "1px solid #e07050" } : {}) }} value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} placeholder={`Name this ${safeText(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...`} />
                 {liveDupes.length > 0 && <WarningBanner severity="error" icon="⚠" title="Potential Duplicates Found" style={{ marginTop: 8 }}>
                   <p style={{ margin: "0 0 8px" }}>Saving will require confirmation. Similar entries:</p>
                   {liveDupes.map((d) => <div key={d.article.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
@@ -4785,7 +4809,7 @@ const renderArchives = () => (<>
                   </div>)}
                 </WarningBanner>}
               </div>
-              <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Summary</label><input style={S.input} value={formData.summary} onChange={(e) => setFormData((p) => ({ ...p, summary: e.target.value }))} placeholder="A brief description..." /></div>
+              <div style={{ marginBottom: 16 }}><label htmlFor="fr-codex-summary" style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Summary</label><input id="fr-codex-summary" type="text" style={S.input} value={formData.summary} onChange={(e) => setFormData((p) => ({ ...p, summary: e.target.value }))} placeholder="A brief description..." /></div>
 
               {/* Portrait Upload */}
               <div style={{ marginBottom: 20 }}>
@@ -4829,7 +4853,9 @@ const renderArchives = () => (<>
                 </div>
               </div>
 
-              <p style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 600, color: theme.text, marginTop: 24, marginBottom: 16, letterSpacing: 1 }}>◈ Template Fields</p>
+                </CodexEditorSection>
+                <CodexEditorSection id="fr-editor-details" number={2} title="Properties & chronology"
+                  description="Structured information makes entries easier to compare, search, and connect across your world.">
               {TEMPLATE_FIELDS[createCat]?.map((fk) => (
                 <div key={fk} style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>{formatKey(fk)}</label><input style={S.input} value={formData.fields[fk] || ""} onChange={(e) => setFormData((p) => ({ ...p, fields: { ...p.fields, [fk]: e.target.value } }))} placeholder={`Enter ${lower(formatKey(fk))}...`} /></div>
               ))}
@@ -4848,6 +4874,9 @@ const renderArchives = () => (<>
                   <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Active Until (Year)</label><input style={S.input} type="number" value={formData.temporal?.active_end ?? ""} onChange={(e) => setFormData((p) => ({ ...p, temporal: { ...(p.temporal || {}), active_end: e.target.value ? parseInt(e.target.value) : null } }))} /></div>
                 </div>
               </>)}
+                </CodexEditorSection>
+                <CodexEditorSection id="fr-editor-story" number={3} title="Lore & narrative"
+                  description="Develop this entry's history and story. Reference other entries directly in the text.">
 
               <div style={{ marginBottom: 16 }}>
                 {/* Remote edit warning banner */}
@@ -5057,13 +5086,13 @@ const renderArchives = () => (<>
                 ))}
               </WarningBanner>}
 
+                </CodexEditorSection>
+                <CodexEditorSection id="fr-editor-index" number={4} title="Tags & discovery"
+                  description="Tags help readers explore your world and connect related lore.">
               <div style={{ marginBottom: 16 }}><label htmlFor="tags-input" style={{ display: "block", fontSize: 11, color: theme.textDim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, fontWeight: 600 }}>Tags <span style={{ fontWeight: 400, color: theme.textDim }}>— comma separated</span></label><input style={S.input} id="tags-input" value={formData.tags} onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))} placeholder="war, second-age, dragons..." /></div>
-              <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
-                <button style={tBtnP} onClick={attemptSave}>{editingId ? "Save Changes" : "Create Entry"}</button>
-                <button style={tBtnS} onClick={() => editingId ? navigate(editingId) : goDash()}>Cancel</button>
+                </CodexEditorSection>
               </div>
-            </div>
-          </div>)}
+            </CodexEditorWorkspace>)}
   </>);
 
     

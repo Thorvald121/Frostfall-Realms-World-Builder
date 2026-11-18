@@ -1,16 +1,17 @@
 # Frostfall Realms — Active Development Checkpoint
 
-**2026-11-17 · P9 World Home Studio · GitHub feature branch `feature/p9-modern-world-home-20261117`**
+**2026-11-18 · P10 Codex Authoring Workspace**
 
-- Canonical source: `Thorvald121/Frostfall-Realms-World-Builder`; Next.js app: `frostfall-deploy/frostfall-latest/`.
-- GitHub `main` baseline: P8 `b1cf795f6fb7e402b228333b1515c0f71eb7e9e9`. GitHub connector `velessec` has verified repository write permissions; Vercel auto-builds GitHub branches.
-- P1–P8 are merged into `main` and production. P8 shipped a reusable dismissible entry menu and modular Codex workspace; new-entry outside-click problem was addressed in P8.
-- P9 changes replace the **entire legacy World Home presentation** (not just an overlay): full-width responsive Studio layout, structured intro, feature pins, recent lore, category breakdown, genuine empty-world getting-started actions.
-- P9 corrects a duplicated legacy empty-results message in Codex; `CodexEmptyState` remains the single authoritative empty state.
-- Critical world-scope defense: World Home React component is keyed by `activeWorld.id`; asynchronous fetches ignore stale results after world switches and show explicit errors rather than showing a previous world's details.
-- P9 preserves Supabase `fetchWorldHome`, `updateWorldHome`, `uploadWorldCover`, owner checks, `worlds` home columns, and existing category / role isolation. No SQL or destructive database migration.
-- P9 regression: 10 new static/parser tests locally passed. Next.js production build and authenticated browser interactions must be confirmed on Vercel prior to promotion.
-- Production data baseline (last verified): 8 worlds, 168 articles, 16 user profiles; selected world Chairondis has 0 Codex articles. Aelvarin contains 165 but belongs to a distinct access scope; do not bypass RLS.
-- Known follow-ups: redesign the *Codex article editor*, consolidate remaining monolithic coordinator logic, improve map/relationship views; reconcile legacy `user_worlds` SECURITY DEFINER view and improve independent backup/restore strategy.
-- Standards: Tabler-inspired layout, Lucide icons, nine themes, module-specific icon and label colors; preserve single theme dropdown and accessible responsive behavior.
-- Do not claim browser acceptance from a Vercel build alone. Keep rollback deployment ID from previous release.
+- Canonical GitHub repository: `Thorvald121/Frostfall-Realms-World-Builder`; deployable Next.js app in `frostfall-deploy/frostfall-latest/`.
+- P1–P9 merged and live on `main`. Last verified P9 production: `4a0244f4fae3e171e0a9e15fc2d2bc4675290b55`, Vercel `dpl_8gx4WvxMHSwgfrrgffLpHxqs272y`.
+- P10 feature branch: `feature/p10-codex-authoring-workspace-20261118`; directly connected GitHub `velessec` has write permission, Vercel builds every branch.
+- New `features/codex/CodexEditorWorkspace.jsx` and scoped CSS; 4 authoring sections, responsive rail, draft summary, accessible Save/Cancel buttons.
+- Existing category property model, rich-text editor, portrait uploads, duplicate/integrity gates and Supabase article save remain authoritative.
+- `lib/domain/editorDraft.js` snapshots sanitized rich-text body directly at save-time before React's debounce can leave stale state; use this same draft through duplicate and integrity dialogs.
+- P10 adds `prebuild` test/syntax gates to existing Vercel Next.js build (no external paid GitHub CI).
+- No DB migrations, data resets, auth changes or separate ZIP required for P10.
+- P10 preview build/test gate still pending; do not claim released until branch and production deploy both READY.
+- Database reference, last verified: 8 worlds, 168 articles, 16 profiles, 8 main Canon branches. Chairondis is currently empty; other users' worlds must not be exposed.
+- Next major work: modern rich-text editing engine/HTML migration and robust autosave + version receipts, Atlas, relationship graph, account deletion, and SECURITY DEFINER view review.
+- UI standards: Tabler-inspired design, Lucide, 9 theme palettes with one selector, distinct navigation icon and label colors, accessible dark/light contrast and mobile scaling.
+- See `docs/modernization/PHASE10_HANDOFF.md` for acceptance gates.
