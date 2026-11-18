@@ -103,7 +103,8 @@ test("P11 requires a verified Supabase receipt matching the article revision bef
   const app = readFileSync("components/FrostfallRealms.jsx", "utf8");
   assert.match(app, /requireSaveReceipt\(await bulkUpsertArticles/);
   assert.match(app, /article\.id === pending\.articleId && article\.updatedAt === pending\.updatedAt/);
-  assert.match(app, /clearCodexDraftOnReceipt\(window\.localStorage, pending\.key, pending\.token\)/);
+  assert.match(app, /clearCodexDraftOnReceipt/);
+  assert.match(app, /getBrowserCodexStorage\(\)/);
 });
 test("P11 preserves original editor sanitizer and formatting storage", () => {
   const app = readFileSync("components/FrostfallRealms.jsx", "utf8");
