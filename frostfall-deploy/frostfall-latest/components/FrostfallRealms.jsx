@@ -37,6 +37,7 @@ import { CodexWorkspaceHeader, CodexEmptyState } from "@/features/codex/CodexWor
 import { CodexEditorWorkspace, CodexEditorSection } from "@/features/codex/CodexEditorWorkspace";
 import { captureEditorDraft } from "@/lib/domain/editorDraft";
 import { codexFooterLabel, showManuscriptFooter } from "@/lib/domain/editorSaveStatus";
+import { codexDraftKey, draftHasContent, readCodexDraft, writeCodexDraft, clearCodexDraftOnReceipt, discardCodexDraft } from "@/lib/domain/codexDraftRecovery";
 import { loadManuscriptWorld, saveManuscriptWorld } from "@/lib/domain/manuscripts/manuscriptRepository";
 import { chooseManuscriptHydration, readBrowserDraft, writeBrowserDraft, sameSnapshot, journalKey } from "@/lib/domain/manuscripts/manuscriptSync";
 
@@ -534,6 +535,62 @@ export default function FrostfallRealms({ user, onLogout }) {
 
   const importFileRef = useRef(null);
   const saveTimer = useRef(null);
+
+  // P11 — local recovery belongs to one authenticated account, world and entry.
+  // It does not publish or assert that the database contains these draft edits.
+  const [codexDraftRecovery, setCodexDraftRecovery] = useState(null);
+  const [codexDraftBackupError, setCodexDraftBackupError] = useState(false);
+  const codexDraftGateRef = useRef(false);
+  const codexDraftOriginalRef = useRef("");
+  const codexDraftReceiptRef = useRef(null);
+  const formDataLiveRef = useRef(formData);
+  formDataLiveRef.current = formData;
+  const codexDraftStorageKey = view === "create"
+    ? codexDraftKey(user?.id, activeWorld?.id, createCat, editingId || "new")
+    : null;
+
+  useEffect(() => {
+    codexDraftGateRef.current = false;
+    setCodexDraftRecovery(null);
+    setCodexDraftBackupError(false);
+    if (!codexDraftStorageKey || typeof window === "undefined") return;
+    codexDraftOriginalRef.current = JSON.stringify(formDataLiveRef.current);
+    const previous = readCodexDraft(window.localStorage, codexDraftStorageKey);
+    const lastPersisted = editingId
+      ? articles.find((article) => article.id === editingId)?.updatedAt
+      : null;
+    if (previous && (!lastPersisted || previous.savedAtMs > (Date.parse(lastPersisted) || 0))) {
+      setCodexDraftRecovery(previous);
+    } else {
+      codexDraftGateRef.current = true;
+    }
+  }, [codexDraftStorageKey]); // Intentional: only check when entering a new draft identity.
+
+  useEffect(() => {
+    if (!codexDraftStorageKey || !codexDraftGateRef.current
+      || JSON.stringify(formData) === codexDraftOriginalRef.current || !draftHasContent(formData)) return;
+    const timer = setTimeout(() => {
+      const result = writeCodexDraft(window.localStorage, codexDraftStorageKey, formData);
+      setCodexDraftBackupError(!result.ok);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [codexDraftStorageKey, formData]);
+
+  useEffect(() => {
+    if (!codexDraftStorageKey || typeof window === "undefined") return;
+    const flushOnPageHide = () => {
+      if (!codexDraftGateRef.current) return;
+      const body = articleBodyRef.current && !articlePreviewMode
+        ? sanitizeRichHtml(articleBodyRef.current.innerHTML || "")
+        : formDataLiveRef.current.body;
+      const draft = { ...formDataLiveRef.current, body };
+      if (draftHasContent(draft) && JSON.stringify(draft) !== codexDraftOriginalRef.current) {
+        writeCodexDraft(window.localStorage, codexDraftStorageKey, draft);
+      }
+    };
+    window.addEventListener("pagehide", flushOnPageHide);
+    return () => window.removeEventListener("pagehide", flushOnPageHide);
+  }, [codexDraftStorageKey, articlePreviewMode]);
 
   // === PERSISTENT STORAGE (Supabase → window.storage → localStorage fallback) ===
   useEffect(() => {
