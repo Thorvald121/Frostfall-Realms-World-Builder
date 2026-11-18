@@ -539,6 +539,7 @@ export default function FrostfallRealms({ user, onLogout }) {
   // P11 — local recovery belongs to one authenticated account, world and entry.
   // It does not publish or assert that the database contains these draft edits.
   const [codexDraftRecovery, setCodexDraftRecovery] = useState(null);
+  const [codexDraftRestoreNonce, setCodexDraftRestoreNonce] = useState(0);
   const [codexDraftBackupError, setCodexDraftBackupError] = useState(false);
   const codexDraftGateRef = useRef(false);
   const codexDraftOriginalRef = useRef("");
@@ -701,6 +702,7 @@ const handleCreateWorld = async () => {
   };
 
   const switchWorld = async (world) => {
+    flushCodexDraftBackup();
     if (world.id === activeWorld?.id) { setWorldSwitcherOpen(false); return; }
     // Persist the outgoing world's manuscripts before changing the storage key.
     try {
@@ -2125,8 +2127,38 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
     });
   }, [activeWorld?.id]);
 
-  const goCreate = (cat) => { pendingArticleSaveDraftRef.current = null; setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
+  const flushCodexDraftBackup = () => {
+    if (view !== "create" || !codexDraftStorageKey || !codexDraftGateRef.current) return;
+    const body = articleBodyRef.current && !articlePreviewMode
+      ? sanitizeRichHtml(articleBodyRef.current.innerHTML || "")
+      : formDataLiveRef.current.body;
+    const draft = { ...formDataLiveRef.current, body };
+    if (!draftHasContent(draft) || JSON.stringify(draft) === codexDraftOriginalRef.current) return;
+    const backup = writeCodexDraft(window.localStorage, codexDraftStorageKey, draft);
+    if (!backup.ok) setCodexDraftBackupError(true);
+  };
+
+  const restoreCodexDraft = () => {
+    if (!codexDraftRecovery) return;
+    clearTimeout(articleBodyTimerRef.current);
+    articleInitSessionRef.current = null;
+    articleLastTypedRef.current = null;
+    setArticlePreviewMode(false);
+    setFormData({ ...codexDraftRecovery.draft });
+    codexDraftGateRef.current = true;
+    setCodexDraftRecovery(null);
+    setCodexDraftRestoreNonce((value) => value + 1);
+  };
+
+  const discardRecoveredCodexDraft = () => {
+    if (codexDraftStorageKey) discardCodexDraft(window.localStorage, codexDraftStorageKey);
+    codexDraftGateRef.current = true;
+    setCodexDraftRecovery(null);
+  };
+
+  const goCreate = (cat) => { flushCodexDraftBackup(); pendingArticleSaveDraftRef.current = null; setCreateCat(cat); setEditingId(null); setArticlePreviewMode(false); setArticleTablePicker(false); articleInitSessionRef.current = null; articleLastTypedRef.current = null; setFormData({ title: "", summary: "", fields: {}, body: "", tags: "", temporal: null, portrait: null }); setView("create"); closeSidebar(); };
   const goEdit = (article) => {
+    flushCodexDraftBackup();
     pendingArticleSaveDraftRef.current = null;
     setCreateCat(article.category);
     setEditingId(article.id);
@@ -2393,7 +2425,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
   // Initialize editor content when starting a new edit session or switching out of preview
   useEffect(() => {
     if (view !== "create" || articlePreviewMode) return;
-    const sessionKey = (editingId || "new") + "_" + (createCat || "");
+    const sessionKey = (activeWorld?.id || "world") + "_" + (editingId || "new") + "_" + (createCat || "") + "_" + codexDraftRestoreNonce;
     if (articleInitSessionRef.current === sessionKey) return;
     articleInitSessionRef.current = sessionKey;
     requestAnimationFrame(() => {
@@ -2402,7 +2434,7 @@ const [dashCustomizing, setDashCustomizing] = useState(false);
         articleLastTypedRef.current = articleBodyRef.current.innerHTML;
       }
     });
-  }, [view, editingId, createCat, articlePreviewMode]);
+  }, [view, editingId, createCat, articlePreviewMode, codexDraftRestoreNonce]);
 
   // Re-initialize when switching from preview back to edit
   useEffect(() => {
