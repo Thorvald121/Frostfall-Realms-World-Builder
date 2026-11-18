@@ -1,15 +1,17 @@
 # Frostfall Realms — Active Development Checkpoint
 
-**2026-11-18 · P11 Codex Draft Recovery**
+**2026-11-18 · P12 Codex Reader Studio**
 
-- Canonical repo: `Thorvald121/Frostfall-Realms-World-Builder` deployable Next.js root: `frostfall-deploy/frostfall-latest/`.
-- P1–P10.1 have been merged to `main` and deployed to `frostfall-realms.com` on Vercel. Last verified baseline: `9c82d0107a2f448006989e0a5ea1ebfb754ac6d4`.
-- P11 source: `feature/p11-codex-draft-recovery-20261118` requires preview READY + green GitHub status before merging.
-- New `lib/domain/codexDraftRecovery.js` and Codex editor UI allow **explicit** recovery of browser-local unsaved drafts without overwriting real cloud entries.
-- Scoped local recovery keys: user UUID, world UUID, category, entry identity. Size and age bounded; storage failure warnings; strong token compare to prevent stale write receipt deleting new work.
-- A draft's backup is only cleared after an acknowledged Supabase bulk article save including the same article ID and updatedAt revision. Existing persistence, RLS and active data untouched.
-- The user-created Chairondis test entry **Daltos Varix** was independently found in the live Supabase table with strikethrough HTML retained; actual page reload testing remains pending.
-- Vercel prebuild runs all Node modernization + JS/CSS/import checks. No paid CI or external npm dependency added in P11.
-- Future major work: Lexical-style rich-text engine migration with round-trip tests; true save receipts; article detail screen redesign; world Atlas; relationship graph; canonical source/security review, account deletion.
-- Strict visual standards: Tabler-inspired UI, Lucide, nine themes, distinct sidebar label/icon colors, responsive layouts and genuine manual/cloud save differentiation.
-- See `docs/modernization/PHASE11_HANDOFF.md` for safe acceptance and rollback.
+- Canonical repository: `Thorvald121/Frostfall-Realms-World-Builder`; Next.js root: `frostfall-deploy/frostfall-latest/`.
+- Last confirmed **production** release: P11, merge commit `50f9625d409ab801b23447f8fa843f1e15bb77e1`, Vercel READY and aliased to `frostfall-realms.com`.
+- P11: browser-local Codex draft recovery scoped by account/world/category/entry, explicit Restore/Discard and receipt-safe cleanup. Authenticated browser acceptance still outstanding; InPrivate storage is ephemeral.
+- **P12 branch**: `feature/p12-codex-reader-studio-20261118`. Replaces the sparse saved-article masthead and layout with a responsive Codex Reader Studio (read-only presentation layer). Includes breadcrumb navigation, category/chronology badges, lore metrics, story reading panel and research rail.
+- Retains the existing article-data owner, sanitized `SafeRichText` HTML, non-mutating render path, collapsible H2/H3, Canon warnings/panel, link discovery, backrefs, related articles, tags, version history and all existing Edit/Move/Duplicate/Template/Delete handlers.
+- New files: `features/codex/CodexReaderWorkspace.jsx`, its theme-token CSS module, `lib/domain/codexReader.js`, and `tests/modernization/codexReaderP12.test.mjs`.
+- P12 preview at commit `f63cc5877d26102381f496f9901f6d3578dc7d19` confirmed Vercel READY with green GitHub Vercel status. The earlier failed preview was caused by a test counting an HTML entity as a word; this was corrected before READY. Source syntax checks: 92 JS/JSX, 9 CSS, 129 imports, 0 errors.
+- **Release rule**: do not merge until the final branch head has a READY preview and green required checks; production must remain P11 until then. No Supabase migration, direct data edits, external CI cost or paid AI dependencies.
+- Visual style: theme tokens across nine themes, Cinzel/Inter typography, responsive reading rail and Tabler/Lucide-inspired actions.
+- Remaining acceptance: signed-in P11 recovery test, P12 reader review in Chairondis using Daltos Varix and a second article with headings, links and version history; check mobile width and both theme modes.
+- Next major feature: P13 safe structured rich-text editing with HTML round-trip, selection/undo and save-receipt regression coverage. Then Atlas, relationship visualizations, account deletion and further app decomposition.
+
+See `docs/modernization/PHASE12_HANDOFF.md` for QA and rollback details.
