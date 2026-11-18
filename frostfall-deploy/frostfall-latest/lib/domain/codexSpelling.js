@@ -17,6 +17,16 @@ const COMMON_CORRECTIONS = Object.freeze({
   alot: "a lot", untill: "until", acheive: "achieve",
   suprise: "surprise", tommorow: "tomorrow", neccessary: "necessary",
 });
+const ORDINARY_CONTRACTIONS = new Set([
+  "i'm", "i've", "i'll", "i'd", "you're", "you've", "you'll", "you'd",
+  "we're", "we've", "we'll", "we'd", "they're", "they've", "they'll", "they'd",
+  "he's", "he'll", "he'd", "she's", "she'll", "she'd", "it's", "it'll",
+  "that's", "there's", "what's", "who's", "where's", "let's", "o'clock",
+  "don't", "doesn't", "didn't", "isn't", "aren't", "wasn't", "weren't",
+  "can't", "won't", "wouldn't", "couldn't", "shouldn't", "haven't",
+  "hasn't", "hadn't", "mustn't", "needn't", "ain't",
+]);
+
 const WORD_PATTERN = /[\p{L}]+(?:[’'-][\p{L}]+)*/gu;
 const SKIP_PARENT = "pre,code,a,kbd,samp,[contenteditable='false'],[data-mention-id]";
 
@@ -82,7 +92,9 @@ export function createCodexSpellingEngine(headwords = []) {
     const w = normalizeCodexWord(raw);
     if (!w || w.length < 2) return true;
     const has = (value) => words.has(value) || !!approved?.has(value);
-    return has(w) || commonWordForms(w, has);
+    if (has(w) || ORDINARY_CONTRACTIONS.has(w) || commonWordForms(w, has)) return true;
+    if (w.includes("-")) return w.split("-").every(part => part && (has(part) || commonWordForms(part, has)));
+    return false;
   }
   function suggest(raw) {
     const target = normalizeCodexWord(raw);
