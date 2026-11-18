@@ -47,7 +47,7 @@ export function CodexEditorWorkspace({
       </header>
       <div className={styles.layout}>
         <div className={styles.main}>
-          <div className={styles.manualSave} role="status"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Unsaved Codex draft.</strong> Select <strong>{editing ? "Save changes" : "Create entry"}</strong> to store it in your world. Manuscript cloud status is separate.</span></div>
+          <div className={styles.manualSave} role="status"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Manual save · Unsaved Codex draft.</strong> Select <strong>{editing ? "Save changes" : "Create entry"}</strong> to store it in your world. Manuscript cloud status is separate.</span></div>
           {children}
         </div>
         <aside className={styles.rail} aria-label="Editor navigation and draft context">
