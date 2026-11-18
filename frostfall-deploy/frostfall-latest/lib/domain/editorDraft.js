@@ -25,3 +25,13 @@ export function draftOverview(draft = {}) {
     tagCount: tags.length,
   };
 }
+
+/**
+ * Freeze the latest sanitized editor body when Save is requested. React state
+ * updates may still be batched; validation and persistence must use this value.
+ */
+export function captureEditorDraft(draft, latestSanitizedBody) {
+  const safe = draft && typeof draft === "object" && !Array.isArray(draft) ? draft : {};
+  const body = typeof latestSanitizedBody === "string" ? latestSanitizedBody : (safe.body || "");
+  return { ...safe, body };
+}
