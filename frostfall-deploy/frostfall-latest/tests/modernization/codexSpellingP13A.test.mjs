@@ -84,3 +84,14 @@ test("P13A: visual highlights, contrast tokens, and mobile layout are present", 
   assert.match(component,/aria-expanded=\{panelOpen\}/);
   assert.match(component,/role="alert"/);
 });
+
+test("P13A: underlined words open accessible in-app correction popovers", () => {
+  assert.match(component,/aria-label=\{"Spelling suggestions for " \+ popover\.issue\.word\}/);
+  assert.match(component,/doc\.caretRangeFromPoint/);
+  assert.match(component,/doc\.caretPositionFromPoint/);
+  assert.match(component,/setPopover\(\{ issue: match/);
+  assert.match(component,/onClick=\{\(\) => apply\(popover\.issue, suggestion\)\}/);
+  assert.match(component,/setPopover\(null\)/);
+  assert.match(css,/\.popover \{/);
+  assert.match(css,/position:fixed/);
+});
