@@ -36,6 +36,7 @@ import EntryTypeMenu from "@/components/ui/EntryTypeMenu";
 import { CodexWorkspaceHeader, CodexEmptyState } from "@/features/codex/CodexWorkspaceHeader";
 import { CodexEditorWorkspace, CodexEditorSection } from "@/features/codex/CodexEditorWorkspace";
 import { captureEditorDraft } from "@/lib/domain/editorDraft";
+import { codexFooterLabel, showManuscriptFooter } from "@/lib/domain/editorSaveStatus";
 import { loadManuscriptWorld, saveManuscriptWorld } from "@/lib/domain/manuscripts/manuscriptRepository";
 import { chooseManuscriptHydration, readBrowserDraft, writeBrowserDraft, sameSnapshot, journalKey } from "@/lib/domain/manuscripts/manuscriptSync";
 
@@ -5356,7 +5357,7 @@ const renderArchives = () => (<>
             <button onClick={() => importFileRef.current?.click()} style={{ flex: 1, fontSize: 10, color: "#7ec8e3", background: "rgba(126,200,227,0.08)", border: "1px solid rgba(126,200,227,0.2)", borderRadius: 5, padding: "6px 0", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, letterSpacing: 0.5 }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.18)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(126,200,227,0.08)"; }}>⬆ Import</button>
           </div>
-          {novelSaveStatus && loadedManuscriptWorldId && <div style={{fontSize:10,color:theme.textMuted,marginBottom:7,textAlign:'center'}} aria-live="polite">Writing: {({saved:'Cloud saved',saving:'Saving to cloud…',browser:'Browser only · export regularly',conflict:'Conflict · recovery available',recovery:'Choose browser or cloud',error:'Save needs attention',loading:'Loading…'})[novelSaveStatus] || novelSaveStatus}</div>}
+          {loadedManuscriptWorldId && showManuscriptFooter(novelSaveStatus, manuscripts.length, novelSaveError) && <div style={{fontSize:10,color:theme.textMuted,marginBottom:7,textAlign:'center'}} aria-live="polite">Manuscript library: {({saved:'Cloud saved',saving:'Saving to cloud…',browser:'Browser only · export regularly',conflict:'Conflict · recovery available',recovery:'Choose browser or cloud',error:'Save needs attention',loading:'Loading…'})[novelSaveStatus] || novelSaveStatus}</div>}
           {novelSaveError && <div role="alert" style={{ fontSize: 11, marginBottom: 8, color: navTone(theme, "integrity"), lineHeight: 1.4 }}>Manuscript backup failed: {novelSaveError}</div>}
           {(saveStatus === "error" || novelSaveError) && (
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
@@ -5369,8 +5370,8 @@ const renderArchives = () => (<>
             </div>
           )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? theme.accent : saveStatus === "error" ? "#e07050" : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px " + ta(theme.accent, 0.4) : "none" }} />
-            <span aria-live="polite" role="status" style={{ fontSize: 11, color: theme.textMuted, letterSpacing: 0.3, fontWeight: 600 }}>{saveStatus === "saved" ? "SAVED" : saveStatus === "saving" ? "SAVING…" : saveStatus === "error" ? "SAVE FAILED · EXPORT RECOVERY" : (activeWorld?.name?.toUpperCase() || "NO WORLD")}</span>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: saveStatus === "error" ? "#e07050" : view === "create" ? theme.accent : saveStatus === "saved" ? "#8ec8a0" : saveStatus === "saving" ? theme.accent : "#445566", transition: "background 0.3s", boxShadow: saveStatus === "saving" ? "0 0 6px " + ta(theme.accent, 0.4) : "none" }} />
+            <span aria-live="polite" role="status" style={{ fontSize: 11, color: theme.textMuted, letterSpacing: 0.3, fontWeight: 600 }}>{codexFooterLabel(saveStatus, view === "create")}</span>
           </div>
         </div>
         {isMobile && <div className="fr-mobile-theme"><span>Appearance</span><ThemeSelect value={settings.theme} compact onChange={(next) => setSettings((previous) => ({ ...previous, theme: next }))}/></div>}

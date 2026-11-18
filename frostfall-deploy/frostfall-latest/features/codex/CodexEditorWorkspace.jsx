@@ -47,7 +47,7 @@ export function CodexEditorWorkspace({
       </header>
       <div className={styles.layout}>
         <div className={styles.main}>
-          <div className={styles.manualSave}><ShieldCheck size={16} aria-hidden="true" /><span>Manual save · Review your work and select <strong>{editing ? "Save changes" : "Create entry"}</strong> when ready.</span></div>
+          <div className={styles.manualSave} role="status"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Manual save · Unsaved Codex draft.</strong> Select <strong>{editing ? "Save changes" : "Create entry"}</strong> to store it in your world. Manuscript cloud status is separate.</span></div>
           {children}
         </div>
         <aside className={styles.rail} aria-label="Editor navigation and draft context">
@@ -71,7 +71,7 @@ export function CodexEditorWorkspace({
         </aside>
       </div>
       <footer className={styles.footer}>
-        <span>Nothing is published until you save this entry.</span>
+        <span>{editing ? "Changes to this Codex entry are not saved yet." : "This new Codex entry is not saved yet."}</span>
         <div>
           <button type="button" className={styles.quietButton} onClick={onCancel}>Cancel</button>
           <button type="button" className={styles.primaryButton} onClick={save} disabled={!info.titleReady} title={!info.titleReady ? "Enter a title before saving" : undefined}><Save size={16} aria-hidden="true" /> {editing ? "Save changes" : "Create entry"}</button>
