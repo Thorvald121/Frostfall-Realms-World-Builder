@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import _ from "lodash";
 import SafeRichText from "@/components/ui/SafeRichText";
 import { CodexReaderHero, CodexReaderStoryHeading } from "@/features/codex/CodexReaderWorkspace";
+import { CodexProofreader } from "@/features/codex/CodexProofreader";
 import readerStyles from "@/features/codex/CodexReaderWorkspace.module.css";
 import { sanitizeRichHtml } from "@/lib/domain/richTextSafety";
 import * as mammoth from "mammoth";
@@ -5102,13 +5103,23 @@ const renderArchives = () => (<>
                     {!formData.body && <span style={{ color: theme.textDim, opacity: 0.5 }}>Nothing to preview yet...</span>}
                   </div>
                 ) : (
-                  <div ref={articleBodyRef} contentEditable suppressContentEditableWarning
+                  <div ref={articleBodyRef} contentEditable suppressContentEditableWarning spellCheck={false} aria-label="Codex lore rich-text editor"
                     onInput={handleArticleBodyInput}
                     onPaste={handleArticlePaste}
                     data-placeholder={`Write about this ${lower(CATEGORIES?.[createCat]?.label ?? CATEGORIES?.[createCat] ?? "")}...\n\nUse the toolbar above for formatting.`}
                     style={{ ...S.textarea, minHeight: 200, fontFamily: editorFontFamily, fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", wordWrap: "break-word", overflowWrap: "break-word", borderRadius: "0 0 8px 8px", padding: "12px 16px" }} />
                 )}
               </div>
+
+              {!articlePreviewMode && <CodexProofreader
+                editorRef={articleBodyRef}
+                onEditorChange={handleArticleBodyInput}
+                userId={user?.id}
+                worldId={activeWorld?.id}
+                worldName={activeWorld?.name}
+                entryIdentity={(editingId || "new") + ":" + createCat}
+                articles={articles}
+              />}
 
               {linkSugs.length > 0 && <WarningBanner severity="info" icon="🔗" title="Possible Codex Links" style={{ marginBottom: 16 }}>
                 <p style={{ margin: "0 0 8px" }}>Names found in your text that match codex entries. Click to link them in-place:</p>

@@ -231,3 +231,10 @@ input:focus, textarea:focus, select:focus, button:focus {
 
 .fr-world-switcher { position:relative; z-index:80; }
 .fr-world-menu { position:absolute; top:82px; left:14px; right:14px; max-height:48vh; overscroll-behavior:contain; box-shadow:0 12px 35px rgba(0,0,0,.32); }
+
+/* P13A: application-owned text highlights, not browser spellchecker markings. */
+::highlight(fr-codex-spelling) {
+  text-decoration: underline wavy #e78b65;
+  text-underline-offset: 3px;
+  background-color: rgba(231, 139, 101, 0.08);
+}
