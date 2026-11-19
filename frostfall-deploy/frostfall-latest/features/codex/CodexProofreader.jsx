@@ -36,6 +36,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
   const [storageWarning, setStorageWarning] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [lastCorrection, setLastCorrection] = useState(null);
   const [popover, setPopover] = useState(null);
   const popoverRef = useRef(null);
   const scanRef = useRef(() => {});
@@ -57,6 +58,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
     setAccepted(readCodexWordList(browserStorage(), scope));
     setIgnored(new Set());
     setSelectedId(null);
+    setLastCorrection(null);
     setPopover(null);
     setNotice("");
     setStorageWarning("");
@@ -168,6 +170,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
   const apply = (issue, replacement) => {
     const root = editorRef.current;
     if (!replaceCodexSpellingIssue(root, issue, replacement)) {
+      setPanelOpen(true);
       setNotice("The text changed before the correction was applied. Nothing was replaced.");
       scanRef.current();
       return;
@@ -181,9 +184,32 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
       selection?.addRange(caret);
       root.focus();
     } catch { /* insertion succeeded; caret restoration is best effort */ }
+    setLastCorrection({
+      node: issue.node, start: issue.start, replacement, original: issue.word,
+      scope, entryIdentity,
+    });
     setNotice("Applied “" + issue.word + "” → “" + replacement + "” in the editor. Select Save changes to publish it.");
     setPanelOpen(true);
     setPopover(null);
+    onEditorChange?.();
+    scanRef.current();
+  };
+  const undoCorrection = () => {
+    const previous = lastCorrection;
+    if (!previous || previous.scope !== scope || previous.entryIdentity !== entryIdentity) return;
+    const issue = {
+      node: previous.node, start: previous.start,
+      end: previous.start + previous.replacement.length,
+      word: previous.replacement,
+    };
+    if (!replaceCodexSpellingIssue(editorRef.current, issue, previous.original)) {
+      setNotice("The corrected text has changed. Undo was cancelled to protect your edits.");
+      setLastCorrection(null);
+      scanRef.current();
+      return;
+    }
+    setLastCorrection(null);
+    setNotice("Restored “" + previous.original + "”.");
     onEditorChange?.();
     scanRef.current();
   };
@@ -276,7 +302,10 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
           )}
           {status === "ready" && <p className={styles.footnote}>Article names and tags in this world are valid vocabulary. Added words are browser-local to this account and world; InPrivate sessions may erase them. Grammar and punctuation are separate future capabilities.</p>}
           {storageWarning && <p className={styles.warning} role="alert">{storageWarning}</p>}
-          {status === "ready" && notice && <p className={styles.notice} role="status">{notice}</p>}
+          {status === "ready" && notice && <div className={styles.undoRow} role="status">
+            <span>{notice}</span>
+            {lastCorrection && <button type="button" onMouseDown={event => event.preventDefault()} onClick={undoCorrection}>Undo last correction</button>}
+          </div>}
         </div>
       )}
     </section>
