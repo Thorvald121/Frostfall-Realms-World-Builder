@@ -47,3 +47,7 @@
 .popoverActions { display:flex; flex-wrap:wrap; gap:6px; border-top:1px solid var(--border); padding-top:9px; }
 .popoverActions button { flex:1 1 auto; background:var(--surface); color:var(--textMuted); border:1px solid var(--border); border-radius:7px; font:600 10px var(--uiFont); padding:7px; cursor:pointer; }
 .popoverActions button:hover { color:var(--text); border-color:var(--accent); }
+
+.undoRow { margin-top:10px; padding:11px 12px; border:1px solid var(--border); border-radius:9px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:var(--accentBg); color:var(--text); font:600 11px/1.6 var(--uiFont); }
+.undoRow button { flex:0 0 auto; border:1px solid var(--accent); border-radius:8px; background:var(--cardBg); color:var(--accent); cursor:pointer; padding:7px 10px; font:700 11px var(--uiFont); }
+.undoRow button:hover,.undoRow button:focus-visible { background:var(--surface); outline-offset:2px; }

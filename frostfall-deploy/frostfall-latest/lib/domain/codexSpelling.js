@@ -16,6 +16,10 @@ const COMMON_CORRECTIONS = Object.freeze({
   cant: "can't", isnt: "isn't", wasnt: "wasn't",
   alot: "a lot", untill: "until", acheive: "achieve",
   suprise: "surprise", tommorow: "tomorrow", neccessary: "necessary",
+  wth: "with", wht: "what", wrking: "working", wirking: "working",
+  wrok: "work", acutally: "actually", accomodate: "accommodate",
+  alwasy: "always", freind: "friend", enviroment: "environment",
+  thsi: "this", waht: "what", throught: "through", beleive: "believe",
 });
 const ORDINARY_CONTRACTIONS = new Set([
   "i'm", "i've", "i'll", "i'd", "you're", "you've", "you'll", "you'd",
@@ -76,8 +80,37 @@ function matchCase(original, word) {
   return /^[A-Z]/.test(original) ? word.charAt(0).toUpperCase() + word.slice(1) : word;
 }
 
-export function createCodexSpellingEngine(headwords = []) {
+export function createCodexSpellingEngine(headwords = [], frequencyWords = []) {
   const words = new Set(headwords.map(normalizeCodexWord).filter(Boolean));
+  const frequencyRank = new Map();
+  frequencyWords.forEach((word, i) => {
+    const normalized = normalizeCodexWord(word);
+    if (normalized && !frequencyRank.has(normalized)) frequencyRank.set(normalized, i);
+  });
+  const frequencyPenalty = word => {
+    const rank = frequencyRank.get(word);
+    // The English lexicon contains many rare words and names. Rank actual
+    // prose words first when typing distance is similar.
+    if (rank === undefined) return 105;
+    if (rank < 200) return 0;
+    if (rank < 1000) return 16;
+    if (rank < 3000) return 32;
+    if (rank < 7000) return 53;
+    return 75;
+  };
+  const splitCandidate = word => {
+    if (word.length < 6 || word.length > 30) return null;
+    let best = null;
+    for (let i = 2; i <= word.length - 3; i++) {
+      const left = word.slice(0, i), right = word.slice(i);
+      const leftRank = frequencyRank.get(left), rightRank = frequencyRank.get(right);
+      if (leftRank === undefined || rightRank === undefined ||
+          leftRank > 3000 || rightRank > 3000 || !words.has(left) || !words.has(right)) continue;
+      const score = leftRank + rightRank + Math.abs(i - (word.length-i))*10;
+      if (!best || score < best.score) best = { text: left + " " + right, score };
+    }
+    return best?.text || null;
+  };
   const byPrefix = new Map();
   const byLength = new Map();
   for (const word of words) {
@@ -98,31 +131,44 @@ export function createCodexSpellingEngine(headwords = []) {
   }
   function suggest(raw) {
     const target = normalizeCodexWord(raw);
-    if (!target) return [];
+    if (!target || correct(raw)) return [];
     if (suggestionCache.has(target)) return suggestionCache.get(target).map(x => matchCase(raw, x));
     const candidateSet = new Set();
-    const prefixes = [target.slice(0, 2), target.slice(0, 1), target.slice(1, 2) + target.slice(0, 1)];
-    for (const prefix of prefixes) for (const candidate of (byPrefix.get(prefix) || []))
-      if (Math.abs(candidate.length - target.length) <= 2) candidateSet.add(candidate);
-    // Cover short typos and substitutions in the first letter without broad O(n²) scanning.
-    if (candidateSet.size < 20) {
-      for (let length = Math.max(2, target.length - 1); length <= target.length + 1; length++)
-        for (const candidate of (byLength.get(length) || []))
-          if (candidate.at(-1) === target.at(-1) || candidate.slice(1, 3) === target.slice(1, 3))
-            candidateSet.add(candidate);
+    const prefix = target.slice(0, 2);
+    // All words sharing the opening pair; include one-character first-letter
+    // swaps and short typo variants. This remains bounded to the lazy index.
+    const prefixGroups = [prefix, target[1] + target[0], target.slice(1, 3)];
+    for (const key of prefixGroups) {
+      for (const word of byPrefix.get(key) || []) {
+        if (Math.abs(word.length - target.length) <= 2) candidateSet.add(word);
+      }
     }
-    const ranked = [...candidateSet].map(word => ({
-      word,
-      distance: editDistance(target, word, target.length < 5 ? 2 : 3),
-    })).filter(x => x.distance > 0 && x.distance <= (target.length < 5 ? 2 : 3))
-      .sort((a, b) => a.distance - b.distance ||
-        Number(b.word.startsWith(target.slice(0, 2))) - Number(a.word.startsWith(target.slice(0, 2))) ||
-        Math.abs(a.word.length - target.length) - Math.abs(b.word.length - target.length) ||
-        a.word.localeCompare(b.word)).slice(0, 4).map(x => x.word);
+    if (candidateSet.size < 30) {
+      for (let length = Math.max(2, target.length - 2); length <= target.length + 2; length++) {
+        for (const word of byLength.get(length) || []) {
+          if (word[0] === target[0] || word.at(-1) === target.at(-1)
+            || word.slice(1, 3) === target.slice(1, 3)) candidateSet.add(word);
+        }
+      }
+    }
+    const maxDistance = target.length <= 4 ? 2 : target.length <= 8 ? 2 : 3;
+    const ranked = [...candidateSet]
+      .filter(w => w !== target && !w.includes("'") && !w.includes("-"))
+      .map(word => ({word, distance: editDistance(target, word, maxDistance)}))
+      .filter(x => x.distance > 0 && x.distance <= maxDistance)
+      .map(x => ({...x, score: x.distance * 80 + frequencyPenalty(x.word)
+        + (x.word.startsWith(target.slice(0, 2)) ? -8 : 0)
+        + (x.word[0] === target[0] ? -5 : 0)}))
+      .sort((a, b) => a.score-b.score || a.distance-b.distance || a.word.localeCompare(b.word))
+      .slice(0, 5).map(x=>x.word);
+    // When two ordinary words were joined, propose a real space instead of
+    // unrelated edit-distance guesses. Both halves must be common English.
+    const split = splitCandidate(target);
+    if (split) ranked.unshift(split);
     const common = COMMON_CORRECTIONS[target];
     if (common) ranked.unshift(common);
     const found = [...new Set(ranked)].slice(0, 5);
-    if (suggestionCache.size > 1000) suggestionCache.clear();
+    if (suggestionCache.size > 1200) suggestionCache.clear();
     suggestionCache.set(target, found);
     return found.map(x => matchCase(raw, x));
   }
@@ -132,8 +178,11 @@ export function createCodexSpellingEngine(headwords = []) {
 let sharedEngine;
 export function loadCodexSpellingEngine() {
   if (!sharedEngine) {
-    sharedEngine = import("./codexEnglishWords.json")
-      .then(mod => createCodexSpellingEngine((mod.default || mod).words))
+    sharedEngine = Promise.all([import("./codexEnglishWords.json"), import("./codexEnglishFrequency.json")])
+      .then(([dict, frequency]) => createCodexSpellingEngine(
+        (dict.default || dict).words,
+        (frequency.default || frequency).words,
+      ))
       .catch(error => { sharedEngine = null; throw error; });
   }
   return sharedEngine;

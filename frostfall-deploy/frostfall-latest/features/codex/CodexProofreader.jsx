@@ -36,6 +36,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
   const [storageWarning, setStorageWarning] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [lastCorrection, setLastCorrection] = useState(null);
   const [popover, setPopover] = useState(null);
   const popoverRef = useRef(null);
   const scanRef = useRef(() => {});
@@ -57,6 +58,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
     setAccepted(readCodexWordList(browserStorage(), scope));
     setIgnored(new Set());
     setSelectedId(null);
+    setLastCorrection(null);
     setPopover(null);
     setNotice("");
     setStorageWarning("");
@@ -94,7 +96,6 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
     if (!engine || !editor) return;
     let timer;
     const schedule = () => {
-      setPopover(null);
       clearTimeout(timer);
       timer = setTimeout(() => scanRef.current(), 650);
     };
@@ -121,6 +122,8 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
     };
     editor.spellcheck = false;
     editor.addEventListener("input", schedule);
+    // A click in the suggestions popup blurs the editor before React's onClick.
+    // Never unmount the popup on focusout; otherwise the correction is lost.
     editor.addEventListener("focusout", schedule);
     editor.addEventListener("click", clickIssue);
     timer = setTimeout(() => scanRef.current(), 750);
@@ -139,14 +142,11 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
       if (!popoverRef.current?.contains(event.target)) setPopover(null);
     };
     const escape = event => { if (event.key === "Escape") setPopover(null); };
-    const onScroll = () => setPopover(null);
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", escape);
-    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("keydown", escape);
-      window.removeEventListener("scroll", onScroll, true);
     };
   }, [popover]);
 
@@ -170,6 +170,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
   const apply = (issue, replacement) => {
     const root = editorRef.current;
     if (!replaceCodexSpellingIssue(root, issue, replacement)) {
+      setPanelOpen(true);
       setNotice("The text changed before the correction was applied. Nothing was replaced.");
       scanRef.current();
       return;
@@ -183,8 +184,32 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
       selection?.addRange(caret);
       root.focus();
     } catch { /* insertion succeeded; caret restoration is best effort */ }
-    setNotice("Changed “" + issue.word + "” to “" + replacement + "”. Save changes to keep it in your Codex.");
+    setLastCorrection({
+      node: issue.node, start: issue.start, replacement, original: issue.word,
+      scope, entryIdentity,
+    });
+    setNotice("Applied “" + issue.word + "” → “" + replacement + "” in the editor. Select Save changes to publish it.");
+    setPanelOpen(true);
     setPopover(null);
+    onEditorChange?.();
+    scanRef.current();
+  };
+  const undoCorrection = () => {
+    const previous = lastCorrection;
+    if (!previous || previous.scope !== scope || previous.entryIdentity !== entryIdentity) return;
+    const issue = {
+      node: previous.node, start: previous.start,
+      end: previous.start + previous.replacement.length,
+      word: previous.replacement,
+    };
+    if (!replaceCodexSpellingIssue(editorRef.current, issue, previous.original)) {
+      setNotice("The corrected text has changed. Undo was cancelled to protect your edits.");
+      setLastCorrection(null);
+      scanRef.current();
+      return;
+    }
+    setLastCorrection(null);
+    setNotice("Restored “" + previous.original + "”.");
     onEditorChange?.();
     scanRef.current();
   };
@@ -217,7 +242,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
           </div>
           <div className={styles.popoverChoices}>
             {popover.issue.suggestions.length ? popover.issue.suggestions.slice(0, 4).map(suggestion =>
-              <button type="button" key={suggestion} onClick={() => apply(popover.issue, suggestion)}>{suggestion}</button>)
+              <button type="button" key={suggestion} onMouseDown={event => event.preventDefault()} onClick={() => apply(popover.issue, suggestion)}>{suggestion}</button>)
               : <span className={styles.noGuess}>No close matches. This may be a world name.</span>}
           </div>
           <div className={styles.popoverActions}>
@@ -262,7 +287,7 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
                   </div>
                   <div className={styles.suggestions}>
                     {issue.suggestions.length > 0 ? issue.suggestions.slice(0, 4).map(suggestion =>
-                      <button type="button" key={suggestion} className={styles.suggestion} onClick={() => apply(issue, suggestion)}
+                      <button type="button" key={suggestion} className={styles.suggestion} onMouseDown={event => event.preventDefault()} onClick={() => apply(issue, suggestion)}
                         title={"Replace " + issue.word + " with " + suggestion}>{suggestion}</button>)
                       : <span className={styles.noGuess}>No close replacement. This may be an invented word.</span>}
                   </div>
@@ -277,7 +302,10 @@ export function CodexProofreader({ editorRef, onEditorChange, userId, worldId, w
           )}
           {status === "ready" && <p className={styles.footnote}>Article names and tags in this world are valid vocabulary. Added words are browser-local to this account and world; InPrivate sessions may erase them. Grammar and punctuation are separate future capabilities.</p>}
           {storageWarning && <p className={styles.warning} role="alert">{storageWarning}</p>}
-          {status === "ready" && notice && <p className={styles.notice} role="status">{notice}</p>}
+          {status === "ready" && notice && <div className={styles.undoRow} role="status">
+            <span>{notice}</span>
+            {lastCorrection && <button type="button" onMouseDown={event => event.preventDefault()} onClick={undoCorrection}>Undo last correction</button>}
+          </div>}
         </div>
       )}
     </section>
